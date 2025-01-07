@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rda_ispd_python"
+version = "1.0.2"
+authors = [
+  { name="Thomas Cram", email="tcram@ucar.edu" },
+]
+description = "Python tools to manage and enable data support for the International Surface Pressure Databank (ISPD) archive at the NCAR Research Data Archive (RDA)"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 5 - Production/Stable",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/NCAR/rda-ispd-python"
