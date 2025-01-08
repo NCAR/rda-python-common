@@ -280,7 +280,7 @@ def starttran():
    else:
       try:
          pgdb.isolation_level
-      except OperationalError as e:
+      except PgSQL.OperationalError as e:
          pgconnect(0, 0, False)
       if pgdb.closed:
          pgconnect(0, 0, False)
