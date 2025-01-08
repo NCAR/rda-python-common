@@ -1704,7 +1704,7 @@ def remote_file_stat(line, opt):
    if opt&17:
       mdate = PgUtil.format_date(items[2], "YYYY-MM-DD", "YYYY/MM/DD")
       mtime = items[3]
-      if PgLOG.PGLOG['GMTZ']: (mdate, mtime) = PgUtil.addhour(date, time, PgLOG.PGLOG['GMTZ'])
+      if PgLOG.PGLOG['GMTZ']: (mdate, mtime) = PgUtil.addhour(mdate, mtime, PgLOG.PGLOG['GMTZ'])
       if opt&1:
          info['date_modified'] = mdate
          info['time_modified'] = mtime

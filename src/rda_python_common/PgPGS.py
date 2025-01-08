@@ -73,7 +73,7 @@ def pgsget(tablenames, fields, condition = None, logact = 0):
 
    if PgLOG.PGLOG['DBGLEVEL']:
       if record:
-         PgLOG.pgdbg(1000, "pgsget: 1 record retrieved from {}:\n{}".format(tablename, str(record)))
+         PgLOG.pgdbg(1000, "pgsget: 1 record retrieved from {}:\n{}".format(tablenames, str(record)))
       else:
          PgLOG.pgdbg(1000, "pgsget: 0 record retrieved from " + tablenames)
 
