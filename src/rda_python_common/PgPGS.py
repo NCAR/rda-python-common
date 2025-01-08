@@ -27,17 +27,17 @@ def pgs_sql_file(tablenames, fields, condition = None):
 
    sqlfile = "{}/pgs{}.sql".format(PGPGS['SQLPATH'], os.getpid())
 
-   sqlstr = "SELECT {}\nFROM {}".format(fields, tablename)
+   sqlstr = "SELECT {}\nFROM {}".format(fields, tablenames)
    if condition:
       if re.match(r'^\s*(ORDER|GROUP|HAVING)\s', condition, re.I):
-         slqstr += "\n{}".format(condition)
+         sqlstr += "\n{}".format(condition)
       else:
          sqlstr += "\nWHERE {}".format(condition)
-   asqlstr += ";\n"
+   sqlstr += ";\n"
    try:
       SQL = open(sqlfile, 'w')
       SQL.write(sqlstr)
-      close(SQL)
+      SQL.close()
    except Exception as e:
       PgLOG.pglog("Error Open '{}': {}".format(sqlfile, str(e)), PgLOG.LGWNEX)
 
@@ -63,7 +63,7 @@ def pgsget(tablenames, fields, condition = None, logact = 0):
       for line in re.split(r'\n', sqlout):
          vals = re.split(r'\s*\|\s+', line)
          if colcnt:    # gather data
-            record = dict(zip(filds, vals))
+            record = dict(zip(fields, vals))
             break
          else:    # gather field names
             flds = vals
@@ -73,7 +73,7 @@ def pgsget(tablenames, fields, condition = None, logact = 0):
 
    if PgLOG.PGLOG['DBGLEVEL']:
       if record:
-         PgLOG.pgdbg(1000, "pgsget: 1 record retrieved from {}:\n{}".format(tablename, str(record)))
+         PgLOG.pgdbg(1000, "pgsget: 1 record retrieved from {}:\n{}".format(tablenames, str(record)))
       else:
          PgLOG.pgdbg(1000, "pgsget: 0 record retrieved from " + tablenames)
 
@@ -91,7 +91,7 @@ def pgsget(tablenames, fields, condition = None, logact = 0):
 def pgsmget(tablenames, fields, condition = None, logact = 0):
 
    sqlfile = pgs_sql_file(tablenames, fields, condition)
-   sqlout = pgsystem("psql {} < {}".format(PGPGS['PGSSERV'], sqlfile), logact, 273+1024)   # 1+16+256
+   sqlout = PgLOG.pgsystem("psql {} < {}".format(PGPGS['PGSSERV'], sqlfile), logact, 273+1024)   # 1+16+256
 
    rowcnt = colcnt = 0
    records = {}

@@ -138,7 +138,7 @@ def pgadd_wfile(dsid, wfrec, logact = PgLOG.LOGERR, getid = None):
 def pgmadd_wfile(dsid, wfrecs, logact = PgLOG.LOGERR, getid = None):
 
    records = {'wfile' : wfrecs['wfile'],
-              'dsid' : (wfrecs['dsid'] if 'dsid' in wfrecs else [dsid]*len(records['wfile']))}
+              'dsid' : (wfrecs['dsid'] if 'dsid' in wfrecs else [dsid]*len(wfrecs['wfile']))}
    wret = PgDBI.pgmadd('wfile', records, logact, 'wid')
    wcnt = wret if isinstance(wret, int) else len(wret)
    if wcnt:

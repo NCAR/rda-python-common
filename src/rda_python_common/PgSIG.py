@@ -353,7 +353,7 @@ def validate_multiple_process(aname, plimit, uname = None, sargv = None, logact 
       if pcnt >= plimit:
          msg = aname
          if sargv: msg += ' ' + sargv
-         msg += ": already running in {} processes on {}".format(pid, PgLOG.PGLOG['HOSTNAME'])
+         msg += ": already running in {} processes on {}".format(pcnt, PgLOG.PGLOG['HOSTNAME'])
          if uname: msg += ' By ' + uname
          PgLOG.pglog(msg + ', Quit Now', logact)
          sys.exit(0)
@@ -1044,9 +1044,8 @@ def check_background(bcmd, bid = 0, logact = PgLOG.LOGWRN, dowait = 0):
 
    if logact&PgLOG.EXITLG: logact &= ~PgLOG.EXITLG
    if not bid and bcmd: bid = bcmd2cbid(bcmd)
-   i = 0
+   bcnt = i = 0
    while True:
-      bcnt = 0;
       if bid:
          if check_process(bid):  # process is not done yet
             if bcmd:
@@ -1064,8 +1063,9 @@ def check_background(bcmd, bid = 0, logact = PgLOG.LOGWRN, dowait = 0):
                del CBIDS[bid]
 
       if not (bcnt and dowait): break
-      show_wait_message(i, "{}: wait {}/{} background processes".format(PGSIG['DSTR'], pcnt, PGSIG['MPROC']), logact, dowait)
+      show_wait_message(i, "{}: wait {}/{} background processes".format(PGSIG['DSTR'], bcnt, PGSIG['MPROC']), logact, dowait)
       i += 1
+      bcnt = 0
 
    return bcnt
 
@@ -1135,7 +1135,7 @@ def show_wait_message(loop, msg, logact = PgLOG.LOGWRN, dowait = 0):
 @contextmanager
 def pgtimeout(seconds = 0, logact = 0):
    
-   if not seconds: seconds = PGLOG['TIMEOUT']
+   if not seconds: seconds = PgLOG.PGLOG['TIMEOUT']
    signal.signal(signal.SIGALRM, raise_pgtimeout)
    signal.alarm(seconds)
    try:

@@ -948,7 +948,7 @@ def move_object_file(tofile, fromfile, tobucket, frombucket, logact = 0):
       return PgLOG.FAILURE
 
    cmd = "{} mv -b {} -db {} -k {} -dk {}".format(OBJCTCMD, frombucket, tobucket, fromfile, tofile)
-   ucmd = "{} gm -k {} -b {}".format(OBJCTCMD, fromfile, bucket)
+   ucmd = "{} gm -k {} -b {}".format(OBJCTCMD, fromfile, frombucket)
    ubuf = PgLOG.pgsystem(ucmd, PgLOG.LOGWRN, CMDRET)
    if ubuf and re.match(r'^\{', ubuf): cmd += " -md '{}'".format(ubuf)
 
@@ -1146,7 +1146,7 @@ def make_one_backup_directory(dir, odir, endpoint = None, logact = 0):
    if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
    info = check_backup_file(dir, endpoint, 0, logact)
    if info:
-      if info['isfile']: return errlog("{}-{}: is file, cannot make backup directory".format(enpdpoint, dir), 'B', 1, logact)
+      if info['isfile']: return errlog("{}-{}: is file, cannot make backup directory".format(endpoint, dir), 'B', 1, logact)
       return PgLOG.SUCCESS
    elif info != None:
       return PgLOG.FAILURE
@@ -1166,10 +1166,9 @@ def make_one_backup_directory(dir, odir, endpoint = None, logact = 0):
       if syserr:
          if syserr.find("No such file or directory") > -1:
             ret = make_one_backup_directory(op.dirname(dir), odir, endpoint, logact)
-            if ret == PgLOG.SUCCESS or loop or opt&64 == 0: break
+            if ret == PgLOG.SUCCESS or loop: break
             time.sleep(PgSIG.PGSIG['ETIME'])
          else:
-            if opt&64 == 0: return PgLOG.FAILURE
             errmsg = "Error Execute: {}\n{}".format(cmd, syserr)
             (hstat, msg) = host_down_status('', QHOSTS[endpoint], 1, logact)
             if hstat: errmsg += "\n" + msg
@@ -1293,7 +1292,7 @@ def change_local_group(file, ngrp = None, ogrp = None, logname = None, logact = 
    if ngid == ogid: return PgLOG.SUCCESS
 
    try:
-      os.chown(file, nuid, ngid)
+      os.chown(file, ouid, ngid)
    except Exception as e:
       return errlog(str(e), 'L', 1, logact)
 
@@ -1705,7 +1704,7 @@ def remote_file_stat(line, opt):
    if opt&17:
       mdate = PgUtil.format_date(items[2], "YYYY-MM-DD", "YYYY/MM/DD")
       mtime = items[3]
-      if PgLOG.PGLOG['GMTZ']: (mdate, mtime) = PgUtil.addhour(date, time, PgLOG.PGLOG['GMTZ'])
+      if PgLOG.PGLOG['GMTZ']: (mdate, mtime) = PgUtil.addhour(mdate, mtime, PgLOG.PGLOG['GMTZ'])
       if opt&1:
          info['date_modified'] = mdate
          info['time_modified'] = mtime
@@ -1892,7 +1891,7 @@ def backup_file_stat(line, opt):
       mtime = items[5]
       ms = re.match(r'^(\d+:\d+:\d+)', mtime)
       if ms: mtime = ms.group(1)
-      if PgLOG.PGLOG['GMTZ']: (mdate, mtime) = PgUtil.addhour(date, time, PgLOG.PGLOG['GMTZ'])
+      if PgLOG.PGLOG['GMTZ']: (mdate, mtime) = PgUtil.addhour(mdate, mtime, PgLOG.PGLOG['GMTZ'])
       if opt&1:
          info['date_modified'] = mdate
          info['time_modified'] = mtime
