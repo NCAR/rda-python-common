@@ -468,7 +468,7 @@ def fmtdatehour(yr, mn, dy, hr, tofmt = None):
             hr += 24
             dy -= 1
       elif hr > 23:
-         while ht > 23:
+         while hr > 23:
             hr -= 24
             dy += 1
 
