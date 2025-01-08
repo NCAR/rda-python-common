@@ -1479,7 +1479,7 @@ def addtime(sdate, stime, h, m, s):
 def addintervals(sdatetime, intv, opt = 1):
 
    if not isinstance(sdatetime, str): sdatetime = str(sdatetime)
-   if not intervals: return sdatetime
+   if not intv: return sdatetime
    tv = [0]*7
    i = 0
    for v in intv:
