@@ -1240,14 +1240,14 @@ def compress_files(files, formats, count):
       strcmp = 'Compress'
       actcmp = 1
    fmtcnt = len(formats)
-   if not fmtcont: return files   # just in case
+   if not fmtcnt: return files   # just in case
    s = 's' if count > 1 else ''
    PgLOG.pglog("{}ing {} File{} for {} ...".format(strcmp, count, s, params['DS']), PGOPT['wrnlog'])
    cmpcnt = 0
    for i in range(count):
-      fmt = formats[i] if(i < fntcmt and formats[i]) else formats[0]
-      (ofile, fmt) = PgFile.compress_local_file(files[i], fmt, cmpact, MUYOPT['extlog'])
-      if ofiles != files[i]:
+      fmt = formats[i] if(i < fntcnt and formats[i]) else formats[0]
+      (ofile, fmt) = PgFile.compress_local_file(files[i], fmt, cmpact, PGOPT['extlog'])
+      if ofile != files[i]:
          files[i] = ofile
          cmpcnt += 1
    

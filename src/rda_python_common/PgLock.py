@@ -485,7 +485,7 @@ def lock_partition(pidx, dolock, logact = 0):
          if logout: PgLOG.pglog(pinfo + ": error update lock", logout)
          pidx = -pidx
    else:
-      PgLOG.pglog("{}: Relocked {}/{}".format(pinfom, lkrec['pid'], lkrec['lockhost']), logout)
+      PgLOG.pglog("{}: Relocked {}/{}".format(pinfo, lkrec['pid'], lkrec['lockhost']), logout)
       pidx = -pidx
 
    return end_db_transaction(pidx)

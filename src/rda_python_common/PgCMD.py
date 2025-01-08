@@ -307,7 +307,7 @@ def get_partition_control(pgpart, pgrqst = None, pgctl = None, logact = 0):
    if not pgctl:
       if not pgrqst and pgpart['rindex']:
          pgrqst = PgDBI.pgget("dsrqst", "dsid, gindex, cindex, rqsttype", "rindex = {}".format(pgpart['rindex']), logact)
-      if pgrqst: pgctl = get_dsrqst_control(dsrqst, logact)
+      if pgrqst: pgctl = get_dsrqst_control(pgrqst, logact)
 
    return pgctl
 

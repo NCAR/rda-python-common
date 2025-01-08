@@ -413,9 +413,9 @@ def add_new_table(tname, pre = None, suf = None, logact = 0):
 def valid_table(tname, pre = None, suf = None, logact = 0):
 
    if pre:
-      tbname = '{}_{}'.format(pre, tbname)
+      tbname = '{}_{}'.format(pre, tname)
    elif suf:
-      tbname = '{}_{}'.format(tbname, suf)
+      tbname = '{}_{}'.format(tname, suf)
    else:
       tbname = tname
    if tbname in ADDTBLS: return tbname
@@ -1141,7 +1141,7 @@ def pghupdt(tablename, record, cnddict, logact = PGDBI['ERRLOG']):
          break
       pgcnt += 1
 
-   if PgLOG.PGLOG['DBGLEVEL']: PgLOG.pgdbg(1000, "pgmupdt: {}/{} record(s) updated to {}".format(count, cntrow, tablename))
+   if PgLOG.PGLOG['DBGLEVEL']: PgLOG.pgdbg(1000, "pghupdt: {}/{} record(s) updated to {}".format(ucnt, tablename))
    if(logact&PgLOG.ENDLCK):
       endtran()
    elif curtran:
@@ -1191,7 +1191,7 @@ def pgmupdt(tablename, records, cnddicts, logact = PGDBI['ERRLOG']):
 
    pgcur.close()
 
-   if PgLOG.PGLOG['DBGLEVEL']: PgLOG.pgdbg(1000, "pgmupdt: {}/{} record(s) updated to {}".format(ucnt, cntrow, tablename))
+   if PgLOG.PGLOG['DBGLEVEL']: PgLOG.pgdbg(1000, "pgmupdt: {} record(s) updated to {}".format(ucnt, tablename))
    if(logact&PgLOG.ENDLCK):
       endtran()
    elif curtran:
@@ -1264,7 +1264,7 @@ def pghdel(tablename, cnddict, logact = PGDBI['ERRLOG']):
    if not cnddict or isinstance(cnddict, int): PgLOG.pglog("Miss condition dict to delete from " + tablename, logact)
    sqlstr = prepare_delete(tablename, None, list(cnddict))
 
-   values = tuple(cnddicts.values())
+   values = tuple(cnddict.values())
    if PgLOG.PGLOG['DBGLEVEL']: PgLOG.pgdbg(1000, "Delete from {} for {}".format(tablename, values))
 
    dcnt = pgcnt = 0
@@ -1306,7 +1306,7 @@ def pgmdel(tablename, cnddicts, logact = PGDBI['ERRLOG']):
    values = list(zip(*v))
    if PgLOG.PGLOG['DBGLEVEL']:
       for row in values:
-         PgLOG.pgdbg(1000, "Delete from {} for {}".format(tablenames, row))
+         PgLOG.pgdbg(1000, "Delete from {} for {}".format(tablename, row))
 
    dcnt = pgcnt = 0
    while True:
@@ -1411,7 +1411,7 @@ def pgcheck(tablename, logact = 0):
 def check_user_uid(userno, date = None):
 
    if not userno: return 0
-   if tyep(userno) is str: userno = int(userno)
+   if type(userno) is str: userno = int(userno)
       
    if date is None:
       datecond = "until_date IS NULL"
@@ -1433,7 +1433,7 @@ def check_user_uid(userno, date = None):
    pgrec = ucar_user_info(userno)
    if not pgrec: pgrec = {'userno' : userno, 'stat_flag' : 'M'}
    uid = pgadd("dssdb.user", pgrec, (PGDBI['EXITLG']|PgLOG.AUTOID))
-   if uid: PgLOG.pglog("{}: Scientist ID Added as user.uid = {}".format(useno, uid), PgLOG.LGWNEM)
+   if uid: PgLOG.pglog("{}: Scientist ID Added as user.uid = {}".format(userno, uid), PgLOG.LGWNEM)
 
    return uid
 
@@ -1629,14 +1629,6 @@ def check_cdp_wuser(username):
    pgrec = pgget("wuser", "wuid", "cdpname = '{}'".format(username), PGDBI['EXITLG'])
    if pgrec: return pgrec['wuid']
    
-   # missing wuser record add one in
-   pgrec = get_cdp_user(None, None, username)
-   if not pgrec:
-      if username not in LMISSES:
-         PgLOG.pglog("Missing CDP User '{}'".format(username), PgLOG.LGWNEM)
-         LMISSES['username'] = 1
-      return 0
-
    idrec = pgget("wuser", "wuid", "email = '{}'".format(pgrec['email']), PGDBI['EXITLG'])
    wuid = idrec['wuid'] if idrec else 0
    if wuid > 0:
