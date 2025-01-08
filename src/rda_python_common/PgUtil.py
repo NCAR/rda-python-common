@@ -1488,13 +1488,13 @@ def addintervals(sdatetime, intv, opt = 1):
       
    # assume the given datetime is end of the current interval;
    # add one second to set it to beginning of the next one
-   if opt == 0: sdatetime = PgUtil.adddatetime(sdatetime, 0, 0, 0 ,0, 0, 1)
+   if opt == 0: sdatetime = adddatetime(sdatetime, 0, 0, 0 ,0, 0, 1)
 
    if opt < 1: # negative intervals for minus
       for i in range(6):
          if tv[i]: tv[i] = -tv[i]
 
-   return PgUtil.adddatetime(sdatetime, tv[0], tv[1], tv[2], tv[3], tv[4], tv[5], tv[6])
+   return adddatetime(sdatetime, tv[0], tv[1], tv[2], tv[3], tv[4], tv[5], tv[6])
 
 #
 # adjust end date to the specified day days for frequency of year/month/week
