@@ -1511,13 +1511,13 @@ def check_process_host(hosts, chost = None, mflag = None, pinfo = None, logact =
 #
 # convert special characters
 #
-def convert_chars(name, default = None):
+def convert_chars(name, default = 'X'):
 
-   if not name or re.match(r'^[a-zA-Z0-9]+$', name): return name  # no need convert
-   
+   if not name: return default
+   if re.match(r'^[a-zA-Z0-9]+$', name): return name  # no need convert
+
    z = ord('z')
    newchrs = ochrs = ''
-   if default == None: default = name
    for i in range(len(name)):
       ch = name[i]
       if re.match(r'^[a-zA-Z0-9]$', ch):
