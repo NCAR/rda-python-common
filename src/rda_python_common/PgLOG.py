@@ -1522,6 +1522,8 @@ def convert_chars(name, default = 'X'):
       ch = name[i]
       if re.match(r'^[a-zA-Z0-9]$', ch):
          newchrs += ch
+      elif (ch == ' ' or ch == '_') and newchrs:
+         newchrs += '_'
       elif ord(ch) > z and ochrs != None:
          if not ochrs:
             ochrs = None
