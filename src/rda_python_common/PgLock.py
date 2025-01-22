@@ -4,20 +4,21 @@
 #     Title : PgLock.py
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 08/118/2020
+#             2025-01-10 transferred to package rda_python_common from
+#             https://github.com/NCAR/rda-shared-libraries.git
 #   Purpose : python library module for functions to lock RDADB records
 #
-# Work File : $DSSHOME/lib/python/PgLock.py
-#    Github : https://github.com/NCAR/rda-shared-libraries.git
+#    Github : https://github.com/NCAR/rda-python-common.git
 #
 ###############################################################################
 #
 import re
 import time
-import PgLOG
-import PgSIG
-import PgUtil
-import PgFile
-import PgDBI
+from . import PgLOG
+from . import PgSIG
+from . import PgUtil
+from . import PgFile
+from . import PgDBI
 
 DOLOCKS = {-2 : 'Force Unlock', -1 : 'Unlock', 0 : 'Unlock', 1 : 'Relock', 2 : 'Force Relock'}
 

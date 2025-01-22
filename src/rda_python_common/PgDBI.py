@@ -4,10 +4,11 @@
 #     Title : PgDBI.py  -- PostgreSQL DataBase Interface
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 06/07/2022
+#             2025-01-10 transferred to package rda_python_common from
+#             https://github.com/NCAR/rda-shared-libraries.git
 #   Purpose : Python library module to handle query and manipulate PostgreSQL database
 #
-# Work File : $DSSHOME/lib/python/PgDBI.py
-#    Github : https://github.com/NCAR/rda-shared-libraries.git
+#    Github : https://github.com/NCAR/rda-python-common.git
 #
 ###############################################################################
 
@@ -19,7 +20,7 @@ import psycopg2 as PgSQL
 from psycopg2.extras import execute_values
 from psycopg2.extras import execute_batch
 from os import path as op
-import PgLOG
+from . import PgLOG
 
 pgdb = None    # reference to a connected database object
 curtran = 0    # 0 - no transaction, 1 - in transaction

@@ -5,11 +5,12 @@
 #
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 08/26/2020
+#             2025-01-10 transferred to package rda_python_common from
+#             https://github.com/NCAR/rda-shared-libraries.git
 #   Purpose : python library module for holding global varaibles
 #             functions for processing options and other global functions
 #
-# Work File : $DSSHOME/lib/python/PgOPT.py
-#    Github : https://github.com/NCAR/rda-shared-libraries.git
+#    Github : https://github.com/NCAR/rda-pyhon-common.git
 # 
 ###############################################################################
 #
@@ -18,10 +19,10 @@ import sys
 import re
 import time
 from os import path as op
-import PgLOG
-import PgUtil
-import PgFile
-import PgDBI
+from . import PgLOG
+from . import PgUtil
+from . import PgFile
+from . import PgDBI
 
 OUTPUT = None
 CMDOPTS = {}

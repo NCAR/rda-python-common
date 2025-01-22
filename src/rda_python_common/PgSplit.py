@@ -4,19 +4,20 @@
 #     Title : PgSplit.py  -- PostgreSQL DataBase Interface foe table wfile
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 09/010/2024
+#             2025-01-10 transferred to package rda_python_common from
+#             https://github.com/NCAR/rda-shared-libraries.git
 #   Purpose : Python library module to handle query and manipulate table wfile
 #
-# Work File : $DSSHOME/lib/python/PgSplit.py
-#    Github : https://github.com/NCAR/rda-shared-libraries.git
+#    Github : https://github.com/NCAR/rda-python-common.git
 #
 ###############################################################################
 
 import os
 import re
 from os import path as op
-import PgLOG
-import PgDBI
-import PgUtil
+from . import PgLOG
+from . import PgDBI
+from . import PgUtil
 
 #
 # compare wfile records between tables wfile and wfile_dNNNNNN,

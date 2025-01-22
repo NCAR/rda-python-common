@@ -4,17 +4,18 @@
 #     Title : PgPGS.py  -- PostgreSQL Interface for CDP DataBase Per psql
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 08/31/2020
+#             2025-01-10 transferred to package rda_python_common from
+#             https://github.com/NCAR/rda-shared-libraries.git
 #   Purpose : python library module to handle sql scripts to retrieve info
 #             from cdp database per psql
 #
-# Work File : $DSSHOME/lib/python/PgPGS.py
-#    Github : https://github.com/NCAR/rda-shared-libraries.git
+#    Github : https://github.com/NCAR/rda-python-common.git
 #
 ###############################################################################
 #
-import PgLOG
 import os
 import re
+from . import PgLOG
 
 PGPGS = {}
 PGPGS["PGSSERV"] = PgLOG.get_environment("PGSSERV", '-h vetsdbprod -p 5432 -U acadmin access_control');
