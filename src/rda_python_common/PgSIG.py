@@ -5,10 +5,11 @@
 #
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 08/05/2020
+#             2025-01-10 transferred to package rda_python_common from
+#             https://github.com/NCAR/rda-shared-libraries.git
 #   Purpose : python library module for start and control daemon process
 #
-# Work File : $DSSHOME/lib/python/PgSIG.py
-#    Github : https://github.com/NCAR/rda-shared-libraries.git
+#    Github : https://github.com/NCAR/rda-python-common.git
 # 
 ###############################################################################
 #
@@ -19,8 +20,8 @@ import errno
 import signal
 import time
 from contextlib import contextmanager
-import PgLOG
-import PgDBI
+from . import PgLOG
+from . import PgDBI
 
 VUSERS = []  # allow users to start this daemon
 CPIDS = {}    # allow upto 'mproc' processes at one time for daemon

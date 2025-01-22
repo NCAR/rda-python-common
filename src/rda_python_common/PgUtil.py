@@ -4,10 +4,11 @@
 #     Title : PgUtil.py  -- module for misc utilities.
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 07/27/2020
+#             2025-01-10 transferred to package rda_python_common from
+#             https://github.com/NCAR/rda-shared-libraries.git
 #   Purpose : python library module for global misc utilities
 #
-# Work File : $DSSHOME/lib/python/PgUtil.py
-#    Github : https://github.com/NCAR/rda-shared-libraries.git
+#    Github : https://github.com/NCAR/rda-python-common.git
 # 
 ###############################################################################
 #

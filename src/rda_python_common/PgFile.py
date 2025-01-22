@@ -4,11 +4,12 @@
 #     Title : PgFile.py
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 08/05/2020
+#             2025-01-10 transferred to package rda_python_common from
+#             https://github.com/NCAR/rda-shared-libraries.git
 #   Purpose : python library module to copy, move and delete data files locally
 #             and remotely
 #
-# Work File : $DSSHOME/lib/python/PgFile.py
-#    Github : https://github.com/NCAR/rda-shared-libraries.git
+#    Github : https://github.com/NCAR/rda-python_common.git
 #
 ###############################################################################
 #
@@ -22,10 +23,10 @@ import re
 import time
 import glob
 import json
-import PgLOG
-import PgUtil
-import PgSIG
-import PgDBI
+from . import PgLOG
+from . import PgUtil
+from . import PgSIG
+from . import PgDBI
 
 CMDBTH = (0x0033)   # return both stdout and stderr, 16 + 32 + 2 + 1
 RETBTH = (0x0030)   # return both stdout and stderr, 16 + 32

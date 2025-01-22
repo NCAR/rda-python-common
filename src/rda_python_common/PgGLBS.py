@@ -4,21 +4,23 @@
 #     Title : PgGLBS.py
 #    Author : Thomas Cram, tcram@ucar.edu
 #      Date : 12/10/2014
-#   Purpose : python library module for Globus functions and utilities
-#   Changes : 10/10/2020, Zaihua Ji, zji@ucar.edu:
+#             10/10/2020, Zaihua Ji, zji@ucar.edu:
 #             converted from perl package to python module
+#             2025-01-10, Zaihua Ji, zji@ucar.edu:
+#             transferred to package rda_python_common from
+#             https://github.com/NCAR/rda-shared-libraries.git
+#   Purpose : python library module for Globus functions and utilities
 #
-# Work File : $DSSHOME/lib/python/PgGLBS.py
-#    Github : https://github.com/NCAR/rda-shared-libraries.git
+#    Github : https://github.com/NCAR/rda-python-common.git
 # 
 ###############################################################################
 #
 import os
 import re
-import PgLOG
-import PgUtil
+from . import PgLOG
+from . import PgUtil
 from MyGlobus import MyGlobus, MyEndpoints, GLOBUS_REQUEST_DOMAIN
-import PgDBI
+from . import PgDBI
 
 try:
    from urllib.parse import urlencode

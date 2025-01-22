@@ -4,11 +4,12 @@
 #     Title : PgCMD.py
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 08/25/2020
+#             2025-01-10 transferred to package rda_python_common from
+#             https://github.com/NCAR/rda-shared-libraries.git
 #   Purpose : python library module for functions to record commands for delayed
 #             mode or command recovery
 #
-# Work File : $DSSHOME/lib/python/PgCMD.py
-#    Github : https://github.com/NCAR/rda-shared-libraries.git
+#    Github : https://github.com/NCAR/rda-python-common.git
 #
 ###############################################################################
 #
@@ -16,11 +17,11 @@ import os
 import re
 import sys
 import time
-import PgLOG
-import PgSIG
-import PgUtil
-import PgLock
-import PgDBI
+from . import PgLOG
+from . import PgSIG
+from . import PgUtil
+from . import PgLock
+from . import PgDBI
 
 # cached dscheck info
 DSCHK = {}
