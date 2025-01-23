@@ -109,7 +109,7 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'DSIDCHRS' : "d",
    'DOSHELL' : False,
    'NEWDSID' : True,
-   'BCHHOSTS' : "SLURM:PBS",
+   'BCHHOSTS' : "PBS",
    'HOSTTYPE' : 'dav',    # default HOSTTYPE
    'EMLMAX' : 256,       # up limit of email line count 
    'PGBATCH' : '',       # current batch service name, SLURM or PBS
@@ -1219,14 +1219,14 @@ def set_common_pglog():
    PGLOG['NOTAROOT'] = '|'.join([PGLOG['OLDAROOT'], PGLOG['OLDBROOT'], PGLOG['BACKROOT']])
    PGLOG['NOTBROOT'] = '|'.join([PGLOG['OLDAROOT'], PGLOG['OLDBROOT'], PGLOG['ARCHROOT']])
    PGLOG['ALLROOTS'] = '|'.join([PGLOG['OLDAROOT'], PGLOG['OLDBROOT'], PGLOG['ARCHROOT'], PGLOG['BACKROOT']])
-   SETPGLOG("USRHOME", "PGUSRHOME")
-   SETPGLOG("DSSHOME", "PGDSSHOME")
-   SETPGLOG("ADDPATH", "PGADDPATH")
-   SETPGLOG("ADDLIB",  "PGADDLIB")
-   SETPGLOG("OTHPATH", "PGOTHPATH")
-   SETPGLOG("PSQLHOME", "PGPSQLHOME")
-   SETPGLOG("DSGHOSTS", "PGDSGHOSTS")
-   SETPGLOG("DSIDCHRS", "PGDSIDCHRS")
+   SETPGLOG("USRHOME", "/glade/u/home")
+   SETPGLOG("DSSHOME", "/glade/u/home/rdadata")
+   SETPGLOG("ADDPATH", "")
+   SETPGLOG("ADDLIB",  "")
+   SETPGLOG("OTHPATH", "")
+   SETPGLOG("PSQLHOME", "/usr/pgsql-15")
+   SETPGLOG("DSGHOSTS", "")
+   SETPGLOG("DSIDCHRS", "d")
 
    if not os.getenv('HOME'): os.environ['HOME'] = "{}/{}".format(PGLOG['USRHOME'], PGLOG['CURUID'])
    SETPGLOG("HOMEBIN", os.environ.get('HOME') + "/bin")
@@ -1279,7 +1279,7 @@ def set_common_pglog():
    SETPGLOG("PUSGDIR", PGLOG['DSSDBHM']+"/prog_usage")  # path to program usage files
    SETPGLOG("DSSURL",  "https://rda.ucar.edu")          # current dss web URL
    SETPGLOG("RQSTURL", "/datasets/request")              # request URL path
-   SETPGLOG("WEBSERVERS", "PGWEBSERVERS")                 # webserver names for Web server
+   SETPGLOG("WEBSERVERS", "rda-web-prod01.ucar.edu:rda-web-test01.ucar.edu")                 # webserver names for Web server
    PGLOG['WEBHOSTS'] = PGLOG['WEBSERVERS'].split(':') if PGLOG['WEBSERVERS'] else []
    SETPGLOG("DBMODULE", '')
    SETPGLOG("LOCDATA", "/data")
@@ -1288,21 +1288,21 @@ def set_common_pglog():
    SETPGLOG("DSSWEB",  PGLOG['LOCDATA']+"/web")
    SETPGLOG("DSWHOME", PGLOG['DSSWEB']+"/datasets")     # datast web root path
    PGLOG['HOMEROOTS'] = "{}|{}".format(PGLOG['DSSHOME'], PGLOG['DSWHOME'])
-   SETPGLOG("DSSDATA", "PGDSSDATA")                     # dss data root path
+   SETPGLOG("DSSDATA", "/glade/campaign/collections/rda")                     # dss data root path
    SETPGLOG("DSDHOME", PGLOG['DSSDATA']+"/data")        # dataset data root path
    SETPGLOG("DECSHOME", PGLOG['DSSDATA']+"/decsdata")   # dataset decsdata root path
    SETPGLOG("DSHHOME", PGLOG['DECSHOME']+"/helpfiles")  # dataset help root path
    SETPGLOG("UPDTWKP", PGLOG['DSSDATA']+"/work")        # dsupdt work root path
    SETPGLOG("TRANSFER", PGLOG['DSSDATA']+"/transfer")   # dss transfer partition
    SETPGLOG("RQSTHOME", PGLOG['TRANSFER']+"/dsrqst")    # dsrqst home
-   SETPGLOG("DSAHOME",  "PGDSAHOME")                    # dataset data alternate root path
-   SETPGLOG("RQSTALTH", "PGRQSTALTH")                   # alternate dsrqst path
-   SETPGLOG("GPFSHOST", "PGGPFSHOST")                   # empty if writable to glade
-   SETPGLOG("PSQLHOST", "PGPSQLHOST")                   # host name for postgresql server
-   SETPGLOG("SLMHOSTS", "PGSLMHOSTS")                   # host names for SLURM server
-   SETPGLOG("PBSHOSTS", "PGPBSHOSTS")                   # host names for PBS server
-   SETPGLOG("CHKHOSTS", "PGCHKHOSTS")                   # host names for dscheck daemon
-   SETPGLOG("PVIEWHOST", "PGPVIEWHOST")                   # host name for view only postgresql server
+   SETPGLOG("DSAHOME",  "")                    # dataset data alternate root path
+   SETPGLOG("RQSTALTH", "")                   # alternate dsrqst path
+   SETPGLOG("GPFSHOST", "")                   # empty if writable to glade
+   SETPGLOG("PSQLHOST", "rda-db.ucar.edu")                   # host name for postgresql server
+   SETPGLOG("SLMHOSTS", "cheyenne:casper")                   # host names for SLURM server
+   SETPGLOG("PBSHOSTS", "cheyenne:casper")                   # host names for PBS server
+   SETPGLOG("CHKHOSTS", "")                   # host names for dscheck daemon
+   SETPGLOG("PVIEWHOST", "rda-pgdb-02.ucar.edu")                   # host name for view only postgresql server
    SETPGLOG("FTPUPLD",  PGLOG['TRANSFER']+"/rossby")    # ftp upload path
    PGLOG['GPFSROOTS'] = "{}|{}|{}".format(PGLOG['DSDHOME'], PGLOG['UPDTWKP'], PGLOG['RQSTHOME'])
  
@@ -1311,7 +1311,7 @@ def set_common_pglog():
    os.environ['history'] = '0'
 
    # set tmp dir
-   SETPGLOG("TMPPATH", "PGTMPPATH")
+   SETPGLOG("TMPPATH", "/glade/campaign/collections/rda/work/ptmp")
    if not PGLOG['TMPPATH']: PGLOG['TMPPATH'] = "/data/ptmp"
 
    SETPGLOG("TMPDIR", '')
