@@ -521,7 +521,7 @@ def pgconnect(reconnect = 0, pgcnt = 0, autocommit = True):
          config['host'] = PGDBI['DBHOST'] if PGDBI['DBHOST'] else PGDBI['DEFHOST']
          if not PGDBI['DBPORT']: PGDBI['DBPORT'] = get_dbport(PGDBI['DBNAME'])
       if PGDBI['DBPORT']: config['port'] = PGDBI['DBPORT'] 
-      config = ['password'] = get_pgpass_password()
+      config['password'] = get_pgpass_password()
 
       sqlstr = "psycopg2.connect(**{})".format(config)
       if PgLOG.PGLOG['DBGLEVEL']: PgLOG.pgdbg(1000, sqlstr)
