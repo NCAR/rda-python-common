@@ -2222,7 +2222,7 @@ def get_pgpass_password():
 
    if PGDBI['PWNAME']: return PGDBI['PWNAME']
    if not DBPASS: read_pgpass()  
-   return DBPASS.get((PGDBI['DBSHOST'], PGDBI['DBPORT'], PGDBI['DBNAME'], PGDBI['USNAME']))
+   return DBPASS.get((PGDBI['DBSHOST'], PGDBI['DBPORT'], PGDBI['DBNAME'], PGDBI['LNNAME']))
 
 #
 # Reads the .pgpass file and returns a dictionary of credentials.
