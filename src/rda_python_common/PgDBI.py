@@ -508,10 +508,6 @@ def pgconnect(reconnect = 0, pgcnt = 0, autocommit = True):
    elif reconnect:
       reconnect = 0   # initial connection
 
-#   if PGDBI['VWHOST'] and PGDBI['VWHOME'] and PGDBI['DBSHOST'] == PGDBI['VWSHOST'] and PGDBI['SCNAME'] == PGDBI['VWNAME']:
-#      slave = "/{}/{}.slave".format(PGDBI['VWHOME'], PGDBI['VWHOST'])
-#      if not op.exists(slave): default_scname()
-
    while True:
       config = {'database' : PGDBI['DBNAME'],
                     'user' : PGDBI['LNNAME']}
