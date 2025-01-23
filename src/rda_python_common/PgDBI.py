@@ -37,8 +37,10 @@ CHCODE = 1042
 
 # hard coded db ports for dbnames
 DBPORTS = {
-  'default' : 0    # skip default port number 5432
+  'default' : 5432
 }
+
+DBPASS = {}
 
 # hard coded db names for given schema names
 DBNAMES = {
@@ -79,7 +81,6 @@ fmthr = lambda fn: "extract(hour from {})::int".format(fn)
 def SETPGDBI(name, value):
    PGDBI[name] = PgLOG.get_environment(name, value)
 
-SETPGDBI('CDHOST', 'rda-db.ucar.edu')  # common domain for db host for master server
 SETPGDBI('DEFDB', 'rdadb')
 SETPGDBI("DEFSC", 'dssdb')
 SETPGDBI('DEFHOST', PgLOG.PGLOG['PSQLHOST'])
@@ -88,7 +89,7 @@ SETPGDBI("DEFSOCK", '')
 SETPGDBI("DBNAME", PGDBI['DEFDB'])
 SETPGDBI("SCNAME", PGDBI['DEFSC'])
 SETPGDBI("LNNAME", PGDBI['DEFSC'])
-SETPGDBI("PWNAME", PGDBI['DEFSC'])
+SETPGDBI("PWNAME", None)
 SETPGDBI("DBHOST", (os.environ['DSSDBHOST'] if os.environ.get('DSSDBHOST') else PGDBI['DEFHOST']))
 SETPGDBI("DBPORT", 0)
 SETPGDBI("ERRLOG", PgLOG.LOGERR)   # default error logact
@@ -242,12 +243,12 @@ def set_scname(dbname = None, scname = None, lnname = None, pwname = None, dbhos
       PGDBI['DBNAME'] = dbname
       changed = 1
    if scname and scname != PGDBI['SCNAME']:
-      PGDBI['PWNAME'] = PGDBI['LNNAME'] = PGDBI['SCNAME'] = scname
+      PGDBI['LNNAME'] = PGDBI['SCNAME'] = scname
       changed = 1
    if lnname and lnname != PGDBI['LNNAME']:
-      PGDBI['PWNAME'] = PGDBI['LNNAME'] = lnname
+      PGDBI['LNNAME'] = lnname
       changed = 1
-   if pwname and pwname != PGDBI['PWNAME']:
+   if pwname != PGDBI['PWNAME']:
       PGDBI['PWNAME'] = pwname
       changed = 1
    if dbhost and dbhost != PGDBI['DBHOST']:
@@ -475,7 +476,8 @@ def pgbatch(sqlfile, foreground = 0):
 
    dbhost = 'localhost' if PGDBI['DBSHOST'] == PgLOG.PGLOG['HOSTNAME'] else PGDBI['DBHOST'] 
    options = "-h {} -p {}".format(dbhost, PGDBI['DBPORT'])
-   os.environ['PGPASSWORD'] = PGDBI['PWNAME']
+   pwname = get_pgpass_password()
+   os.environ['PGPASSWORD'] = pwname
    options += " -U {} {}".format(PGDBI['LNNAME'], PGDBI['DBNAME'])
 
    if not sqlfile: return options
@@ -512,14 +514,14 @@ def pgconnect(reconnect = 0, pgcnt = 0, autocommit = True):
 
    while True:
       config = {'database' : PGDBI['DBNAME'],
-                    'user' : PGDBI['LNNAME'],
-                'password' : PGDBI['PWNAME']}
+                    'user' : PGDBI['LNNAME']}
       if PGDBI['DBSHOST'] == PgLOG.PGLOG['HOSTNAME']:
          config['host'] = 'localhost'
       else:
-         config['host'] = PGDBI['DBHOST'] if PGDBI['DBHOST'] else PGDBI['CDHOST']
+         config['host'] = PGDBI['DBHOST'] if PGDBI['DBHOST'] else PGDBI['DEFHOST']
          if not PGDBI['DBPORT']: PGDBI['DBPORT'] = get_dbport(PGDBI['DBNAME'])
       if PGDBI['DBPORT']: config['port'] = PGDBI['DBPORT'] 
+      config = ['password'] = get_pgpass_password()
 
       sqlstr = "psycopg2.connect(**{})".format(config)
       if PgLOG.PGLOG['DBGLEVEL']: PgLOG.pgdbg(1000, sqlstr)
@@ -2216,3 +2218,27 @@ def pgname(str, sign = None):
           nstr = '"{}"'.format(nstr)
 
    return nstr
+
+#
+# get a postgres password for given host, port, dbname, usname
+#
+def get_pgpass_password():
+
+   if PGDBI['PWNAME']: return PGDBI['PWNAME']
+   if not DBPASS: read_pgpass()  
+   return DBPASS.get((PGDBI['DBSHOST'], PGDBI['DBPORT'], PGDBI['DBNAME'], PGDBI['USNAME']))
+
+#
+# Reads the .pgpass file and returns a dictionary of credentials.
+#
+def read_pgpass():
+
+   try:
+      with open(PgLOG.PGLOG['DSSHOME'] + '/.pgpass', "r") as f:
+         for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"): continue
+            dbhost, dbport, dbname, usname, pwname = line.split(":")
+            DBPASS[(dbhost, dbport, dbname, usname)] = pwname
+   except FileNotFoundError:
+      pass
