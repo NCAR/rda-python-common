@@ -37,7 +37,7 @@ CHCODE = 1042
 
 # hard coded db ports for dbnames
 DBPORTS = {
-  'default' : 5432
+  'default' : 0
 }
 
 DBPASS = {}
@@ -517,9 +517,9 @@ def pgconnect(reconnect = 0, pgcnt = 0, autocommit = True):
          config['host'] = PGDBI['DBHOST'] if PGDBI['DBHOST'] else PGDBI['DEFHOST']
          if not PGDBI['DBPORT']: PGDBI['DBPORT'] = get_dbport(PGDBI['DBNAME'])
       if PGDBI['DBPORT']: config['port'] = PGDBI['DBPORT'] 
-      config['password'] = get_pgpass_password()
-
+      config['password'] = '***'
       sqlstr = "psycopg2.connect(**{})".format(config)
+      config['password'] = get_pgpass_password()
       if PgLOG.PGLOG['DBGLEVEL']: PgLOG.pgdbg(1000, sqlstr)
       try:
          PgLOG.PGLOG['PGDBBUF'] = pgdb = PgSQL.connect(**config)
@@ -2221,8 +2221,10 @@ def pgname(str, sign = None):
 def get_pgpass_password():
 
    if PGDBI['PWNAME']: return PGDBI['PWNAME']
-   if not DBPASS: read_pgpass()  
-   return DBPASS.get((PGDBI['DBSHOST'], PGDBI['DBPORT'], PGDBI['DBNAME'], PGDBI['LNNAME']))
+   if not DBPASS: read_pgpass()
+   dbport = str(PGDBI['DBPORT']) if PGDBI['DBPORT'] else '5432'
+   pwname = DBPASS.get((PGDBI['DBSHOST'], dbport, PGDBI['DBNAME'], PGDBI['LNNAME']))
+   if not pwname: pwname = DBPASS.get((PGDBI['DBHOST'], dbport, PGDBI['DBNAME'], PGDBI['LNNAME']))
 
 #
 # Reads the .pgpass file and returns a dictionary of credentials.
@@ -2234,7 +2236,7 @@ def read_pgpass():
          for line in f:
             line = line.strip()
             if not line or line.startswith("#"): continue
-            dbhost, dbport, dbname, usname, pwname = line.split(":")
-            DBPASS[(dbhost, dbport, dbname, usname)] = pwname
+            dbhost, dbport, dbname, lnname, pwname = line.split(":")
+            DBPASS[(dbhost, dbport, dbname, lnname)] = pwname
    except FileNotFoundError:
       pass
