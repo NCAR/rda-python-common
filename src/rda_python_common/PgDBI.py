@@ -2226,6 +2226,8 @@ def get_pgpass_password():
    pwname = DBPASS.get((PGDBI['DBSHOST'], dbport, PGDBI['DBNAME'], PGDBI['LNNAME']))
    if not pwname: pwname = DBPASS.get((PGDBI['DBHOST'], dbport, PGDBI['DBNAME'], PGDBI['LNNAME']))
 
+   return pwname
+
 #
 # Reads the .pgpass file and returns a dictionary of credentials.
 #
