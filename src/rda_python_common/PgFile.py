@@ -3012,3 +3012,52 @@ def check_storage_dflags(dflags, dscheck = None, logact = 0):
       if cidx: PgDBI.pgexec("UPDATE dscheck SET dflags = '' WHERE cindex = {}".format(cidx), logact)
 
    return msgary
+
+#
+# check a RDA file is backed up or not for given file record;
+# clear the cached bfile records if frec is None.
+# return 0 if not yet, 1 if backed up, or -1 if backed up but modified
+#
+def file_backup_status(frec, chgdays = 1, logact = 0):
+
+   if frec is None:
+      BFILES.clear()
+      return 0
+
+   bid = frec['bid']
+   if not bid: return 0
+
+   fields = 'bfile, dsid, date_modified'
+   if chgdays > 0: fields += ', note'
+   if bid not in BFILES: BFILES[bid] = PgDBI.pgget('bfile', fields, 'bid = {}'.format(bid), logact)
+   brec = BFILES[bid]
+   if not brec: return 0
+
+   if 'sfile' in frec:
+      fname = frec['sfile']
+      ftype = 'Saved'
+   else:
+      fname = frec['wfile']
+      ftype = 'Web'
+   ret = 1
+   fdate = frec['date_modified']
+   bdate = brec['date_modified']
+   if chgdays > 0 and PgUtil.diffdate(fdate, bdate) >= chgdays:
+      ret = -1
+      if brec['note']:
+         mp = r'{}<:>{}<:>(\d+)<:>(\w+)<:>'.format(fname, frec['type']) 
+         ms = re.search(mp, brec['note'])
+         if ms:
+            fsize = int(ms.group(1))
+            cksum = ms.group(2)
+            if cksum and cksum == frec['checksum'] or not cksum and fsize == frec['data_size']:
+               ret = 1
+
+   if logact:
+      if ret == 1:
+         msg = "{}-{}: {} file backed up to /{}/{} by {}".format(frec['dsid'], fname, ftype, brec['dsid'], brec['bfile'], bdate)
+      else:
+         msg = "{}-{}: {} file changed on {}".format(frec['dsid'], fname, ftype, fdate)
+      PgLOG.pglog(msg, logact)
+
+   return ret
