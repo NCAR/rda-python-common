@@ -118,6 +118,8 @@ ENDPOINTS = {
    'rda-quasar-drdata' : "NCAR RDA Quasar DRDATA"
 }
 
+BFILES = {}  # cache backup file names and dates for each bid
+
 #
 # reset the up limit for a specified error type
 #
