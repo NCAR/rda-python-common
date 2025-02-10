@@ -19,7 +19,7 @@ import datetime
 import calendar
 import glob
 from os import path as op
-import PgLOG
+from . import PgLOG
 
 DATEFMTS = {
    'C' : '(CC|C)',                   # century
