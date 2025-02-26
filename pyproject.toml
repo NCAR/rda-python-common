@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rda_python_common"
-version = "1.0.11"
+version = "1.0.12"
 authors = [
   { name="Zaihua Ji", email="zji@ucar.edu" },
 ]
@@ -18,7 +18,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
 ]
 dependencies = [
-  "psycopg2",
 ]
 [project.urls]
 "Homepage" = "https://github.com/NCAR/rda-python-common"
