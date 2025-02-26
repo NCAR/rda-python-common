@@ -88,6 +88,7 @@ PGOPT = {
    'WIDTH'  : 128,  # max column width
    'TXTBIT' : 64,   # text field bit (0x1000) allow multiple lines
    'PEMAX'  : 12,   # max count of reuqest partition errors for auto reprocesses
+   'PTMAX'  : 24,   # max number of partitions for a single request
    'REMAX'  : 2,    # max count of reuqest errors for auto reprocesses
    'RSMAX'  : 2000,  # max count of gatherxml with options -R -S
    'RCNTL'  : None,  # placehold for a request control record
