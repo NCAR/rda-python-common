@@ -542,6 +542,13 @@ def pgtrim(line, rmcmt = 1):
    return line
 
 #
+# set PGLOG['PUSGDIR'] from the program file with full path
+#
+def set_help_path(progfile):
+   
+   PGLOG['PUSGDIR'] = op.dirname(op.abspath(progfile))
+   
+#
 # Function: show_usage(progname: Perl program name to get file "progname.usg")
 #
 # show program usage in file "PGLOG['PUSGDIR']/progname.usg" on screen with unix
@@ -549,7 +556,8 @@ def pgtrim(line, rmcmt = 1):
 #
 def show_usage(progname, opts = None):
 
-   usgname = PGLOG['PUSGDIR'] + '/' + progname + '.usg'
+   usgname = join_paths(PGLOG['PUSGDIR'], progname + '.usg')
+
    if opts:
       # show usage for individual option of dsarch
       for opt in opts:
