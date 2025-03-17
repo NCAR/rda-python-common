@@ -546,7 +546,7 @@ def pgtrim(line, rmcmt = 1):
 #
 def set_help_path(progfile):
    
-   PGLOG['PUSGDIR'] = op.dirname(op.abspath(progname))
+   PGLOG['PUSGDIR'] = op.dirname(op.abspath(progfile))
    
 #
 # Function: show_usage(progname: Perl program name to get file "progname.usg")
