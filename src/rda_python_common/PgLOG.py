@@ -109,6 +109,7 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'DSIDCHRS' : "d",
    'DOSHELL' : False,
    'NEWDSID' : True,
+   'PUSGDIR' : None,
    'BCHHOSTS' : "PBS",
    'HOSTTYPE' : 'dav',    # default HOSTTYPE
    'EMLMAX' : 256,       # up limit of email line count 
@@ -480,6 +481,13 @@ def get_call_trace(cut = 1):
    return str + "\n" if str else ""
 
 #
+# get caller file name
+#
+def get_caller_file(cidx = 0):
+
+   return traceback.extract_stack()[cidx][0]
+
+#
 # log message, msg, for degugging processes according to the debug level 
 #
 def pgdbg(level, msg = None, do_trace = True):
@@ -556,6 +564,7 @@ def set_help_path(progfile):
 #
 def show_usage(progname, opts = None):
 
+   if PGLOG['PUSGDIR'] is None: set_help_path(get_caller_file())
    usgname = join_paths(PGLOG['PUSGDIR'], progname + '.usg')
 
    if opts:
@@ -1284,7 +1293,6 @@ def set_common_pglog():
    SETPGLOG("DRDATAEP", "rda-quasar-drdata")            # DRDATA Globus Endpoint on Quasar
    SETPGLOG("DBGFILE", "pgdss.dbg")                     # debug file name
    SETPGLOG("CNFPATH", PGLOG['DSSHOME']+"/config")      # path to configuration files
-   SETPGLOG("PUSGDIR", PGLOG['DSSDBHM']+"/prog_usage")  # path to program usage files
    SETPGLOG("DSSURL",  "https://rda.ucar.edu")          # current dss web URL
    SETPGLOG("RQSTURL", "/datasets/request")              # request URL path
    SETPGLOG("WEBSERVERS", "rda-web-prod01.ucar.edu:rda-web-test01.ucar.edu")                 # webserver names for Web server
