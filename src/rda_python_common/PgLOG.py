@@ -564,7 +564,7 @@ def set_help_path(progfile):
 #
 def show_usage(progname, opts = None):
 
-   if PGLOG['PUSGDIR'] is None: set_help_path(get_caller_file())
+   if PGLOG['PUSGDIR'] is None: set_help_path(get_caller_file(1))
    usgname = join_paths(PGLOG['PUSGDIR'], progname + '.usg')
 
    if opts:
