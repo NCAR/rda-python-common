@@ -236,7 +236,6 @@ def set_dbname(scname = None, lnname = None, pwname = None, dbhost = None, dbpor
 #
 def set_scname(dbname = None, scname = None, lnname = None, pwname = None, dbhost = None, dbport = None, socket = None):
 
-   global pgdb
    changed = 0
 
    if dbname and dbname != PGDBI['DBNAME']:
@@ -274,7 +273,6 @@ def set_scname(dbname = None, scname = None, lnname = None, pwname = None, dbhos
 def starttran():
 
    global curtran
-   global pgdb
 
    if curtran == 1: endtran()   # try to end previous transaction
    if not pgdb:
@@ -296,7 +294,6 @@ def starttran():
 def endtran(autocommit = True):
 
    global curtran
-   global pgdb
    if curtran and pgdb:
       if not pgdb.closed: pgdb.commit()
       pgdb.autocommit = autocommit
@@ -308,7 +305,6 @@ def endtran(autocommit = True):
 def aborttran(autocommit = True):
 
    global curtran
-   global pgdb
    if curtran and pgdb:
       if not pgdb.closed: pgdb.rollback()
       pgdb.autocommit = autocommit
@@ -535,7 +531,6 @@ def pgconnect(reconnect = 0, pgcnt = 0, autocommit = True):
 #
 def pgcursor():
 
-   global pgdb
    pgcur = None
 
    if not pgdb:
