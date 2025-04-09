@@ -17,6 +17,14 @@ classifiers = [
     "Operating System :: OS Independent",
     "Development Status :: 5 - Production/Stable",
 ]
+dependencies = [
+  "psycopg2-binary"
+]
 
 [project.urls]
 "Homepage" = "https://github.com/NCAR/rda-python-common"
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "src"
+]
