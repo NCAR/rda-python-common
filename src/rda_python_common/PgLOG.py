@@ -1337,11 +1337,18 @@ def set_common_pglog():
 
    # empty diretory for HOST-sync
    PGLOG['TMPSYNC'] = PGLOG['DSSDBHM'] + "/tmp/.syncdir" 
+
+   os.umask(2)
+
+#
+# check and return TMPSYNC path, and add it if not exists
+#
+def get_tmpsync_path():
+
    if 'DSSHOME' in PGLOG and PGLOG['DSSHOME'] and not op.exists(PGLOG['TMPSYNC']):
       pgsystem("mkdir " + PGLOG['TMPSYNC'], 0, LGWNEX, 4)
       pgsystem("chmod 775 " + PGLOG['TMPSYNC'], LOGWRN, 4)
-
-   os.umask(2)
+   return PGLOG['TMPSYNC']
 
 #
 # append or prepend locpath to pgpath

@@ -1125,7 +1125,8 @@ def make_one_remote_directory(dir, odir, host, logact = 0):
    if is_root_directory(dir, 'R', host, "make directory {} on {}".format(odir, host), logact): return PgLOG.FAILURE
  
    if make_one_remote_directory(op.dirname(dir), odir, host, logact):
-      if PgLOG.pgsystem("{} {} {}".format(PgLOG.get_sync_command(host), PgLOG.PGLOG['TMPSYNC'], dir), logact, 5):
+      tmpsync = PgLOG.get_tmpsync_path()
+      if PgLOG.pgsystem("{} {} {}".format(PgLOG.get_sync_command(host), tmpsync, dir), logact, 5):
          set_remote_mode(dir, 0, host, PgLOG.PGLOG['EXECMODE'])
          return PgLOG.SUCCESS
    
