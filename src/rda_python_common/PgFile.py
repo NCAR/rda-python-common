@@ -351,7 +351,7 @@ def quasar_multiple_trasnfer(tofiles, fromfiles, topoint, frompoint, logact = 0)
    action = 'transfer'
    source_endpoint = frompoint
    destination_endpoint = topoint
-   label = f"{ENDPOINTS[frompoint]} to {ENDPOINTS[topoint]} {action}
+   label = f"{ENDPOINTS[frompoint]} to {ENDPOINTS[topoint]} {action}"
    verify_checksum = True
 
    cmd = f'{BACKCMD} {action} -se {source_endpoint} -de {destination_endpoint} --label "{label}"'
