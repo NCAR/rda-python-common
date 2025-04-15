@@ -67,7 +67,7 @@ OHOST = PgLOG.PGLOG['OBJCTSTR']
 BHOST = PgLOG.PGLOG['BACKUPNM']
 DHOST = PgLOG.PGLOG['DRDATANM']
 OBJCTCMD = "isd_s3_cli"
-BACKCMD = "dsglobus" 
+BACKCMD = "dsglobus-test"
 
 HLIMIT = 0    # HTAR file count limit
 BLIMIT = 2    # minimum back tar file size in DB 
