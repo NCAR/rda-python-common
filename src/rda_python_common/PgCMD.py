@@ -289,7 +289,10 @@ def get_dsrqst_control(pgrqst, logact = 0):
       pgctl = None
    if not pgctl:
       gcnd = "dsid = '{}' AND gindex = ".format(pgrqst['dsid'])
-      tcnd = " AND rqsttype = '{}'".format(pgrqst['rqsttype'])
+      if pgrqst['rqsttype'] in "ST":
+         tcnd = " AND (rqsttype = 'T' OR rqsttype = 'S')"
+      else:
+         tcnd = " AND rqsttype = '{}'".format(pgrqst['rqsttype'])
       gindex = pgrqst['gindex']
       while True:
          pgctl = PgDBI.pgget("rcrqst", cflds, "{}{}{}".format(gcnd, gindex, tcnd), logact)
