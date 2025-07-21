@@ -1500,7 +1500,7 @@ def ucar_user_info(userno, logname = None):
    elif pgrec['userno']:
       pgrec['userno'] = userno = int(pgrec['userno'])
    if pgrec['upid']: pgrec['upid'] = int(pgrec['upid'])          
-   if pgrec['stat_flag']: pgrec['stat_flag'] = 'A' if pgrec['stat_flag'] == '1' else 'C'
+   if pgrec['stat_flag']: pgrec['stat_flag'] = 'A' if pgrec['stat_flag'] == "True" else 'C'
    if pgrec['email'] and re.search(r'(@|\.)ucar\.edu$', pgrec['email'], re.I):
       pgrec['email'] = pgrec['ucaremail']
       pgrec['org_name'] = 'NCAR'
