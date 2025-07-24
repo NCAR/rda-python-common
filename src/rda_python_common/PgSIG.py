@@ -816,16 +816,22 @@ def get_pbs_info(qopts, multiple = 0, logact = 0, chkcnt = 1):
          if re.match(r'^-----', line): chkd = 0
       else:
          vals = re.split(r'\s+', PgLOG.pgtrim(line))
-         if len(vals) == kcnt:
+         vcnt = len(vals)
+         if vcnt == 1:
+            if multiple:
+               stat[ckeys[kcnt-1]].append(vals[0])
+            else:
+               stat[ckeys[kcnt-1]] = vals[0]
+               break
+         elif vcnt > 1:
             ms = re.match(r'^(\d+)', vals[0])
             if ms: vals[0] = ms.group(1)
-            if multiple:
-               for i in range(kcnt):
+            for i in range(vcnt):
+               if multiple:
                   stat[ckeys[i]].append(vals[i])
-            else:
-               for i in range(kcnt):
+               else:
                   stat[ckeys[i]] = vals[i]
-               break
+                  if vcnt == kcnt: break
 
    return stat
 
