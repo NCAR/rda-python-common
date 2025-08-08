@@ -1322,7 +1322,8 @@ def set_common_pglog():
    SETPGLOG("SLMHOSTS", "cheyenne:casper")                   # host names for SLURM server
    SETPGLOG("PBSHOSTS", "cheyenne:casper")                   # host names for PBS server
    SETPGLOG("CHKHOSTS", "")                   # host names for dscheck daemon
-   SETPGLOG("PVIEWHOST", "rda-pgdb-02.ucar.edu")                   # host name for view only postgresql server
+   SETPGLOG("PVIEWHOST", "rda-pgdb-02.ucar.edu")             # host name for view only postgresql server
+   SETPGLOG("PMISCHOST", "rda-pgdb-03.ucar.edu")             # host name for misc postgresql server
    SETPGLOG("FTPUPLD",  PGLOG['TRANSFER']+"/rossby")    # ftp upload path
    PGLOG['GPFSROOTS'] = "{}|{}|{}".format(PGLOG['DSDHOME'], PGLOG['UPDTWKP'], PGLOG['RQSTHOME'])
 

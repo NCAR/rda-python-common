@@ -105,7 +105,9 @@ SETPGDBI("VWSOCK", '')
 PGDBI['DBSHOST'] = PgLOG.get_short_host(PGDBI['DBHOST'])
 PGDBI['DEFSHOST'] = PgLOG.get_short_host(PGDBI['DEFHOST'])
 PGDBI['VWHOST'] = PgLOG.PGLOG['PVIEWHOST']
+PGDBI['MSHOST'] = PgLOG.PGLOG['PMISCHOST']
 PGDBI['VWSHOST'] = PgLOG.get_short_host(PGDBI['VWHOST'])
+PGDBI['MSSHOST'] = PgLOG.get_short_host(PGDBI['MSHOST'])
 PGDBI['VWHOME'] =  (VIEWHOMES[PgLOG.PGLOG['HOSTNAME']] if PgLOG.PGLOG['HOSTNAME'] in VIEWHOMES else VIEWHOMES['default'])
 PGDBI['SCPATH'] = None       # additional schema path for set search_path
 PGDBI['VHSET'] = 0
@@ -142,7 +144,7 @@ dssdb_scname = dssdb_dbname
 # set default connection for obsua PostgreSQL Server
 #
 def obsua_dbname():
-   default_scinfo('upadb', 'obsua', "rda-pgdb-03.ucar.edu")
+   default_scinfo('upadb', 'obsua', PgLOG.PGLOG['PMISCHOST'])
 
 obsua_scname = obsua_dbname
 
@@ -150,7 +152,7 @@ obsua_scname = obsua_dbname
 # set default connection for ivaddb PostgreSQL Server
 #
 def ivaddb_dbname():
-   default_scinfo('ivaddb', 'ivaddb', "rda-pgdb-03.ucar.edu")
+   default_scinfo('ivaddb', 'ivaddb', PgLOG.PGLOG['PMISCHOST'])
 
 ivaddb_scname = ivaddb_dbname
 
@@ -158,7 +160,7 @@ ivaddb_scname = ivaddb_dbname
 # set default connection for ispddb PostgreSQL Server
 #
 def ispddb_dbname():
-   default_scinfo('ispddb', 'ispddb', "rda-pgdb-03.ucar.edu")
+   default_scinfo('ispddb', 'ispddb', PgLOG.PGLOG['PMISCHOST'])
 
 ispddb_scname = ispddb_dbname
 
