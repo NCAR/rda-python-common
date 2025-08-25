@@ -119,6 +119,7 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'PBSTIME' : 86400,    # max runtime for SLURM bath job, (7x24x60x60 seconds)
    'MSSGRP'  : None,     # set if set to different HPSS group
    'RDAGRP'  : "decs",
+   'EMLSEND' : None,     # path to sendmail, None if not exists
    'DSCHECK' : None,     # carry some cached dscheck information
    'PGDBBUF' : None,      # reference to a connected database object
    'HPSSLMT' : 10,       # up limit of HPSS streams
@@ -1289,7 +1290,8 @@ def set_common_pglog():
    SETPGLOG("LOGFILE", "pgdss.log")                     # log file name
    SETPGLOG("EMLFILE", "pgemail.log")                   # email log file name
    SETPGLOG("ERRFILE", '')                              # error file name
-   SETPGLOG("EMLSEND", "/usr/lib/sendmail -t")          # send email command
+   sm = "/usr/sbin/sendmail"
+   if valid_command(sm): SETPGLOG("EMLSEND", f"{sm} -t")   # send email command
    SETPGLOG("DBGLEVEL", '')                             # debug level
    SETPGLOG("DBGPATH", PGLOG['DSSDBHM']+"/log")         # path to debug log file
    SETPGLOG("OBJCTBKT", "rda-data")                     # default Bucket on Object Store
