@@ -1845,9 +1845,9 @@ def get_specialist(dsid, logact = PGDBI['ERRLOG']):
 #
 def build_customized_email(table, field, condition, subject, logact = 0):
 
+   estat = PgLOG.FAILURE
    msg = PgLOG.get_email()
-   
-   if not msg: return PgLOG.FAILURE
+   if not msg: return estat
    
    sender = PgLOG.PGLOG['CURUID'] + "@ucar.edu"
    receiver = PgLOG.PGLOG['EMLADDR'] if PgLOG.PGLOG['EMLADDR'] else (PgLOG.PGLOG['CURUID'] + "@ucar.edu")
@@ -1857,9 +1857,12 @@ def build_customized_email(table, field, condition, subject, logact = 0):
    if not subject: subject = "Message from {}-{}".format(PgLOG.PGLOG['HOSTNAME'], PgLOG.get_command())
    ebuf += "Subject: {}!\n\n{}\n".format(subject, msg)
 
-   estat = cache_customized_email(table, field, condition, ebuf, logact)
-   if estat and logact:
-      PgLOG.pglog("Email {} cached to '{}.{}' for {}, Subject: {}".format(receiver, table, field, condition, subject), logact)
+   if PgLOG.PGLOG['EMLSEND']:
+      estat = PgLOG.send_customized_email(f"{table}.{condition}", ebuf, logact)
+   if estat != PgLOG.SUCCESS:
+      estat = cache_customized_email(table, field, condition, ebuf, 0)
+      if estat and logact:
+         PgLOG.pglog("Email {} cached to '{}.{}' for {}, Subject: {}".format(receiver, table, field, condition, subject), logact)
 
    return estat
 
@@ -1924,7 +1927,7 @@ def cache_customized_email(table, field, condition, emlmsg, logact = 0):
       return PgLOG.SUCCESS
    else:
       msg = "cache email to '{}.{}' for {}".format(table, field, condition)
-      PgLOG.pglog("Error msg, try to send directly now", logact|PgLOG.ERRLOG)
+      PgLOG.pglog(f"Error {msg}, try to send directly now", logact|PgLOG.ERRLOG)
       return PgLOG.send_customized_email(msg, emlmsg, logact)
 
 #

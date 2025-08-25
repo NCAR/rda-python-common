@@ -1684,6 +1684,7 @@ def send_request_email_notice(pgrqst, errmsg, fcount, rstat, readyfile = None, p
    for ekey in einfo:
       ebuf = re.sub(r'<{}>'.format(ekey), einfo[ekey], ebuf)
 
+
    if PgLOG.PGLOG['DSCHECK'] and not pgpart:
       tbl = "dscheck"
       cnd = "cindex = {}".format(PgLOG.PGLOG['DSCHECK']['cindex'])
@@ -1691,18 +1692,27 @@ def send_request_email_notice(pgrqst, errmsg, fcount, rstat, readyfile = None, p
       tbl = "dsrqst"
       cnd = "rindex = {}".format(pgrqst['rindex'])
 
-   if not PgDBI.cache_customized_email(tbl, "einfo", cnd, ebuf, 0): return 'E'
-   if errmsg:
-      PgLOG.pglog("Error Email {} cached to {}.einfo for {}:\n{}".format(einfo['SENDER'], tbl, cnd, errmsg),
-                  PGOPT['errlog'])
+   if PgLOG.PGLOG['EMLSEND'] and PgLOG.send_customized_email(f"{tbl}.{cnd}", ebuf, 0):
+      if errmsg:
+         PgLOG.pglog("Error Email sent to {} for {}.{}:\n{}".format(einfo['SENDER'], tbl, cnd, errmsg), PGOPT['errlog'])
+         readyfile = None
+      else:
+         PgLOG.pglog("{}Email sent to {} for {}.{}\nSubset: {}".format(("Customized " if pgrqst['enotice'] else ""), einfo['RECEIVER'], tbl, cnd, einfo['SUBJECT']),
+                     PGOPT['wrnlog']|PgLOG.FRCLOG)
    else:
-      PgLOG.pglog("{}Email {} cached to {}.einfo for {}\nSubset: {}".format(("Customized " if pgrqst['enotice'] else ""), einfo['RECEIVER'], tbl, cnd, einfo['SUBJECT']),
-                  PGOPT['wrnlog']|PgLOG.FRCLOG)
-      if readyfile:
-         rf = open(readyfile, 'w')
-         rf.write(ebuf)
-         rf.close()
-         PgFile.set_local_mode(readyfile, 1, PgLOG.PGLOG['FILEMODE'])
+      if not PgDBI.cache_customized_email(tbl, "einfo", cnd, ebuf, 0): return 'E'
+      if errmsg:
+         PgLOG.pglog("Error Email {} cached to {}.einfo for {}:\n{}".format(einfo['SENDER'], tbl, cnd, errmsg), PGOPT['errlog'])
+         readyfile = None
+      else:
+         PgLOG.pglog("{}Email {} cached to {}.einfo for {}\nSubset: {}".format(("Customized " if pgrqst['enotice'] else ""), einfo['RECEIVER'], tbl, cnd, einfo['SUBJECT']),
+                     PGOPT['wrnlog']|PgLOG.FRCLOG)
+
+   if readyfile:
+      rf = open(readyfile, 'w')
+      rf.write(ebuf)
+      rf.close()
+      PgFile.set_local_mode(readyfile, 1, PgLOG.PGLOG['FILEMODE'])
 
    return rstat
 
