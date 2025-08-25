@@ -217,6 +217,7 @@ def set_email(msg, logact = 0):
       else:
          if logact&ERRLOG:      # record error for email summary
             PGLOG['ERRCNT'] += 1
+            if logact&BRKLIN: PGLOG['ERRMSG'] += "\n"
             PGLOG['ERRMSG'] += "{}. {}".format(PGLOG['ERRCNT'], msg)
          elif logact&EMLSUM:
             if PGLOG['SUMMSG']:
