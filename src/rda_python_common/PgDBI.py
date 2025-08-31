@@ -315,7 +315,7 @@ def aborttran(autocommit = True):
 #
 # record error message to dscheck record and clean the lock
 #
-def record_dscheck_error(errmsg, logact = PGDBI['ERRLOG']):
+def record_dscheck_error(errmsg, logact = PGDBI['EXITLG']):
 
    cnd = PgLOG.PGLOG['DSCHECK']['chkcnd']
    if PgLOG.PGLOG['NOQUIT']: PgLOG.PGLOG['NOQUIT'] = 0

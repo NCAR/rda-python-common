@@ -145,7 +145,7 @@ def errlog(msg, etype, retry = 0, logact = 0):
           logact |= PgLOG.EXITLG
           ECNTS[etype] = 0
 
-   if PgLOG.PGLOG['DSCHECK'] and logact&PgLOG.EXITLG: PgDBI.record_dscheck_error(msg)
+   if PgLOG.PGLOG['DSCHECK'] and logact&PgLOG.EXITLG: PgDBI.record_dscheck_error(msg, logact)
    PgLOG.pglog(msg, logact)
    PgLOG.PGLOG['BCKGRND'] = bckgrnd
    if not retry: time.sleep(PgSIG.PGSIG['ETIME'])

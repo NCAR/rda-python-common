@@ -985,7 +985,7 @@ def action_error(errmsg, cact = None):
          msg += " of " + params['DS'][0]
 
    msg += ": " + errmsg
-   if PgLOG.PGLOG['DSCHECK']: PgDBI.record_dscheck_error(msg)
+   if PgLOG.PGLOG['DSCHECK']: PgDBI.record_dscheck_error(msg, PGOPT['extlog'])
    PgLOG.pglog(msg, PGOPT['extlog'])
 
 #
