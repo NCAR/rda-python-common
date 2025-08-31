@@ -315,13 +315,13 @@ def aborttran(autocommit = True):
 #
 # record error message to dscheck record and clean the lock
 #
-def record_dscheck_error(errmsg):
+def record_dscheck_error(errmsg, logact = PGDBI['EXITLG']):
 
    cnd = PgLOG.PGLOG['DSCHECK']['chkcnd']
    if PgLOG.PGLOG['NOQUIT']: PgLOG.PGLOG['NOQUIT'] = 0
    dflags = PgLOG.PGLOG['DSCHECK']['dflags']
 
-   pgrec = pgget("dscheck", "mcount, tcount, lockhost, pid", cnd, PgLOG.LGEREX)
+   pgrec = pgget("dscheck", "mcount, tcount, lockhost, pid", cnd, logact)
    if not pgrec: return 0
    if not pgrec['pid'] and not pgrec['lockhost']: return 0
    (chost, cpid) = PgLOG.current_process_info()
@@ -330,8 +330,9 @@ def record_dscheck_error(errmsg):
    # update dscheck record only if it is still locked by the current process
    record = {}
    record['chktime'] = int(time.time())
-   record['status'] = "E"
-   record['pid'] = 0   # release lock
+   if logact&PgLOG.EXITLG:
+      record['status'] = "E"
+      record['pid'] = 0   # release lock
    if dflags:
       record['dflags'] = dflags
       record['mcount'] = pgrec['mcount'] + 1
@@ -343,7 +344,7 @@ def record_dscheck_error(errmsg):
       if pgrec['tcount'] > 1: errmsg = "Try {}: {}".format(pgrec['tcount'], errmsg)
       record['errmsg'] = errmsg
 
-   return pgupdt("dscheck", record, cnd, PGDBI['ERRLOG'])
+   return pgupdt("dscheck", record, cnd, logact)
 
 #
 # local function to log query error
@@ -367,7 +368,7 @@ def qelog(dberror, sleep, sqlstr, vals, pgcnt, logact = PGDBI['ERRLOG']):
    if vals: sqlstr += " with values: " + str(vals)
 
    if dberror: sqlstr = "{}\n{}".format(dberror, sqlstr)
-   if logact&PgLOG.EXITLG and PgLOG.PGLOG['DSCHECK']: record_dscheck_error(sqlstr)
+   if logact&PgLOG.EXITLG and PgLOG.PGLOG['DSCHECK']: record_dscheck_error(sqlstr, logact)
    PgLOG.pglog(sqlstr, logact)
    if sleep: time.sleep(sleep)
 
