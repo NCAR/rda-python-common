@@ -259,25 +259,23 @@ def send_customized_email(logmsg, emlmsg, logact = 0):
       logmsg += ': '
    else:
       logmsg = ''
+   msg = emlmsg
    for ekey in entries:
       entry = entries[ekey][0]
-      if re.search(r'(^|\n){}:\s*\n'.format(entry), emlmsg, re.I):
-         ms = None
-      else:
-         ms = re.search(r'(^|\n){}:\s*(.+)\n'.format(entry), emlmsg, re.I)
+      ms = re.search(r'(^|\n)({}: *(.*)\n)'.format(entry), emlmsg, re.I)
       if ms:
-         entries[ekey][2] = ms.group(2)
+         vals = ms.groups()
+         msg = re.sub(vals[1], '', msg)
+         if vals[2]: entries[ekey][2] = vals[2]
       elif logact and entries[ekey][1]:
          return pglog("{}Missing Entry '{}' for sending email".format(logmsg, entry), logact|ERRLOG)
+
+   ret = send_python_email(entries['sb'][2], entries['to'][2], msg, entries['fr'][2], entries['cc'][2])
+   if ret != SUCCESS and PGLOG['EMLSEND']: ret = pgsystem(PGLOG['EMLSEND'], logact, 4, emlmsg)
 
    logmsg += "Email " + entries['to'][2]
    if entries['cc'][2]: logmsg += " Cc'd " + entries['cc'][2]
    logmsg += " Subject: " + entries['sb'][2]
-
-   ret = FAILURE
-   if PGLOG['EMLSEND']: ret = pgsystem(PGLOG['EMLSEND'], logact, 4, emlmsg)
-   if not ret: ret = send_python_email(entries['sb'][2], entries['to'][2], emlmsg, entries['fr'][2], entries['cc'][2], logact)
-
    if ret:      
       log_email(emlmsg)
       if logact: pglog(logmsg, logact&(~EXITLG))
