@@ -1484,7 +1484,7 @@ def local_host_action(host, action, info, logact = 0):
    if host == "partition":
       msg = "for individual partition"
    elif host == "rda_config":
-      msg = "via https://rda.ucar.edu/internal/rda_pg_config"
+      msg = "via https://gdex.ucar.edu/internal/rda_pg_config"
    elif host in PgLOG.BCHCMDS:
       msg = "on a {} Node".format(host)
    else:
