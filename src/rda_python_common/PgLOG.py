@@ -1319,7 +1319,7 @@ def set_common_pglog():
    SETPGLOG("DRDATAEP", "gdex-quasar-drdata")            # DRDATA Globus Endpoint on Quasar
    SETPGLOG("DBGFILE", "pgdss.dbg")                     # debug file name
    SETPGLOG("CNFPATH", PGLOG['DSSHOME']+"/config")      # path to configuration files
-   SETPGLOG("DSSURL",  "https://rda.ucar.edu")          # current dss web URL
+   SETPGLOG("DSSURL",  "https://gdex.ucar.edu")          # current dss web URL
    SETPGLOG("RQSTURL", "/datasets/request")              # request URL path
    SETPGLOG("WEBSERVERS", "rda-web-prod01.ucar.edu:rda-web-test01.ucar.edu")                 # webserver names for Web server
    PGLOG['WEBHOSTS'] = PGLOG['WEBSERVERS'].split(':') if PGLOG['WEBSERVERS'] else []
@@ -1330,7 +1330,7 @@ def set_common_pglog():
    SETPGLOG("DSSWEB",  PGLOG['LOCDATA']+"/web")
    SETPGLOG("DSWHOME", PGLOG['DSSWEB']+"/datasets")     # datast web root path
    PGLOG['HOMEROOTS'] = "{}|{}".format(PGLOG['DSSHOME'], PGLOG['DSWHOME'])
-   SETPGLOG("DSSDATA", "/glade/campaign/collections/rda")                     # dss data root path
+   SETPGLOG("DSSDATA", "/glade/campaign/collections/gdex")                     # dss data root path
    SETPGLOG("DSDHOME", PGLOG['DSSDATA']+"/data")        # dataset data root path
    SETPGLOG("DECSHOME", PGLOG['DSSDATA']+"/decsdata")   # dataset decsdata root path
    SETPGLOG("DSHHOME", PGLOG['DECSHOME']+"/helpfiles")  # dataset help root path
@@ -1354,12 +1354,12 @@ def set_common_pglog():
    os.environ['history'] = '0'
 
    # set tmp dir
-   SETPGLOG("TMPPATH", "/glade/campaign/collections/rda/work/ptmp")
+   SETPGLOG("TMPPATH", "/glade/campaign/collections/gdex/work/ptmp")
    if not PGLOG['TMPPATH']: PGLOG['TMPPATH'] = "/data/ptmp"
 
    SETPGLOG("TMPDIR", '')
    if not PGLOG['TMPDIR']:
-      PGLOG['TMPDIR'] = "/glade/campaign/collections/rda/scratch/" + PGLOG['CURUID']
+      PGLOG['TMPDIR'] = "/glade/campaign/collections/gdex/scratch/" + PGLOG['CURUID']
       os.environ['TMPDIR'] = PGLOG['TMPDIR']
 
    # empty diretory for HOST-sync
