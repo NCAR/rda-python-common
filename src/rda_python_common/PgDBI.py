@@ -1855,8 +1855,8 @@ def build_customized_email(table, field, condition, subject, logact = 0):
    if receiver.find(sender) < 0: PgLOG.add_carbon_copy(sender, 1)
    cc = PgLOG.PGLOG['CCDADDR']
    if not subject: subject = "Message from {}-{}".format(PgLOG.PGLOG['HOSTNAME'], PgLOG.get_command())
-   estat = send_python_email(subject, receiver, msg, sender, cc, logact)
-   if estat != SUCCESS:
+   estat = PgLOG.send_python_email(subject, receiver, msg, sender, cc, logact)
+   if estat != PgLOG.SUCCESS:
       ebuf = "From: {}\nTo: {}\n".format(sender, receiver)
       if cc: ebuf += "Cc: {}\n".format(cc)
       ebuf += "Subject: {}!\n\n{}\n".format(subject, msg)
