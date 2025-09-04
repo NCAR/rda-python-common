@@ -9,7 +9,7 @@
 #   Purpose : python library module to copy, move and delete data files locally
 #             and remotely
 #
-#    Github : https://github.com/NCAR/rda-python_common.git
+#    Github : https://github.com/NCAR/rda-python-common.git
 #
 ###############################################################################
 #
@@ -101,21 +101,21 @@ QSTATS = {
 }
 
 QPOINTS = {
-   'L' : 'rda-glade',
-   'B' : 'rda-quasar',
-   'D' : 'rda-quasar-drdata'
+   'L' : 'gdex-glade',
+   'B' : 'gdex-quasar',
+   'D' : 'gdex-quasar-drdata'
 }
 
 QHOSTS = {
-   'rda-glade' : LHOST,
-   'rda-quasar' : BHOST,
-   'rda-quasar-drdata' : DHOST
+   'gdex-glade' : LHOST,
+   'gdex-quasar' : BHOST,
+   'gdex-quasar-drdata' : DHOST
 }
 
 ENDPOINTS = {
-   'rda-glade' : "NCAR RDA GLADE",
-   'rda-quasar' : "NCAR RDA Quasar",
-   'rda-quasar-drdata' : "NCAR RDA Quasar DRDATA"
+   'gdex-glade' : "NCAR RDA GLADE",
+   'gdex-quasar' : "NCAR RDA Quasar",
+   'gdex-quasar-drdata' : "NCAR RDA Quasar DRDATA"
 }
 
 BFILES = {}  # cache backup file names and dates for each bid
@@ -332,7 +332,7 @@ def local_copy_object(tofile, fromfile, bucket = None, meta = None, logact = 0):
 #   tofiles - target file name list, echo name leading with /dsnnn.n/ on Quasar and 
 #             leading with /data/ or /decsdata/ on local glade disk
 # fromfiles - source file name list, the same format as the tofiles
-#   topoint - target endpoint name, 'rda-glade', 'rda-quasar' or 'rda-quasar-drdata' 
+#   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-drdata' 
 # frompoint - source endpoint name, the same choices as the topoint
 #
 def quasar_multiple_trasnfer(tofiles, fromfiles, topoint, frompoint, logact = 0):
@@ -374,7 +374,7 @@ def quasar_multiple_trasnfer(tofiles, fromfiles, topoint, frompoint, logact = 0)
 #    tofile - target file name, leading with /dsnnn.n/ on Quasar and 
 #             leading with /data/ or /decsdata/ on local glade disk
 #  fromfile - source file, the same format as the tofile
-#   topoint - target endpoint name, 'rda-glade', 'rda-quasar' or 'rda-quasar-drdata' 
+#   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-drdata' 
 # frompoint - source endpoint name, the same choices as the topoint
 #
 def endpoint_copy_endpoint(tofile, fromfile, topoint, frompoint, logact = 0):
@@ -532,7 +532,7 @@ def check_globus_finished(tofile, topoint, logact = 0):
 def local_copy_backup(tofile, fromfile, endpoint = None, logact = 0):
 
    if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
-   return endpoint_copy_endpoint(tofile, fromfile, endpoint, 'rda-glade', logact)
+   return endpoint_copy_endpoint(tofile, fromfile, endpoint, 'gdex-glade', logact)
 
 #
 # Copy a  Quasar backup file to local Globus endpoint
@@ -544,7 +544,7 @@ def local_copy_backup(tofile, fromfile, endpoint = None, logact = 0):
 def backup_copy_local(tofile, fromfile, endpoint = None, logact = 0):
 
    if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
-   return endpoint_copy_endpoint(tofile, fromfile, 'rda-glade', endpoint, logact)
+   return endpoint_copy_endpoint(tofile, fromfile, 'gdex-glade', endpoint, logact)
 
 #
 # Copy a remote file to local
@@ -1577,7 +1577,7 @@ def check_rda_file(file, host = LHOST, opt = 0, logact = 0):
 def check_globus_file(file, endpoint = None, opt = 0, logact = 0):
 
    if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
-   if endpoint == 'rda-glade':
+   if endpoint == 'gdex-glade':
       if re.match(r'^/(data|decsdata)/', file): file = PgLOG.PGLOG['DSSDATA'] + file
       return check_local_file(file, opt, logact)
    else:
