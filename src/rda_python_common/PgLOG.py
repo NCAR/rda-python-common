@@ -265,7 +265,7 @@ def send_customized_email(logmsg, emlmsg, logact = 0):
       ms = re.search(r'(^|\n)({}: *(.*)\n)'.format(entry), emlmsg, re.I)
       if ms:
          vals = ms.groups()
-         msg = re.sub(vals[1], '', msg)
+         msg = msg.replace(vals[1], '')
          if vals[2]: entries[ekey][2] = vals[2]
       elif logact and entries[ekey][1]:
          return pglog("{}Missing Entry '{}' for sending email".format(logmsg, entry), logact|ERRLOG)
