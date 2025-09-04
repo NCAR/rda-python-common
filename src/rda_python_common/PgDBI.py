@@ -1849,21 +1849,24 @@ def build_customized_email(table, field, condition, subject, logact = 0):
    estat = PgLOG.FAILURE
    msg = PgLOG.get_email()
    if not msg: return estat
-   
+
    sender = PgLOG.PGLOG['CURUID'] + "@ucar.edu"
    receiver = PgLOG.PGLOG['EMLADDR'] if PgLOG.PGLOG['EMLADDR'] else (PgLOG.PGLOG['CURUID'] + "@ucar.edu")
    if receiver.find(sender) < 0: PgLOG.add_carbon_copy(sender, 1)
-   ebuf = "From: {}\nTo: {}\n".format(sender, receiver)
-   if PgLOG.PGLOG['CCDADDR']: ebuf += "Cc: {}\n".format(PgLOG.PGLOG['CCDADDR']) 
+   cc = PgLOG.PGLOG['CCDADDR']
    if not subject: subject = "Message from {}-{}".format(PgLOG.PGLOG['HOSTNAME'], PgLOG.get_command())
-   ebuf += "Subject: {}!\n\n{}\n".format(subject, msg)
-
-   if PgLOG.PGLOG['EMLSEND']:
-      estat = PgLOG.send_customized_email(f"{table}.{condition}", ebuf, logact)
+   estat = PgLOG.send_python_email(subject, receiver, msg, sender, cc, logact)
    if estat != PgLOG.SUCCESS:
-      estat = cache_customized_email(table, field, condition, ebuf, 0)
-      if estat and logact:
-         PgLOG.pglog("Email {} cached to '{}.{}' for {}, Subject: {}".format(receiver, table, field, condition, subject), logact)
+      ebuf = "From: {}\nTo: {}\n".format(sender, receiver)
+      if cc: ebuf += "Cc: {}\n".format(cc)
+      ebuf += "Subject: {}!\n\n{}\n".format(subject, msg)
+   
+      if PgLOG.PGLOG['EMLSEND']:
+         estat = PgLOG.send_customized_email(f"{table}.{condition}", ebuf, logact)
+      if estat != PgLOG.SUCCESS:
+         estat = cache_customized_email(table, field, condition, ebuf, 0)
+         if estat and logact:
+            PgLOG.pglog("Email {} cached to '{}.{}' for {}, Subject: {}".format(receiver, table, field, condition, subject), logact)
 
    return estat
 

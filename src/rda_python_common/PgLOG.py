@@ -20,6 +20,8 @@ import re
 import pwd
 import grp
 import shlex
+import smtplib
+from email.message import EmailMessage
 from subprocess import Popen, PIPE
 from os import path as op
 import time
@@ -116,7 +118,7 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'PGBATCH' : '',       # current batch service name, SLURM or PBS
    'PGBINDIR' : '',
    'SLMTIME' : 604800,   # max runtime for SLURM bath job, (7x24x60x60 seconds)
-   'PBSTIME' : 86400,    # max runtime for SLURM bath job, (7x24x60x60 seconds)
+   'PBSTIME' : 86400,    # max runtime for PBS bath job, (24x60x60 seconds)
    'MSSGRP'  : None,     # set if set to different HPSS group
    'RDAGRP'  : "decs",
    'EMLSEND' : None,     # path to sendmail, None if not exists
@@ -131,7 +133,9 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'ERR2STD' : [],       # if non-empty reference to array of strings, change stderr to stdout if match
    'STD2ERR' : [],       # if non-empty reference to array of strings, change stdout to stderr if match
    'MISSFILE': "No such file or directory",
-   'GITHUB' : "https://github.com"  # github server
+   'GITHUB' : "https://github.com" , # github server
+   'EMLSRVR' : "ndir.ucar.edu",   # UCAR email server and port
+   'EMLPORT' : 25
 }
 
 HOSTTYPES = {
@@ -270,18 +274,30 @@ def send_customized_email(logmsg, emlmsg, logact = 0):
    if entries['cc'][2]: logmsg += " Cc'd " + entries['cc'][2]
    logmsg += " Subject: " + entries['sb'][2]
 
-   if pgsystem(PGLOG['EMLSEND'], logact, 4, emlmsg):
+   ret = FAILURE
+   if PGLOG['EMLSEND']: ret = pgsystem(PGLOG['EMLSEND'], logact, 4, emlmsg)
+   if not ret: ret = send_python_email(entries['sb'][2], entries['to'][2], emlmsg, entries['fr'][2], entries['cc'][2], logact)
+
+   if ret:      
       log_email(emlmsg)
       if logact: pglog(logmsg, logact&(~EXITLG))
-      return SUCCESS
    else:
       errmsg = "Error sending email: " + logmsg
-      return pglog(logmsg, (logact|ERRLOG)&~EXITLG)
+      pglog(errmsg, (logact|ERRLOG)&~EXITLG)
+
+   return ret
 
 #
-#  send an email, if empty msg; send email message saved in PGLOG['EMLMSG'] instead
+#  send an email; if empty msg send email message saved in PGLOG['EMLMSG'] instead
 #
 def send_email(subject = None, receiver = None, msg = None, sender = None, logact = 0):
+
+   return send_python_email(subject, receiver, msg, sender, None, logact)
+
+#
+#  send an email via python module smtplib; if empty msg send email message saved in PGLOG['EMLMSG'] instead
+#
+def send_python_email(subject = None, receiver = None, msg = None, sender = None, cc = None, logact = 0):
 
    if not msg:
       if PGLOG['EMLMSG']:
@@ -290,10 +306,10 @@ def send_email(subject = None, receiver = None, msg = None, sender = None, logac
       else:
          return ''
 
-   docc = 0
+   docc = False if cc else True 
    if not sender:
       sender = PGLOG['CURUID']
-      if sender != PGLOG['RDAUSER']: docc = 1
+      if sender != PGLOG['RDAUSER']: docc = False
    if sender == PGLOG['RDAUSER']: sender = PGLOG['RDAEMAIL']
    if sender.find('@') == -1: sender += "@ucar.edu"
    if not receiver:
@@ -302,26 +318,31 @@ def send_email(subject = None, receiver = None, msg = None, sender = None, logac
    if receiver.find('@') == -1: receiver += "@ucar.edu"
 
    if docc and not re.match(PGLOG['RDAUSER'], sender): add_carbon_copy(sender, 1)
-
-   emlmsg = "From: {}\nTo: {}\n".format(sender, receiver)
+   emlmsg = EmailMessage()
+   emlmsg.set_content(msg)
+   emlmsg['From'] = sender
+   emlmsg['To'] = receiver
    logmsg = "Email " + receiver
-   if PGLOG['CCDADDR']:
-      emlmsg += "Cc: {}\n".format(PGLOG['CCDADDR'])
-      logmsg += " Cc'd " + PGLOG['CCDADDR']
+   if not cc: cc = PGLOG['CCDADDR']
+   if cc:
+      emlmsg['Cc'] = cc
+      logmsg += " Cc'd " + cc
    if not subject: subject = "Message from {}-{}".format(PGLOG['HOSTNAME'], get_command())
    if not re.search(r'!$', subject): subject += '!'
-   emlmsg += "Subject: {}\n{}\n".format(subject, msg)
+   emlmsg['Subject'] = subject
    if CPID['CPID']: logmsg += " in " + CPID['CPID']
    logmsg += ", Subject: {}\n".format(subject)
-
-   if pgsystem(PGLOG['EMLSEND'], logact, 4, emlmsg):
-      log_email(emlmsg)
+   try:
+      eml = smtplib.SMTP(PGLOG['EMLSRVR'], PGLOG['EMLPORT'])
+      eml.send_message(emlmsg)
+   except smtplib.SMTPException as err:
+      errmsg = f"Error sending email:\n{err}\n{logmsg}"
+      return pglog(errmsg, (logact|ERRLOG)&~EXITLG)
+   finally:
+      eml.quit()
+      log_email(str(emlmsg))
       if logact: pglog(logmsg, logact&~EXITLG)
-      return logmsg
-   else:
-      errmsg = "Error sending email: " + logmsg
-      pglog(logmsg, (logact|ERRLOG)&~EXITLG)
-      return errmsg
+      return SUCCESS
 
 #
 # log email sent

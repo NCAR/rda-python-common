@@ -1692,7 +1692,7 @@ def send_request_email_notice(pgrqst, errmsg, fcount, rstat, readyfile = None, p
       tbl = "dsrqst"
       cnd = "rindex = {}".format(pgrqst['rindex'])
 
-   if PgLOG.PGLOG['EMLSEND'] and PgLOG.send_customized_email(f"{tbl}.{cnd}", ebuf, 0):
+   if PgLOG.send_customized_email(f"{tbl}.{cnd}", ebuf, 0):
       if errmsg:
          PgLOG.pglog("Error Email sent to {} for {}.{}:\n{}".format(einfo['SENDER'], tbl, cnd, errmsg), PGOPT['errlog'])
          readyfile = None
