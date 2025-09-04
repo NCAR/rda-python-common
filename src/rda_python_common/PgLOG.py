@@ -1315,8 +1315,8 @@ def set_common_pglog():
    SETPGLOG("DBGLEVEL", '')                             # debug level
    SETPGLOG("DBGPATH", PGLOG['DSSDBHM']+"/log")         # path to debug log file
    SETPGLOG("OBJCTBKT", "rda-data")                     # default Bucket on Object Store
-   SETPGLOG("BACKUPEP", "rda-quasar")                   # default Globus Endpoint on Quasar
-   SETPGLOG("DRDATAEP", "rda-quasar-drdata")            # DRDATA Globus Endpoint on Quasar
+   SETPGLOG("BACKUPEP", "gdex-quasar")                   # default Globus Endpoint on Quasar
+   SETPGLOG("DRDATAEP", "gdex-quasar-drdata")            # DRDATA Globus Endpoint on Quasar
    SETPGLOG("DBGFILE", "pgdss.dbg")                     # debug file name
    SETPGLOG("CNFPATH", PGLOG['DSSHOME']+"/config")      # path to configuration files
    SETPGLOG("DSSURL",  "https://rda.ucar.edu")          # current dss web URL
