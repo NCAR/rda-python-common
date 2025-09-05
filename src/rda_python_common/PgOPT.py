@@ -1682,8 +1682,10 @@ def send_request_email_notice(pgrqst, errmsg, fcount, rstat, readyfile = None, p
       einfo['GLOBUS_TASK_URL'] = "https://app.globus.org/activity/" + pgrqst['task_id']
 
    for ekey in einfo:
-      ebuf = re.sub(r'<{}>'.format(ekey), einfo[ekey], ebuf)
-
+      if ekey == 'CCD' and not einfo['CCD']:
+         ebuf = re.sub(r'Cc:\s*<CCD>\s*', '', ebuf)
+      else:
+         ebuf = re.sub(r'<{}>'.format(ekey), einfo[ekey], ebuf)
 
    if PgLOG.PGLOG['DSCHECK'] and not pgpart:
       tbl = "dscheck"

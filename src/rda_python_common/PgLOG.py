@@ -251,7 +251,7 @@ def send_customized_email(logmsg, emlmsg, logact = 0):
    entries = {
       'fr' : ["From",    1, None],
       'to' : ["To",      1, None],
-      'cc' : ["Cc",      0, None],
+      'cc' : ["Cc",      0, ''],
       'sb' : ["Subject", 1, None]
    }
 
@@ -293,7 +293,8 @@ def send_email(subject = None, receiver = None, msg = None, sender = None, logac
    return send_python_email(subject, receiver, msg, sender, None, logact)
 
 #
-#  send an email via python module smtplib; if empty msg send email message saved in PGLOG['EMLMSG'] instead
+#  send an email via python module smtplib; if empty msg send email message saved
+#  in PGLOG['EMLMSG'] instead. pass cc = '' for skipping 'Cc: '
 #
 def send_python_email(subject = None, receiver = None, msg = None, sender = None, cc = None, logact = 0):
 
@@ -321,7 +322,7 @@ def send_python_email(subject = None, receiver = None, msg = None, sender = None
    emlmsg['From'] = sender
    emlmsg['To'] = receiver
    logmsg = "Email " + receiver
-   if not cc: cc = PGLOG['CCDADDR']
+   if cc == None: cc = PGLOG['CCDADDR']
    if cc:
       emlmsg['Cc'] = cc
       logmsg += " Cc'd " + cc
