@@ -402,15 +402,11 @@ def pglog(msg, logact = MSGLOG):
       if logact&EMLLOG: logact &= ~EMLLOG
       if not logact&ERRLOG: logact &= ~EMEROL
 
-   if msg: msg = msg.lstrip()  # remove leading whitespaces for logging message
-
+   msg = msg.lstrip() if msg else ''  # remove leading whitespaces for logging message
    if logact&EXITLG:
       ext = "Exit 1 in {}\n".format(os.getcwd())
-      if not msg:
-         msg = ext
-      else:
-         msg = msg.rstrip()
-         msg += "; " + ext
+      if msg: msg = msg.rstrip() + "; "
+      msg += ext
    else:
       if msg and not re.search(r'(\n|\r)$', msg): msg += "\n"
       if logact&RETMSG: retmsg = msg
@@ -418,7 +414,8 @@ def pglog(msg, logact = MSGLOG):
    if logact&EMLALL:
       if logact&SNDEML or not msg:
          title = (msg if msg else "Message from {}-{}".format(PGLOG['HOSTNAME'], get_command()))
-         msg = send_email(title.rstrip())
+         msg = title + '\n' + msg
+         send_email(title.rstrip())
       elif msg:
          set_email(msg, logact)
 
@@ -428,7 +425,8 @@ def pglog(msg, logact = MSGLOG):
       if not logact&EMLALL: set_email(msg, logact)
       title = "ABORTS {}-{}".format(PGLOG['HOSTNAME'], get_command())
       set_email((("ABORTS " + CPID['PID']) if CPID['PID'] else title), EMLTOP)
-      msg += send_email(title)
+      msg = title + '\n' + msg
+      send_email(title)
 
    if logact&LOGERR: # make sure error is always logged
       msg = break_long_string(msg)
