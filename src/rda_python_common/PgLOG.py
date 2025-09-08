@@ -271,18 +271,19 @@ def send_customized_email(logmsg, emlmsg, logact = LOGWRN):
          return pglog("{}Missing Entry '{}' for sending email".format(logmsg, entry), logact|ERRLOG)
 
    ret = send_python_email(entries['sb'][2], entries['to'][2], msg, entries['fr'][2], entries['cc'][2], logact)
+   if ret == SUCCESS or not PGLOG['EMLSEND']: return ret
 
-   if ret != SUCCESS and PGLOG['EMLSEND']:
-      ret = pgsystem(PGLOG['EMLSEND'], logact, 4, emlmsg)
-      logmsg += "Email " + entries['to'][2]
-      if entries['cc'][2]: logmsg += " Cc'd " + entries['cc'][2]
-      logmsg += " Subject: " + entries['sb'][2]
-      if ret:
-         log_email(emlmsg)
-         pglog(logmsg, logact&(~EXITLG))
-      else:
-         errmsg = "Error sending email: " + logmsg
-         pglog(errmsg, (logact|ERRLOG)&~EXITLG)
+   # try commandline sendmail
+   ret = pgsystem(PGLOG['EMLSEND'], logact, 4, emlmsg)
+   logmsg += "Email " + entries['to'][2]
+   if entries['cc'][2]: logmsg += " Cc'd " + entries['cc'][2]
+   logmsg += " Subject: " + entries['sb'][2]
+   if ret:
+      log_email(emlmsg)
+      pglog(logmsg, logact&(~EXITLG))
+   else:
+      errmsg = "Error sending email: " + logmsg
+      pglog(errmsg, (logact|ERRLOG)&~EXITLG)
 
    return ret
 
