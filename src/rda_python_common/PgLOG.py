@@ -246,7 +246,7 @@ def get_email():
 #
 #  send a customized email with all entries included
 #
-def send_customized_email(logmsg, emlmsg, logact = 0):
+def send_customized_email(logmsg, emlmsg, logact = LOGWRN):
 
    entries = {
       'fr' : ["From",    1, None],
@@ -267,28 +267,29 @@ def send_customized_email(logmsg, emlmsg, logact = 0):
          vals = ms.groups()
          msg = msg.replace(vals[1], '')
          if vals[2]: entries[ekey][2] = vals[2]
-      elif logact and entries[ekey][1]:
+      elif entries[ekey][1]:
          return pglog("{}Missing Entry '{}' for sending email".format(logmsg, entry), logact|ERRLOG)
 
-   ret = send_python_email(entries['sb'][2], entries['to'][2], msg, entries['fr'][2], entries['cc'][2])
-   if ret != SUCCESS and PGLOG['EMLSEND']: ret = pgsystem(PGLOG['EMLSEND'], logact, 4, emlmsg)
+   ret = send_python_email(entries['sb'][2], entries['to'][2], msg, entries['fr'][2], entries['cc'][2], logact)
 
-   logmsg += "Email " + entries['to'][2]
-   if entries['cc'][2]: logmsg += " Cc'd " + entries['cc'][2]
-   logmsg += " Subject: " + entries['sb'][2]
-   if ret:      
-      log_email(emlmsg)
-      if logact: pglog(logmsg, logact&(~EXITLG))
-   else:
-      errmsg = "Error sending email: " + logmsg
-      pglog(errmsg, (logact|ERRLOG)&~EXITLG)
+   if ret != SUCCESS and PGLOG['EMLSEND']:
+      ret = pgsystem(PGLOG['EMLSEND'], logact, 4, emlmsg)
+      logmsg += "Email " + entries['to'][2]
+      if entries['cc'][2]: logmsg += " Cc'd " + entries['cc'][2]
+      logmsg += " Subject: " + entries['sb'][2]
+      if ret:
+         log_email(emlmsg)
+         pglog(logmsg, logact&(~EXITLG))
+      else:
+         errmsg = "Error sending email: " + logmsg
+         pglog(errmsg, (logact|ERRLOG)&~EXITLG)
 
    return ret
 
 #
 #  send an email; if empty msg send email message saved in PGLOG['EMLMSG'] instead
 #
-def send_email(subject = None, receiver = None, msg = None, sender = None, logact = 0):
+def send_email(subject = None, receiver = None, msg = None, sender = None, logact = LOGWRN):
 
    return send_python_email(subject, receiver, msg, sender, None, logact)
 
@@ -296,7 +297,7 @@ def send_email(subject = None, receiver = None, msg = None, sender = None, logac
 #  send an email via python module smtplib; if empty msg send email message saved
 #  in PGLOG['EMLMSG'] instead. pass cc = '' for skipping 'Cc: '
 #
-def send_python_email(subject = None, receiver = None, msg = None, sender = None, cc = None, logact = 0):
+def send_python_email(subject = None, receiver = None, msg = None, sender = None, cc = None, logact = LOGWRN):
 
    if not msg:
       if PGLOG['EMLMSG']:
@@ -340,7 +341,7 @@ def send_python_email(subject = None, receiver = None, msg = None, sender = None
    finally:
       eml.quit()
       log_email(str(emlmsg))
-      if logact: pglog(logmsg, logact&~EXITLG)
+      pglog(logmsg, logact&~EXITLG)
       return SUCCESS
 
 #
@@ -415,7 +416,7 @@ def pglog(msg, logact = MSGLOG):
    if logact&EMLALL:
       if logact&SNDEML or not msg:
          title = (msg if msg else "Message from {}-{}".format(PGLOG['HOSTNAME'], get_command()))
-         msg = title + '\n' + msg
+         msg = title
          send_email(title.rstrip())
       elif msg:
          set_email(msg, logact)
