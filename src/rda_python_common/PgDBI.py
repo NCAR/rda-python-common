@@ -46,6 +46,8 @@ DBPASS = {}
 DBNAMES = {
    'ivaddb' : 'ivaddb',
    'cntldb' : 'ivaddb',
+   'ivaddb1' : 'ivaddb',
+   'cntldb1' : 'ivaddb',
    'cdmsdb' : 'ivaddb',
    'ispddb' : 'ispddb',
     'obsua' : 'upadb',
@@ -113,20 +115,21 @@ PGDBI['SCPATH'] = None       # additional schema path for set search_path
 PGDBI['VHSET'] = 0
 PGDBI['PGSIZE'] = 1000        # number of records for page_size
 PGDBI['MTRANS'] = 5000       # max number of changes in one transactions
-PGDBI['MAXICNT'] = 12000000  # maximum number of records in each table
+PGDBI['MAXICNT'] = 6000000  # maximum number of records in each table
 
 #
 # create a pgddl command string with
 # table name (tname), prefix (pre) and suffix (suf)
 #
-def get_pgddl_command(tname, pre = None, suf = None):
+def get_pgddl_command(tname, pre = None, suf = None, scname = None):
 
    ms = re.match(r'^(.+)\.(.+)$', tname)
-   if ms:
-      scname = ms.group(1)
-      tname = ms.group(2)
-   else:
-      scname = PGDBI['SCNAME']
+   if not scname:
+      if ms:
+         scname = ms.group(1)
+         tname = ms.group(2)
+      else:
+         scname = PGDBI['SCNAME']
    xy = ''
    if suf: xy += ' -x ' + suf
    if pre: xy += ' -y ' + pre
