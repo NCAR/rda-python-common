@@ -1669,7 +1669,7 @@ def send_request_email_notice(pgrqst, errmsg, fcount, rstat, readyfile = None, p
       if pgrec:
          einfo['SPECIALIST'] = "{} {}".format(pgrec['fstname'], pgrec['lstname'])
          einfo['PHONENO'] = pgrec['phoneno']
-      einfo['SUBJECT'] += " {} {} request {} - {}!".format(pgrqst['dsid'], einfo['RTYPE'], pgrqst['rindex'], pgrqst['email'])
+      einfo['SUBJECT'] += f" {pgrqst['dsid']} {einfo['RTYPE']} request {pgrqst['rindex']}"
 
    if pgrqst['note']:
       einfo['RNOTE'] = "\nRequest Detail:\n{}\n".format(pgrqst['note'])
