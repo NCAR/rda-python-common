@@ -440,34 +440,41 @@ def pglog(msg, logact = MSGLOG):
       if not logact&NOTLOG:
          if logact&ERRLOG:
             if not PGLOG['ERRFILE']: PGLOG['ERRFILE'] = re.sub(r'.log$', '.err', PGLOG['LOGFILE'])
-            try:
-                ERR = open("{}/{}".format(PGLOG['LOGPATH'], PGLOG['ERRFILE']), 'a')
-            except FileNotFoundError:
-                ERR = open("error.log", 'a')
-                ERR.write(f"Error File not found: {PGLOG['LOGPATH']}/{PGLOG['ERRFILE']}")
-            ERR.write(msg)
-            if not logact&(EMLALL|SKPTRC): ERR.write(get_call_trace())
-            ERR.close()
+            write_message(msg, f"{PGLOG['LOGPATH']}/{PGLOG['ERRFILE']}", logact)
             if logact&EXITLG:
-               LOG = open("{}/{}".format(PGLOG['LOGPATH'], PGLOG['LOGFILE']), "a")
-               LOG.write(cmdstr)
-               LOG.close()
+               write_message(cmdstr, f"{PGLOG['LOGPATH']}/{PGLOG['LOGFILE']}", logact)
          else:
-            LOG = open("{}/{}".format(PGLOG['LOGPATH'], PGLOG['LOGFILE']), 'a')
-            LOG.write(msg)
-            LOG.close()
+            write_message(msg, f"{PGLOG['LOGPATH']}/{PGLOG['LOGFILE']}", logact)
 
    if not PGLOG['BCKGRND'] and logact&(ERRLOG|WARNLG):
-      OUT = sys.stderr if logact&(ERRLOG|EXITLG) else sys.stdout
-      if logact&BRKLIN: OUT.write("\n")
-      if logact&SEPLIN: OUT.write(PGLOG['SEPLINE'])
-      OUT.write(msg)
-
+      write_message(msg, None, logact)
 
    if logact&EXITLG:
       pgexit(1)
    else:
       return (retmsg if retmsg else FAILURE)
+
+#
+# write a log message
+#
+def write_message(msg, file, logact):
+
+   doclose = False
+   errlog = logact&ERRLOG
+   if file:
+      try:
+          OUT = open(file, 'a')
+          doclose = True
+      except FileNotFoundError:
+         OUT = sys.stderr if logact&(ERRLOG|EXITLG) else sys.stdout
+         OUT.write(f"Log File not found: {file}")
+   else:
+      OUT = sys.stderr if logact&(ERRLOG|EXITLG) else sys.stdout
+      if logact&BRKLIN: OUT.write("\n")
+      if logact&SEPLIN: OUT.write(PGLOG['SEPLINE'])
+   OUT.write(msg)
+   if errlog and not logact&(EMLALL|SKPTRC): OUT.write(get_call_trace())
+   if doclose: OUT.close()
 
 #
 # check and disconnet database before exit
