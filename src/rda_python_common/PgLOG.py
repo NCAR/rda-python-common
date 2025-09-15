@@ -307,7 +307,7 @@ def send_python_email(subject = None, receiver = None, msg = None, sender = None
       else:
          return ''
 
-   docc = False if cc else True 
+   docc = False if cc else True
    if not sender:
       sender = PGLOG['CURUID']
       if sender != PGLOG['RDAUSER']: docc = False
@@ -1271,6 +1271,7 @@ def set_common_pglog():
    PGLOG['ALLROOTS'] = '|'.join([PGLOG['OLDAROOT'], PGLOG['OLDBROOT'], PGLOG['ARCHROOT'], PGLOG['BACKROOT']])
    SETPGLOG("USRHOME", "/glade/u/home")
    SETPGLOG("DSSHOME", "/glade/u/home/rdadata")
+   SETPGLOG("GDEXHOME", "/data/local")
    SETPGLOG("ADDPATH", "")
    SETPGLOG("ADDLIB",  "")
    SETPGLOG("OTHPATH", "")
@@ -1372,7 +1373,7 @@ def set_common_pglog():
 
    # empty diretory for HOST-sync
 
-   PGLOG['TMPSYNC'] = PGLOG['DSSDBHM'] + "/tmp/.syncdir" 
+   PGLOG['TMPSYNC'] = PGLOG['DSSDBHM'] + "/tmp/.syncdir"
 
    os.umask(2)
 

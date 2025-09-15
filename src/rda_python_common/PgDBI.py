@@ -191,7 +191,7 @@ def default_scinfo(dbname = None, scname = None, dbhost = None, lnname = None, p
 # get the datbase sock file name of a given dbname for local connection
 #
 def get_dbsock(dbname):
-   
+
    return (DBSOCKS[dbname] if dbname in DBSOCKS else DBSOCKS['default'])
 
 #
@@ -392,7 +392,7 @@ def try_add_table(dberror, logact):
 #
 def add_a_table(tname, logact):
 
-   add_new_table(tname, logact = logact)   
+   add_new_table(tname, logact = logact)
 
 #
 # add a new table for given table name
@@ -462,7 +462,7 @@ def check_dberror(pgerr, pgcnt, sqlstr, ary, logact = PGDBI['ERRLOG']):
          try_add_table(dberror, logact)
          return PgLOG.SUCCESS
 
-   if logact&PgLOG.DOLOCK and pgcode and re.match(r'^55\w\w\w$', pgcode): 
+   if logact&PgLOG.DOLOCK and pgcode and re.match(r'^55\w\w\w$', pgcode):
       logact &= ~PgLOG.EXITLG   # no exit for lock error
    return qelog(dberror, 0, sqlstr, ary, pgcnt, logact)
 
@@ -476,7 +476,7 @@ def pgbatch(sqlfile, foreground = 0):
 #      slave = "/{}/{}.slave".format(PGDBI['VWHOME'], PGDBI['VWHOST'])
 #      if not op.exists(slave): default_scname()
 
-   dbhost = 'localhost' if PGDBI['DBSHOST'] == PgLOG.PGLOG['HOSTNAME'] else PGDBI['DBHOST'] 
+   dbhost = 'localhost' if PGDBI['DBSHOST'] == PgLOG.PGLOG['HOSTNAME'] else PGDBI['DBHOST']
    options = "-h {} -p {}".format(dbhost, PGDBI['DBPORT'])
    pwname = get_pgpass_password()
    os.environ['PGPASSWORD'] = pwname
@@ -518,7 +518,7 @@ def pgconnect(reconnect = 0, pgcnt = 0, autocommit = True):
       else:
          config['host'] = PGDBI['DBHOST'] if PGDBI['DBHOST'] else PGDBI['DEFHOST']
          if not PGDBI['DBPORT']: PGDBI['DBPORT'] = get_dbport(PGDBI['DBNAME'])
-      if PGDBI['DBPORT']: config['port'] = PGDBI['DBPORT'] 
+      if PGDBI['DBPORT']: config['port'] = PGDBI['DBPORT']
       config['password'] = '***'
       sqlstr = "psycopg2.connect(**{})".format(config)
       config['password'] = get_pgpass_password()
@@ -529,7 +529,7 @@ def pgconnect(reconnect = 0, pgcnt = 0, autocommit = True):
          if autocommit: pgdb.autocommit = autocommit
          return pgdb
       except PgSQL.Error as pgerr:
-         if not check_dberror(pgerr, pgcnt, sqlstr, None, PGDBI['EXITLG']): return PgLOG.FAILURE 
+         if not check_dberror(pgerr, pgcnt, sqlstr, None, PGDBI['EXITLG']): return PgLOG.FAILURE
          pgcnt += 1
 
 #
@@ -555,7 +555,7 @@ def pgcursor():
          if pgcnt == 0 and pgdb.closed:
             pgconnect(1)
          elif not check_dberror(pgerr, pgcnt, '', None, PGDBI['EXITLG']):
-            return PgLOG.FAILURE 
+            return PgLOG.FAILURE
       else:
          break
       pgcnt += 1
@@ -625,7 +625,7 @@ def pgsequence(tablename, logact = PGDBI['ERRLOG']):
    pgrec = pgget('information_schema.columns', 'column_name', condition, logact)
    seqname = pgrec['column_name'] if pgrec else None
    SEQUENCES[tablename] = seqname
-   
+
    return seqname
 
 #
@@ -645,7 +645,7 @@ def check_default_value(dflt, isint):
 
 #
 # local fucntion: insert prepare pgadd()/pgmadd() for given table and field names
-# according to options of multiple place holds and returning sequence id  
+# according to options of multiple place holds and returning sequence id
 #
 def prepare_insert(tablename, fields, multi = True, getid = None):
 
@@ -708,7 +708,7 @@ def pgadd(tablename, record, logact = PGDBI['ERRLOG'], getid = None):
    global curtran
    if not record: return PgLOG.pglog("Nothing adds to " + tablename, logact)
    if logact&PgLOG.DODFLT: prepare_default(tablename, record, logact)
-   if logact&PgLOG.AUTOID and not getid: getid = pgsequence(tablename, logact) 
+   if logact&PgLOG.AUTOID and not getid: getid = pgsequence(tablename, logact)
    sqlstr = prepare_insert(tablename, list(record), True, getid)
    values = tuple(record.values())
 
@@ -804,7 +804,7 @@ def pgmadd(tablename, records, logact = PGDBI['ERRLOG'], getid = None):
 #
 def prepare_select(tablenames, fields = None, condition = None, cndflds = None, logact = 0):
 
-   sqlstr = ''   
+   sqlstr = ''
    if tablenames:
       if fields:
          sqlstr = "SELECT " + fields
@@ -838,7 +838,7 @@ def prepare_select(tablenames, fields = None, condition = None, cndflds = None, 
 # tablenames: comma deliminated string of one or more tables and more than one table for joining,
 #     fields: comma deliminated string of one or more field names,
 #  condition: querry conditions for where clause
-# return a dict reference with keys as field names upon success 
+# return a dict reference with keys as field names upon success
 #
 def pgget(tablenames, fields, condition = None, logact = 0):
 
@@ -865,7 +865,7 @@ def pgget(tablenames, fields, condition = None, logact = 0):
                record[colname] = val
          pgcur.close()
       except PgSQL.Error as pgerr:
-         if not check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE 
+         if not check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE
       else:
          break
       pgcnt += 1
@@ -913,7 +913,7 @@ def pgmget(tablenames, fields, condition = None, logact = PGDBI['ERRLOG']):
                records[colname] = vals
          pgcur.close()
       except PgSQL.Error as pgerr:
-         if not check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE 
+         if not check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE
       else:
          break
       pgcnt += 1
@@ -927,7 +927,7 @@ def pgmget(tablenames, fields, condition = None, logact = PGDBI['ERRLOG']):
 # tablenames: comma deliminated string of one or more tables
 #     fields: comma deliminated string of one or more field names,
 #    cnddict: condition dict with field names : values
-# return a dict(field names : values) upon success 
+# return a dict(field names : values) upon success
 #
 # retrieve one records from tablenames condition dict
 #
@@ -961,7 +961,7 @@ def pghget(tablenames, fields, cnddict, logact = PGDBI['ERRLOG']):
                record[colname] = val
          pgcur.close()
       except PgSQL.Error as pgerr:
-         if not check_dberror(pgerr, pgcnt, sqlstr, values, logact): return PgLOG.FAILURE 
+         if not check_dberror(pgerr, pgcnt, sqlstr, values, logact): return PgLOG.FAILURE
       else:
          break
       pgcnt += 1
@@ -980,7 +980,7 @@ def pghget(tablenames, fields, cnddict, logact = PGDBI['ERRLOG']):
 # tablenames: comma deliminated string of one or more tables
 #     fields: comma deliminated string of one or more field names,
 #   cnddicts: condition dict with field names : value lists
-# return a dict(field names : value lists) upon success 
+# return a dict(field names : value lists) upon success
 #
 # retrieve multiple records from tablenames for condition dict
 #
@@ -1060,7 +1060,7 @@ def prepare_update(tablename, fields, condition = None, cndflds = None):
       for fld in cndflds:
          cndset.append("{}=%s".format(pgname(fld, '.')))
       condition = " AND ".join(cndset)
- 
+
    sqlstr = "UPDATE {} SET {} WHERE {}".format(tablename, strflds, condition)
    if PgLOG.PGLOG['DBGLEVEL']: PgLOG.pgdbg(1000, sqlstr)
 
@@ -1093,7 +1093,7 @@ def pgupdt(tablename, record, condition, logact = PGDBI['ERRLOG']):
          ucnt = pgcur.rowcount
          pgcur.close()
       except PgSQL.Error as pgerr:
-         if not check_dberror(pgerr, pgcnt, sqlstr, values, logact): return PgLOG.FAILURE 
+         if not check_dberror(pgerr, pgcnt, sqlstr, values, logact): return PgLOG.FAILURE
       else:
          break
       pgcnt += 1
@@ -1184,7 +1184,7 @@ def pgmupdt(tablename, records, cnddicts, logact = PGDBI['ERRLOG']):
          execute_batch(pgcur, sqlstr, values, page_size=PGDBI['PGSIZE'])
          ucnt = cntrow
       except PgSQL.Error as pgerr:
-         if not check_dberror(pgerr, pgcnt, sqlstr, values[0], logact): return PgLOG.FAILURE 
+         if not check_dberror(pgerr, pgcnt, sqlstr, values[0], logact): return PgLOG.FAILURE
       else:
          break
       pgcnt += 1
@@ -1211,7 +1211,7 @@ def prepare_delete(tablename, condition = None, cndflds = None):
       for fld in cndflds:
          cndset.append("{}=%s".format(fld))
       condition = " AND ".join(cndset)
- 
+
    sqlstr = "DELETE FROM {} WHERE {}".format(tablename, condition)
    if PgLOG.PGLOG['DBGLEVEL']: PgLOG.pgdbg(1000, sqlstr)
 
@@ -1238,7 +1238,7 @@ def pgdel(tablename, condition, logact = PGDBI['ERRLOG']):
          dcnt = pgcur.rowcount
          pgcur.close()
       except PgSQL.Error as pgerr:
-         if not check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE 
+         if not check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE
       else:
          break
       pgcnt += 1
@@ -1276,7 +1276,7 @@ def pghdel(tablename, cnddict, logact = PGDBI['ERRLOG']):
          dcnt = pgcur.rowcount
          pgcur.close()
       except PgSQL.Error as pgerr:
-         if not check_dberror(pgerr, pgcnt, sqlstr, values, logact): return PgLOG.FAILURE 
+         if not check_dberror(pgerr, pgcnt, sqlstr, values, logact): return PgLOG.FAILURE
       else:
          break
       pgcnt += 1
@@ -1316,7 +1316,7 @@ def pgmdel(tablename, cnddicts, logact = PGDBI['ERRLOG']):
          execute_batch(pgcur, sqlstr, values, page_size=PGDBI['PGSIZE'])
          dcnt = len(values)
       except PgSQL.Error as pgerr:
-         if not check_dberror(pgerr, pgcnt, sqlstr, values[0], logact): return PgLOG.FAILURE 
+         if not check_dberror(pgerr, pgcnt, sqlstr, values[0], logact): return PgLOG.FAILURE
       else:
          break
       pgcnt += 1
@@ -1350,7 +1350,7 @@ def pgexec(sqlstr, logact = PGDBI['ERRLOG']):
          ret = pgcur.rowcount
          pgcur.close()
       except PgSQL.Error as pgerr:
-         if not check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE 
+         if not check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE
       else:
          break
       pgcnt += 1
@@ -1405,14 +1405,14 @@ def pgcheck(tablename, logact = 0):
    return (PgLOG.SUCCESS if ret else PgLOG.FAILURE)
 
 #
-# group of functions to check parent records and add an empty one if missed 
+# group of functions to check parent records and add an empty one if missed
 # return user.uid upon success, 0 otherwise
 #
 def check_user_uid(userno, date = None):
 
    if not userno: return 0
    if type(userno) is str: userno = int(userno)
-      
+
    if date is None:
       datecond = "until_date IS NULL"
       date = 'today'
@@ -1441,7 +1441,7 @@ def check_user_uid(userno, date = None):
 # return user.uid upon success, 0 otherwise
 #
 def get_user_uid(logname, date = None):
-   
+
    if not logname: return 0
    if not date:
       date = 'today'
@@ -1451,7 +1451,7 @@ def get_user_uid(logname, date = None):
 
    pgrec = pgget("dssdb.user", "uid", "logname = '{}' AND {}".format(logname, datecond), PGDBI['ERRLOG'])
    if pgrec: return pgrec['uid']
-   
+
    if logname not in LMISSES:
       PgLOG.pglog("{}: UCAR Login Name NOT on file for {}".format(logname, date), PgLOG.LGWNEM)
       LMISSES.append(logname)
@@ -1505,7 +1505,7 @@ def ucar_user_info(userno, logname = None):
       pgrec['userno'] = userno
    elif pgrec['userno']:
       pgrec['userno'] = userno = int(pgrec['userno'])
-   if pgrec['upid']: pgrec['upid'] = int(pgrec['upid'])          
+   if pgrec['upid']: pgrec['upid'] = int(pgrec['upid'])
    if pgrec['stat_flag']: pgrec['stat_flag'] = 'A' if pgrec['stat_flag'] == "True" else 'C'
    if pgrec['email'] and re.search(r'(@|\.)ucar\.edu$', pgrec['email'], re.I):
       pgrec['email'] = pgrec['ucaremail']
@@ -1587,7 +1587,7 @@ def check_wuser_wuid(email, date = None):
    if pgrec: return pgrec['wuid']
 
    # now add one in
-   record = {'email' : email} 
+   record = {'email' : email}
    # check again if a ruser is on file
    pgrec = pgget("ruser", "*", emcond + " AND end_date IS NULL", PGDBI['ERRLOG'])
    if not pgrec: pgrec = pgget("ruser", "*", emcond, PGDBI['ERRLOG'])
@@ -1628,7 +1628,7 @@ def check_cdp_wuser(username):
 
    pgrec = pgget("wuser", "wuid", "cdpname = '{}'".format(username), PGDBI['EXITLG'])
    if pgrec: return pgrec['wuid']
-   
+
    idrec = pgget("wuser", "wuid", "email = '{}'".format(pgrec['email']), PGDBI['EXITLG'])
    wuid = idrec['wuid'] if idrec else 0
    if wuid > 0:
@@ -1650,7 +1650,7 @@ def check_cdp_wuser(username):
 # for given email to get long country name
 #
 def email_to_country(email):
-   
+
    ms = re.search(r'\.(\w\w)$', email)
    if ms:
       pgrec = pgget("countries", "token", "domain_id = '{}'".format(ms.group(1)), PGDBI['EXITLG'])
@@ -1694,7 +1694,7 @@ def use_rdadb(dsid, logact = 0, vals = None):
 # return a condition string for a given field
 #
 def get_field_condition(fld, vals, isstr = 0, noand = 0):
-   
+
    cnd = wcnd = negative = ''
    sign = "="
    logic = " OR "
@@ -1703,7 +1703,7 @@ def get_field_condition(fld, vals, isstr = 0, noand = 0):
    ncnt = scnt = wcnt = cnt = 0
    for i in range(count):
       val = vals[i]
-      if val is None or (i > 0 and val == vals[i-1]): continue      
+      if val is None or (i > 0 and val == vals[i-1]): continue
       if i == 0 and val == PGSIGNS[0]:
          negative = "NOT "
          logic = " AND "
@@ -1759,7 +1759,7 @@ def get_field_condition(fld, vals, isstr = 0, noand = 0):
    if cnt > 0:
       if cnt > 1:
          cnd = "{} {}IN ({})".format(fld, negative, cnd)
-      else:   
+      else:
          cnd = "{} {} {}".format(fld, ("<>" if negative else "="), cnd)
       if ncnt > 0:
          ncnd = "{} IS {}NULL".format(fld, negative)
@@ -1782,7 +1782,7 @@ def fieldname_string(fnames, dnames = None, anames = None, wflds = None):
       fnames = anames   # include all field names
 
    if not wflds: return fnames
-   
+
    for wfld in wflds:
       if not wfld or fnames.find(wfld) > -1: continue  # empty field, or included already
       if wfld == "Q":
@@ -1806,7 +1806,7 @@ def fieldname_string(fnames, dnames = None, anames = None, wflds = None):
 #                                 dsid: dataset id
 #                                field: path field name: webpath or savedpath)
 # go through group tree upward to find a none-empty path, return it or null
-# 
+#
 def get_group_field_path(gindex, dsid, field):
 
    if gindex:
@@ -1863,7 +1863,7 @@ def build_customized_email(table, field, condition, subject, logact = 0):
       ebuf = "From: {}\nTo: {}\n".format(sender, receiver)
       if cc: ebuf += "Cc: {}\n".format(cc)
       ebuf += "Subject: {}!\n\n{}\n".format(subject, msg)
-   
+
       if PgLOG.PGLOG['EMLSEND']:
          estat = PgLOG.send_customized_email(f"{table}.{condition}", ebuf, logact)
       if estat != PgLOG.SUCCESS:
@@ -2065,7 +2065,7 @@ def match_down_path(path, dpaths):
 # validate is login user is in DECS group
 # check all node if skpdsg is false, otherwise check non-DSG nodes
 def validate_decs_group(cmdname, logname, skpdsg):
-   
+
    if skpdsg and PgLOG.PGLOG['DSGHOSTS'] and re.search(r'(^|:){}'.format(PgLOG.PGLOG['HOSTNAME']), PgLOG.PGLOG['DSGHOSTS']): return
    if not logname: lgname = PgLOG.PGLOG['CURUID']
 
@@ -2074,12 +2074,12 @@ def validate_decs_group(cmdname, logname, skpdsg):
 
 #
 # add an allusage record into yearly table; create a new yearly table if it does not exist
-# year    -- year to identify the yearly table, evaluated if missing 
+# year    -- year to identify the yearly table, evaluated if missing
 # records -- hash to hold one or multiple records.
 # Dict keys: email -- user email address,
 #         org_type -- organization type
 #          country -- country code
-#             dsid -- dataset ID 
+#             dsid -- dataset ID
 #             date -- date data accessed
 #             time -- time data accessed
 #          quarter -- quarter of the year data accessed
@@ -2090,11 +2090,11 @@ def validate_decs_group(cmdname, logname, skpdsg):
 #               ip -- user IP address
 #           region -- user region name; for example, Colorado
 #
-# isarray -- if true, mutiple records provided via arrays for each hash key 
+# isarray -- if true, mutiple records provided via arrays for each hash key
 # docheck -- if 1, check and add only if record is not on file
 # docheck -- if 2, check and add if record is not on file, and update if exists
 # docheck -- if 4, check and add if record is not on file, and update if exists,
-#            and also checking NULL email value too 
+#            and also checking NULL email value too
 #
 def add_yearly_allusage(year, records, isarray = 0, docheck = 0):
 
@@ -2150,7 +2150,7 @@ def add_yearly_allusage(year, records, isarray = 0, docheck = 0):
 
 #
 # add a wusage record into yearly table; create a new yearly table if it does not exist
-# year    -- year to identify the yearly table, evaluated if missing 
+# year    -- year to identify the yearly table, evaluated if missing
 # records -- hash to hold one or multiple records.
 # Dict keys: wid - reference to wfile.wid
 #      wuid_read - reference to wuser.wuid, 0 if missing email
@@ -2163,7 +2163,7 @@ def add_yearly_allusage(year, records, isarray = 0, docheck = 0):
 #        locflag - location flag: Glade or Object
 #             ip - IP address
 #
-# isarray -- if true, mutiple records provided via arrays for each hash key 
+# isarray -- if true, mutiple records provided via arrays for each hash key
 #
 def add_yearly_wusage(year, records, isarray = 0):
 
@@ -2248,4 +2248,9 @@ def read_pgpass():
             dbhost, dbport, dbname, lnname, pwname = line.split(":")
             DBPASS[(dbhost, dbport, dbname, lnname)] = pwname
    except FileNotFoundError:
-      pass
+      with open(PgLOG.PGLOG['GDEXHOME'] + '/.pgpass', "r") as f:
+         for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"): continue
+            dbhost, dbport, dbname, lnname, pwname = line.split(":")
+            DBPASS[(dbhost, dbport, dbname, lnname)] = pwname
