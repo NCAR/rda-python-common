@@ -1672,7 +1672,7 @@ def local_path_size(pname):
 
    if not pname: pname = '.'   # To get size of current directory
    size = 0
-   for path, dirs, files in os.walk(start_path):
+   for path, dirs, files in os.walk(pname):
       for f in files:
          size += os.path.getsize(os.path.join(path, f))
    return size
