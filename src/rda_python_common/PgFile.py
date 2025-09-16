@@ -1636,7 +1636,7 @@ def local_file_stat(file, fstat, opt, logact):
 
    info = {}
    info['isfile'] = (1 if stat.S_ISREG(fstat.st_mode) else 0)
-   info['data_size'] = fstat.st_size
+   info['data_size'] = fstat.st_size if info['isfile']  else local_path_size(file)
    info['fname'] = op.basename(file)
    if not opt: return info
    if opt&64 and info['isfile'] and info['data_size'] < PgLOG.PGLOG['MINSIZE']:
@@ -1664,6 +1664,18 @@ def local_file_stat(file, fstat, opt, logact):
    if opt&32: info['checksum'] = get_md5sum(file, 0, logact)
 
    return info
+
+#
+# get total size of files under a given path
+#
+def local_path_size(pname):
+
+   if not pname: pname = '.'   # To get size of current directory
+   size = 0
+   for path, dirs, files in os.walk(pname):
+      for f in files:
+         size += os.path.getsize(os.path.join(path, f))
+   return size
 
 #
 # check and get file status information of a file on remote host
@@ -2557,7 +2569,7 @@ def rda_file_size(file, host, opt = 0, logact = 0):
 #
 def local_file_size(file, opt = 0, logact = 0):
 
-   if not op.isfile(file):
+   if not op.exists(file):
       if opt&4: lmsg(file, PgLOG.PGLOG['MISSFILE'], logact)
       return -1   # file not eixsts
       
