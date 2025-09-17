@@ -2305,7 +2305,7 @@ def get_md5sum(file, count = 0, logact = 0):
    if count > 0:
       checksum = [None]*count
       for i in range(count):
-         if(op.isfile(file[i])):
+         if op.isfile(file[i]):
             chksm = PgLOG.pgsystem(cmd + file[i], logact, 20)
             if chksm:
                ms = re.search(r'(\w{32})', chksm)
