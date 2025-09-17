@@ -1636,7 +1636,10 @@ def local_file_stat(file, fstat, opt, logact):
 
    info = {}
    info['isfile'] = (1 if stat.S_ISREG(fstat.st_mode) else 0)
-   info['data_size'] = fstat.st_size if info['isfile']  else local_path_size(file)
+   if info['isfile'] == 0 and logact&PgLOG.PFSIZE:
+      info['data_size'] = local_path_size(file)
+   else:
+      info['data_size'] = fstat.st_size
    info['fname'] = op.basename(file)
    if not opt: return info
    if opt&64 and info['isfile'] and info['data_size'] < PgLOG.PGLOG['MINSIZE']:
@@ -2573,7 +2576,7 @@ def local_file_size(file, opt = 0, logact = 0):
       if opt&4: lmsg(file, PgLOG.PGLOG['MISSFILE'], logact)
       return -1   # file not eixsts
       
-   info = check_local_file(file, 0, logact)
+   info = check_local_file(file, 0, logact|PgLOG.PFSIZE)
    if info:
       if info['isfile'] and info['data_size'] < PgLOG.PGLOG['MINSIZE']:
          if opt:

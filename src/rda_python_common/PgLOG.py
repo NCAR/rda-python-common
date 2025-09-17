@@ -67,6 +67,7 @@ ADDTBL = (0x200000)  # action to add a new table if it does not exist
 SKPTRC = (0x400000)  # action to skip tracing when log errors
 UCNAME = (0x800000)  # action to change query field names to upper case
 UCLWEX = (0x800015)  # UCNAME|MSGLOG|WARNLG|EXITLG
+PFSIZE = (0x1000000)  # total file size under a path
 
 SUCCESS = 1   # Successful function call
 FINISH  = 2   # go through a function, including time out
