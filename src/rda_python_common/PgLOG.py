@@ -354,9 +354,12 @@ def log_email(emlmsg):
    if not CPID['PID']: CPID['PID'] =  "{}-{}-{}".format(PGLOG['HOSTNAME'], get_command(), PGLOG['CURUID'])
    cmdstr = "{} {} at {}\n".format(CPID['PID'], break_long_string(CPID['CMD'], 40, "...", 1), current_datetime())
    fn = "{}/{}".format(PGLOG['LOGPATH'], PGLOG['EMLFILE'])
-   f = open(fn, 'a')
-   f.write(cmdstr + emlmsg)
-   f.close()
+   try:
+      f = open(fn, 'a')
+      f.write(cmdstr + emlmsg)
+      f.close()
+   except FileNotFoundError as e:
+       print(e)
 
 #
 # Function: cmdlog(cmdline)
