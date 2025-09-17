@@ -474,7 +474,7 @@ def write_message(msg, file, logact):
       if logact&BRKLIN: OUT.write("\n")
       if logact&SEPLIN: OUT.write(PGLOG['SEPLINE'])
    OUT.write(msg)
-   if errlog and not logact&(EMLALL|SKPTRC): OUT.write(get_call_trace())
+   if errlog and file and not logact&(EMLALL|SKPTRC): OUT.write(get_call_trace())
    if doclose: OUT.close()
 
 #

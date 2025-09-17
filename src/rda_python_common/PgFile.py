@@ -1664,7 +1664,7 @@ def local_file_stat(file, fstat, opt, logact):
    if opt&8:
       info['gid'] = fstat.st_gid
       info['group'] = grp.getgrgid(info['gid']).gr_name
-   if opt&32: info['checksum'] = get_md5sum(file, 0, logact)
+   if opt&32 and info['isfile']: info['checksum'] = get_md5sum(file, 0, logact)
 
    return info
 
@@ -2305,16 +2305,18 @@ def get_md5sum(file, count = 0, logact = 0):
    if count > 0:
       checksum = [None]*count
       for i in range(count):
-         chksm = PgLOG.pgsystem(cmd + file[i], logact, 20)
+         if op.isfile(file[i]):
+            chksm = PgLOG.pgsystem(cmd + file[i], logact, 20)
+            if chksm:
+               ms = re.search(r'(\w{32})', chksm)
+               if ms: checksum[i] = ms.group(1)
+   else:
+      checksum = None
+      if op.isfile(file):
+         chksm = PgLOG.pgsystem(cmd + file, logact, 20)
          if chksm:
             ms = re.search(r'(\w{32})', chksm)
-            if ms: checksum[i] = ms.group(1)
-   else:
-      chksm = PgLOG.pgsystem(cmd + file, logact, 20)
-      checksum = None
-      if chksm:
-         ms = re.search(r'(\w{32})', chksm)
-         if ms: checksum = ms.group(1)
+            if ms: checksum = ms.group(1)
 
    return checksum
 
