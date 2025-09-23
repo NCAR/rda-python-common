@@ -113,9 +113,9 @@ QHOSTS = {
 }
 
 ENDPOINTS = {
-   'gdex-glade' : "NCAR RDA GLADE",
-   'gdex-quasar' : "NCAR RDA Quasar",
-   'gdex-quasar-drdata' : "NCAR RDA Quasar DRDATA"
+   'gdex-glade' : "NCAR GDEX GLADE",
+   'gdex-quasar' : "NCAR GDEX Quasar",
+   'gdex-quasar-drdata' : "NCAR GDEX Quasar DRDATA"
 }
 
 BFILES = {}  # cache backup file names and dates for each bid
@@ -163,7 +163,7 @@ def errlog(msg, etype, retry = 0, logact = 0):
 #
 # Return 1 if successful 0 if failed with error message generated in PgLOG.pgsystem() cached in PgLOG.PGLOG['SYSERR'] 
 #
-def copy_rda_file(tofile, fromfile, tohost = LHOST, fromhost = LHOST, logact = 0):
+def copy_gdex_file(tofile, fromfile, tohost = LHOST, fromhost = LHOST, logact = 0):
 
    thost = strip_host_name(tohost)
    fhost = strip_host_name(fromhost)
@@ -191,6 +191,8 @@ def copy_rda_file(tofile, fromfile, tohost = LHOST, fromhost = LHOST, logact = 0
          return remote_copy_local(tofile, fromfile, fromhost)
 
    return errlog("{}-{}->{}-{}: Cannot copy file".format(fhost, fromfile, thost, tofile), 'O', 1, PgLOG.LGEREX)
+
+copy_rda_file = copy_gdex_file
 
 #
 # Copy a file locally
@@ -300,7 +302,7 @@ def local_copy_object(tofile, fromfile, bucket = None, meta = None, logact = 0):
    if not bucket: bucket = PgLOG.PGLOG['OBJCTBKT']
    if meta is None: meta = {}
    if 'user' not in meta: meta['user'] = PgLOG.PGLOG['CURUID']
-   if 'group' not in meta: meta['group'] = PgLOG.PGLOG['RDAGRP']
+   if 'group' not in meta: meta['group'] = PgLOG.PGLOG['GDEXGRP']
    uinfo = json.dumps(meta)
  
    finfo = check_local_file(fromfile, 0, logact)
@@ -332,7 +334,7 @@ def local_copy_object(tofile, fromfile, bucket = None, meta = None, logact = 0):
 #   tofiles - target file name list, echo name leading with /dsnnn.n/ on Quasar and 
 #             leading with /data/ or /decsdata/ on local glade disk
 # fromfiles - source file name list, the same format as the tofiles
-#   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-drdata' 
+#   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-dgdexta' 
 # frompoint - source endpoint name, the same choices as the topoint
 #
 def quasar_multiple_trasnfer(tofiles, fromfiles, topoint, frompoint, logact = 0):
@@ -374,7 +376,7 @@ def quasar_multiple_trasnfer(tofiles, fromfiles, topoint, frompoint, logact = 0)
 #    tofile - target file name, leading with /dsnnn.n/ on Quasar and 
 #             leading with /data/ or /decsdata/ on local glade disk
 #  fromfile - source file, the same format as the tofile
-#   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-drdata' 
+#   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-dgdexta' 
 # frompoint - source endpoint name, the same choices as the topoint
 #
 def endpoint_copy_endpoint(tofile, fromfile, topoint, frompoint, logact = 0):
@@ -689,7 +691,7 @@ def object_copy_remote(tofile, fromfile, host, bucket = None, logact = 0):
 #
 # Return 1 if successful 0 if failed with error message generated in PgLOG.pgsystem() cached in PgLOG.PGLOG['SYSERR'] 
 #
-def delete_rda_file(file, host, logact = 0):
+def delete_gdex_file(file, host, logact = 0):
        
    shost = strip_host_name(host)
    if PgUtil.pgcmp(shost, LHOST, 1) == 0:
@@ -698,6 +700,8 @@ def delete_rda_file(file, host, logact = 0):
       return delete_object_file(file, None, logact)      
    else:
       return delete_remote_file(file, host, logact)
+
+delete_rda_file = delete_gdex_file
 
 #
 # Delete a local file/irectory
@@ -784,7 +788,7 @@ def delete_backup_file(file, endpoint = None, logact = 0):
    return PgLOG.FAILURE
 
 #
-# reset local file/directory information to make them writable for PgLOG.PGLOG['RDAUSER']
+# reset local file/directory information to make them writable for PgLOG.PGLOG['GDEXUSER']
 # file - file name (mandatory)
 # info - gathered file info with option 14, None means file not exists
 #
@@ -817,8 +821,8 @@ def reset_local_directory(dir, info = None, logact = 0):
    if info:
       if info['mode'] and info['mode'] != 0o775:
          ret += set_local_mode(dir, 0, 0o775, info['mode'], info['logname'], logact)
-      if info['group'] and PgLOG.PGLOG['RDAGRP'] != info['group']:
-         ret += change_local_group(dir, PgLOG.PGLOG['RDAGRP'], info['group'], info['logname'], logact)
+      if info['group'] and PgLOG.PGLOG['GDEXGRP'] != info['group']:
+         ret += change_local_group(dir, PgLOG.PGLOG['GDEXGRP'], info['group'], info['logname'], logact)
 
    return 1 if ret else 0
 
@@ -833,8 +837,8 @@ def reset_local_file(file, info = None, logact = 0):
    if info:
       if info['mode'] != 0o664:
          ret += set_local_mode(file, 1, 0o664, info['mode'], info['logname'], logact)
-      if PgLOG.PGLOG['RDAGRP'] != info['group']:
-         ret += change_local_group(file, PgLOG.PGLOG['RDAGRP'], info['group'], info['logname'], logact)
+      if PgLOG.PGLOG['GDEXGRP'] != info['group']:
+         ret += change_local_group(file, PgLOG.PGLOG['GDEXGRP'], info['group'], info['logname'], logact)
 
    return ret
 
@@ -847,7 +851,7 @@ def reset_local_file(file, info = None, logact = 0):
 #
 # Return PgLOG.SUCCESS if successful PgLOG.FAILURE otherwise
 #
-def move_rda_file(tofile, fromfile, host, logact = 0):
+def move_gdex_file(tofile, fromfile, host, logact = 0):
 
    shost = strip_host_name(host)
    if PgUtil.pgcmp(shost, LHOST, 1) == 0:
@@ -856,6 +860,8 @@ def move_rda_file(tofile, fromfile, host, logact = 0):
       return move_object_file(tofile, fromfile, None, None, logact)
    else:
       return move_remote_file(tofile, fromfile, host, logact)
+
+move_rda_file = move_gdex_file
 
 #
 # Move a file locally
@@ -1071,7 +1077,7 @@ def move_backup_file(tofile, fromfile, endpoint = None, logact = 0):
 #
 # Return PgLOG.SUCCESS(1) if successful or PgLOG.FAILURE(0) if failed
 #
-def make_rda_directory(dir, host, logact = 0):
+def make_gdex_directory(dir, host, logact = 0):
 
    if not dir: return PgLOG.SUCCESS
    shost = strip_host_name(host)
@@ -1079,6 +1085,8 @@ def make_rda_directory(dir, host, logact = 0):
       return make_local_directory(dir, logact)
    else:
       return make_remote_directory(dir, host, logact)
+
+make_rda_directory = make_gdex_directory
 
 #
 # Make a local directory
@@ -1239,13 +1247,15 @@ def is_root_directory(dir, etype, host = None, action = None, logact = 0):
 #
 # set mode for a given direcory/file on a given host (include local host)
 #
-def set_rda_mode(file, isfile, host, nmode = None, omode = None, logname = None, logact = 0):
+def set_gdex_mode(file, isfile, host, nmode = None, omode = None, logname = None, logact = 0):
    
    shost = strip_host_name(host)
    if PgUtil.pgcmp(shost, LHOST, 1) == 0:
       return set_local_mode(file, isfile, nmode, omode, logname, logact)
    else:
       return set_remote_mode(file, isfile, host, nmode, omode, logact)      
+
+set_rda_mode = set_gdex_mode
 
 #
 # set mode for given local directory or file
@@ -1292,7 +1302,7 @@ def set_remote_mode(file, isfile, host, nmode = 0, omode = 0, logact = 0):
 def change_local_group(file, ngrp = None, ogrp = None, logname = None, logact = 0):
 
    if not ngrp:
-      ngid = PgLOG.PGLOG['RDAGID']
+      ngid = PgLOG.PGLOG['GDEXGID']
    else:
       ngid = grp.getgrnam[ngrp].gr_gid
    if logact and logact&PgLOG.EXITLG: logact &=~PgLOG.EXITLG
@@ -1455,7 +1465,7 @@ def check_service_accessibilty(sname, fhost = None, logact = 0):
    if not fhost: fhost = PgLOG.PGLOG['HOSTNAME']
    pgrec = PgDBI.pgget("dsservice", "*", "service = '{}' AND hostname = '{}'".format(sname, fhost), logact)
    if not pgrec:
-      PgLOG.pglog("dsservice: Access {} from {} is not defined in RDA Configuration".format(sname, fhost), logact)
+      PgLOG.pglog("dsservice: Access {} from {} is not defined in GDEX Configuration".format(sname, fhost), logact)
       return -1
 
    path = sname if (pgrec['flag'] == "H" or pgrec['flag'] == "G") else None
@@ -1484,7 +1494,7 @@ def local_host_action(host, action, info, logact = 0):
    if host == "partition":
       msg = "for individual partition"
    elif host == "rda_config":
-      msg = "via https://gdex.ucar.edu/internal/rda_pg_config"
+      msg = "via https://gdex.ucar.edu/rda_pg_config"
    elif host in PgLOG.BCHCMDS:
       msg = "on a {} Node".format(host)
    else:
@@ -1555,7 +1565,7 @@ def strip_host_name(host):
 #
 # Return a dict of file info, or None if file not exists
 #
-def check_rda_file(file, host = LHOST, opt = 0, logact = 0):
+def check_gdex_file(file, host = LHOST, opt = 0, logact = 0):
 
    shost = strip_host_name(host)
 
@@ -1569,6 +1579,8 @@ def check_rda_file(file, host = LHOST, opt = 0, logact = 0):
       return check_backup_file(file, QPOINTS['D'], opt, logact)      
    else:
       return check_remote_file(file, host, opt, logact)
+
+check_rda_file = check_gdex_file
 
 #
 # wrapper to check_local_file() and check_globus_file() to check info for a file
@@ -1686,7 +1698,7 @@ def local_path_size(pname):
 # file: remote File name
 #  opt: 0 - get data size only (fname, data_size, isfile), fname is the file basename
 #       1 - get date/time modified (date_modified, time_modfied)
-#       2 - file owner's login name (logname), assumed 'rdadata'
+#       2 - file owner's login name (logname), assumed 'gdexdata'
 #       4 - get permission mode in 3 octal digits (mode)
 #       8 - get group name (group), assumed 'dss'
 #      16 - get week day 0-Sunday, 1-Monday (week_day)
@@ -1743,8 +1755,8 @@ def remote_file_stat(line, opt):
          info['time_modified'] = mtime
       if opt&16: info['week_day'] = PgUtil.get_weekday(mdate)
 
-   if opt&2: info['logname'] = "rdadata"
-   if opt&8: info['group'] = PgLOG.PGLOG['RDAGRP']
+   if opt&2: info['logname'] = "gdexdata"
+   if opt&8: info['group'] = PgLOG.PGLOG['GDEXGRP']
 
    return info
 
@@ -2100,7 +2112,7 @@ def ftp_file_stat(line, opt):
 #
 # Return: a dict with filenames as keys None if empty directory
 #
-def rda_glob(dir, host, opt = 0, logact = 0):
+def gdex_glob(dir, host, opt = 0, logact = 0):
 
    shost = strip_host_name(host)
    if PgUtil.pgcmp(shost, LHOST, 1) == 0:
@@ -2111,6 +2123,8 @@ def rda_glob(dir, host, opt = 0, logact = 0):
       return backup_glob(dir, None, opt, logact)
    else:
       return remote_glob(dir, host, opt, logact)
+
+rda_glob = gdex_glob
 
 #
 # get an array of directories/files under given dir on local host
@@ -2151,7 +2165,7 @@ def local_glob(dir, opt = 0, logact = 0):
 # host: host name the directory on, default to LHOST
 #  opt: 0 - get data size only (fname, data_size, isfile), fname is the file basename
 #       1 - get date/time modified (date_modified, time_modfied)
-#       2 - file owner's login name (logname), assumed 'rdadata'
+#       2 - file owner's login name (logname), assumed 'gdexdata'
 #       4 - get permission mode in 3 octal digits (mode)
 #       8 - get group name (group), assumed 'dss'
 #      16 - get week day 0-Sunday, 1-Monday (week_day)
@@ -2409,9 +2423,9 @@ def clean_delete_directory(logact = 0):
       for dir in DELDIRS:
          host = DELDIRS[dir]
          dinfo = (dir if host == LHOST else  "{}-{}".format(host, dir))
-         dstat = rda_empty_directory(dir, DELDIRS[dir])
+         dstat = gdex_empty_directory(dir, DELDIRS[dir])
          if dstat == 0:
-            if delete_rda_file(dir, host, logact):
+            if delete_gdex_file(dir, host, logact):
                PgLOG.pglog(dinfo + ": Empty directory removed", lact)
          elif dstat > 0:
             if dstat == 1 and lvl > 0: PgLOG.pglog(dinfo + ": Directory not empty yet", lact)
@@ -2433,7 +2447,7 @@ def clean_empty_directory(dir, host, logact = 0):
 
    if not dir: return 0
 
-   dirs = rda_glob(dir, host)
+   dirs = gdex_glob(dir, host)
    cnt = 0
    if logact:
       lact = logact&~PgLOG.EXITLG
@@ -2448,7 +2462,7 @@ def clean_empty_directory(dir, host, logact = 0):
    
    dinfo = (dir if same_hosts(host, LHOST) else "{}-{}".format(host, dir))
    if cnt == 0:
-      if delete_rda_file(dir, host, logact):
+      if delete_gdex_file(dir, host, logact):
          PgLOG.pglog(dinfo + ": Empty directory removed", lact)
          return 1
    else:
@@ -2462,7 +2476,7 @@ def clean_empty_directory(dir, host, logact = 0):
 #
 # Return: 0 if empty directory, 1 if not empty and -1 if invalid directory
 #
-def rda_empty_directory(dir, host):
+def gdex_empty_directory(dir, host):
 
    shost = strip_host_name(host)
 
@@ -2470,6 +2484,8 @@ def rda_empty_directory(dir, host):
       return local_empty_directory(dir)
    else:
       return remote_empty_directory(dir, host)
+
+rda_empty_directory = gdex_empty_directory
 
 #
 # return 0 if empty local directory, 1 if not; -1 if cannot remove
@@ -2505,12 +2521,14 @@ def remote_empty_directory(dir, host):
 #
 # return: array of file sizes size is -1 if file does not exist
 #
-def rda_file_sizes(files, host, logact = 0):
+def gdex_file_sizes(files, host, logact = 0):
 
    sizes = []
-   for file in files: sizes.append(rda_file_size(file, host, 2, logact))
+   for file in files: sizes.append(gdex_file_size(file, host, 2, logact))
 
    return sizes
+
+rda_file_sizes = gdex_file_sizes
 
 #
 # get sizes of local files
@@ -2540,15 +2558,15 @@ def local_file_sizes(files, logact = 0):
 #        -1 - file not exists
 #        -2 - error check file
 #
-def rda_file_size(file, host, opt = 0, logact = 0):
+def gdex_file_size(file, host, opt = 0, logact = 0):
 
-   info = check_rda_file(file, host, 0, logact)
+   info = check_gdex_file(file, host, 0, logact)
    if info:
       if info['isfile'] and info['data_size'] < PgLOG.PGLOG['MINSIZE']:
          if opt:
             if opt&2: errlog("{}-{}: {} file".format(host, file, ("Too small({}B)".format(info['data_size']) if info['data_size'] > 0 else "Empty")),
                              'O', 1, logact)
-            if opt&1: delete_rda_file(file, host, logact)
+            if opt&1: delete_gdex_file(file, host, logact)
          return 0
       else:
          return info['data_size']  # if not regular file or not empty
@@ -2558,6 +2576,8 @@ def rda_file_size(file, host, opt = 0, logact = 0):
    else:
       if opt&4: errlog("{}-{}: {}".format(host, file, PgLOG.PGLOG['MISSFILE']), 'O', 1, logact)
       return -1   # file not exist
+
+rda_file_size = gdex_file_size
 
 #
 # check if a local file is empty or too small to be considered valid
@@ -3049,7 +3069,7 @@ def check_storage_dflags(dflags, dscheck = None, logact = 0):
    return msgary
 
 #
-# check a RDA file is backed up or not for given file record;
+# check a GDEX file is backed up or not for given file record;
 # clear the cached bfile records if frec is None.
 # return 0 if not yet, 1 if backed up, or -1 if backed up but modified
 #
