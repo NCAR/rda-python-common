@@ -59,7 +59,7 @@ MISLOG = (0x00811)   # cannot access logfile
 EMLSUM = (0x08000)   # record as email summary
 EMEROL = (0x10000)   # record error as email only
 EMLALL = (0x1D208)   # all email acts
-DOSUDO = (0x20000)   # add 'sudo -u PGLOG['RDAUSER']'
+DOSUDO = (0x20000)   # add 'sudo -u PGLOG['GDEXUSER']'
 NOTLOG = (0x40000)   # do not log any thing
 OVRIDE = (0x80000)   # do override existing file or record
 NOWAIT = (0x100000)  # do not wait on globus task to finish
@@ -99,9 +99,9 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'BACKROOT': "/DRDATA/DECS",  # backup path for desaster recovering tape on hpss
    'OLDAROOT': "/FS/DSS",       # old root path on hpss
    'OLDBROOT': "/DRDATA/DSS",   # old backup tape on hpss
-   'RDAUSER' : "rdadata",  # common rda user name
-   'RDAEMAIL' : "zji",     # specialist to receipt email intead of common rda user name
-   'SUDORDA' : 0,          # 1 to allow sudo to PGLOG['RDAUSER']
+   'GDEXUSER' : "gdexdata",  # common gdex user name
+   'GDEXEMAIL' : "zji",    # specialist to receipt email intead of common gdex user name
+   'SUDOGDEX' : 0,          # 1 to allow sudo to PGLOG['GDEXUSER']
    'HOSTNAME' : '',        # current host name the process in running on
    'OBJCTSTR' : "object",
    'BACKUPNM' : "quasar",
@@ -121,7 +121,7 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'SLMTIME' : 604800,   # max runtime for SLURM bath job, (7x24x60x60 seconds)
    'PBSTIME' : 86400,    # max runtime for PBS bath job, (24x60x60 seconds)
    'MSSGRP'  : None,     # set if set to different HPSS group
-   'RDAGRP'  : "decs",
+   'GDEXGRP'  : "decs",
    'EMLSEND' : None,     # path to sendmail, None if not exists
    'DSCHECK' : None,     # carry some cached dscheck information
    'PGDBBUF' : None,      # reference to a connected database object
@@ -138,6 +138,11 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'EMLSRVR' : "ndir.ucar.edu",   # UCAR email server and port
    'EMLPORT' : 25
 }
+
+PGLOG['RDAUSER'] = PGLOG['GDEXUSER']
+PGLOG['RDAGRP'] = PGLOG['GDEXGRP']
+PGLOG['RDAEMAIL'] = PGLOG['GDEXEMAIL']
+PGLOG['SUDORDA'] = PGLOG['SUDOGDEX']
 
 HOSTTYPES = {
    'rda' : 'dsg_mach',
@@ -311,15 +316,15 @@ def send_python_email(subject = None, receiver = None, msg = None, sender = None
    docc = False if cc else True 
    if not sender:
       sender = PGLOG['CURUID']
-      if sender != PGLOG['RDAUSER']: docc = False
-   if sender == PGLOG['RDAUSER']: sender = PGLOG['RDAEMAIL']
+      if sender != PGLOG['GDEXUSER']: docc = False
+   if sender == PGLOG['GDEXUSER']: sender = PGLOG['GDEXEMAIL']
    if sender.find('@') == -1: sender += "@ucar.edu"
    if not receiver:
       receiver = PGLOG['EMLADDR'] if PGLOG['EMLADDR'] else PGLOG['CURUID']
-   if receiver == PGLOG['RDAUSER']: receiver = PGLOG['RDAEMAIL']
+   if receiver == PGLOG['GDEXUSER']: receiver = PGLOG['GDEXEMAIL']
    if receiver.find('@') == -1: receiver += "@ucar.edu"
 
-   if docc and not re.match(PGLOG['RDAUSER'], sender): add_carbon_copy(sender, 1)
+   if docc and not re.match(PGLOG['GDEXUSER'], sender): add_carbon_copy(sender, 1)
    emlmsg = EmailMessage()
    emlmsg.set_content(msg)
    emlmsg['From'] = sender
@@ -789,7 +794,7 @@ def pgsystem(pgcmd, logact = LOGWRN, cmdopt = 5, instr = None, seconds = 0):
             if ret == FAILURE and loop >= loops: errlog |= logact
             pglog(error, errlog)
 
-      if last > PGLOG['CMDTIME'] and not re.search(r'(^|/|\s)(dsarch|dsupdt|dsrqst|rdacp|rdasub)\s', cmdstr):
+      if last > PGLOG['CMDTIME'] and not re.search(r'(^|/|\s)(dsarch|dsupdt|dsrqst)\s', cmdstr):
          cmdstr = "> {} Ends By {}".format(break_long_string(cmdstr, 100, "...", 1), current_datetime())
          cmd_execute_time(cmdstr, last, cmdact)
 
@@ -1173,11 +1178,11 @@ def get_local_command(cmd, asuser = None):
    cuser = PGLOG['SETUID'] if PGLOG['SETUID'] else PGLOG['CURUID']
    if not asuser or cuser == asuser: return cmd
 
-   if cuser == PGLOG['RDAUSER']:
+   if cuser == PGLOG['GDEXUSER']:
       wrapper = "pgstart_" + asuser
       if valid_command(wrapper): return "{} {}".format(wrapper, cmd)
-   elif PGLOG['SUDORDA'] and asuser == PGLOG['RDAUSER']:
-      return "sudo -u {} {}".format(PGLOG['RDAUSER'], cmd)    # sudo as user rdadata
+   elif PGLOG['SUDOGDEX'] and asuser == PGLOG['GDEXUSER']:
+      return "sudo -u {} {}".format(PGLOG['GDEXUSER'], cmd)    # sudo as user gdexdata
 
    return cmd
 
@@ -1200,12 +1205,12 @@ def get_hpss_command(cmd, asuser = None, hcmd = None):
    if not hcmd: hcmd = 'hsi'
 
    if asuser and cuser != asuser:
-      if cuser == PGLOG['RDAUSER']:
+      if cuser == PGLOG['GDEXUSER']:
          return "{} sudo -u {} {}".format(hcmd, asuser, cmd)      # setuid wrapper as user asuser
-      elif PGLOG['SUDORDA'] and asuser == PGLOG['RDAUSER']:
-         return "sudo -u {} {} {}".format(PGLOG['RDAUSER'], hcmd, cmd)    # sudo as user rdadata
+      elif PGLOG['SUDOGDEX'] and asuser == PGLOG['GDEXUSER']:
+         return "sudo -u {} {} {}".format(PGLOG['GDEXUSER'], hcmd, cmd)    # sudo as user gdexdata
 
-   if cuser != PGLOG['RDAUSER']:
+   if cuser != PGLOG['GDEXUSER']:
       if re.match(r'^ls ', cmd) and hcmd == 'hsi':
          return "hpss" + cmd    # use 'hpssls' instead of 'hsi ls'
       elif re.match(r'^htar -tvf', hcmd):
@@ -1222,8 +1227,8 @@ def get_sync_command(host, asuser = None):
 
    host = get_short_host(host)
 
-   if (not (PGLOG['SETUID'] and PGLOG['SETUID'] == PGLOG['RDAUSER']) and
-      (not asuser or asuser == PGLOG['RDAUSER'])):
+   if (not (PGLOG['SETUID'] and PGLOG['SETUID'] == PGLOG['GDEXUSER']) and
+      (not asuser or asuser == PGLOG['GDEXUSER'])):
       return "sync" + host
 
    return host + "-sync"
@@ -1237,7 +1242,7 @@ def set_suid(cuid = 0):
    if cuid != PGLOG['EUID'] or cuid != PGLOG['RUID']:
       os.setreuid(cuid, cuid)
       PGLOG['SETUID'] = pwd.getpwuid(cuid).pw_name
-      if not (PGLOG['SETUID'] == PGLOG['RDAUSER'] or cuid == PGLOG['RUID']):
+      if not (PGLOG['SETUID'] == PGLOG['GDEXUSER'] or cuid == PGLOG['RUID']):
          set_specialist_environments(PGLOG['SETUID'])
          PGLOG['CURUID'] == PGLOG['SETUID']      # set CURUID to a specific specialist
 
@@ -1253,12 +1258,12 @@ def set_common_pglog():
    PGLOG['EUID'] = os.geteuid()
    PGLOG['CURUID'] = pwd.getpwuid(PGLOG['RUID']).pw_name
    try:
-      PGLOG['RDAUID'] = pwd.getpwnam(PGLOG['RDAUSER']).pw_uid
-      PGLOG['RDAGID'] = grp.getgrnam(PGLOG['RDAGRP']).gr_gid
+      PGLOG['RDAUID'] = PGLOG['GDEXUID'] = pwd.getpwnam(PGLOG['GDEXUSER']).pw_uid
+      PGLOG['RDAGID'] = PGLOG['GDEXGID'] = grp.getgrnam(PGLOG['GDEXGRP']).gr_gid
    except:
-      PGLOG['RDAUID'] = 0
-      PGLOG['RDAGID'] = 0
-   if PGLOG['CURUID'] == PGLOG['RDAUSER']: PGLOG['SETUID'] = PGLOG['RDAUSER']
+      PGLOG['RDAUID'] = PGLOG['GDEXUID'] = 0
+      PGLOG['RDAGID'] = PGLOG['GDEXGID'] = 0
+   if PGLOG['CURUID'] == PGLOG['GDEXUSER']: PGLOG['SETUID'] = PGLOG['GDEXUSER']
 
    PGLOG['HOSTNAME'] = get_host()
    for htype in HOSTTYPES:
@@ -1271,7 +1276,7 @@ def set_common_pglog():
    PGLOG['NOTBROOT'] = '|'.join([PGLOG['OLDAROOT'], PGLOG['OLDBROOT'], PGLOG['ARCHROOT']])
    PGLOG['ALLROOTS'] = '|'.join([PGLOG['OLDAROOT'], PGLOG['OLDBROOT'], PGLOG['ARCHROOT'], PGLOG['BACKROOT']])
    SETPGLOG("USRHOME", "/glade/u/home")
-   SETPGLOG("DSSHOME", "/glade/u/home/rdadata")
+   SETPGLOG("DSSHOME", "/glade/u/home/gdexdata")
    SETPGLOG("ADDPATH", "")
    SETPGLOG("ADDLIB",  "")
    SETPGLOG("OTHPATH", "")
@@ -1330,7 +1335,7 @@ def set_common_pglog():
    SETPGLOG("CNFPATH", PGLOG['DSSHOME']+"/config")      # path to configuration files
    SETPGLOG("DSSURL",  "https://gdex.ucar.edu")          # current dss web URL
    SETPGLOG("RQSTURL", "/datasets/request")              # request URL path
-   SETPGLOG("WEBSERVERS", "rda-web-prod01.ucar.edu:rda-web-test01.ucar.edu")                 # webserver names for Web server
+   SETPGLOG("WEBSERVERS", "")                 # webserver names for Web server
    PGLOG['WEBHOSTS'] = PGLOG['WEBSERVERS'].split(':') if PGLOG['WEBSERVERS'] else []
    SETPGLOG("DBMODULE", '')
    SETPGLOG("LOCDATA", "/data")

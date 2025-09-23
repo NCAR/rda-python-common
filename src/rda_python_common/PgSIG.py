@@ -1089,7 +1089,7 @@ def record_background(bcmd, logact = PgLOG.LOGWRN):
       aname = bcmd
 
    mp = r"^\s*(\S+)\s+(\d+)\s+1\s+.*{}(.*)$".format(aname)
-   pc = "ps -u {},{} -f | grep ' 1 ' | grep {}".format(PgLOG.PGLOG['CURUID'], PgLOG.PGLOG['RDAUSER'], aname)
+   pc = "ps -u {},{} -f | grep ' 1 ' | grep {}".format(PgLOG.PGLOG['CURUID'], PgLOG.PGLOG['GDEXUSER'], aname)
    for i in range(2):
       buf = PgLOG.pgsystem(pc, logact, 20+1024)
       if buf:
@@ -1100,7 +1100,7 @@ def record_background(bcmd, logact = PgLOG.LOGWRN):
             (uid, sbid, acmd) = ms.groups()
             bid = int(sbid)
             if bid in CBIDS: return -1
-            if uid == PgLOG.PGLOG['RDAUSER']:
+            if uid == PgLOG.PGLOG['GDEXUSER']:
                acmd = re.sub(r'^\.(pl|py)\s+', '', acmd, 1)
             if re.match(r'^{}{}'.format(aname, acmd), bcmd): continue
             CBIDS[bid] = bcmd

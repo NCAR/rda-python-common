@@ -624,7 +624,7 @@ def set_email_logact():
 def validate_dsowner(aname, dsid = None, logname = None, pgds = 0, logact = 0):
 
    if not logname: logname = (params['LN'] if 'LN' in params else PgLOG.PGLOG['CURUID'])
-   if logname == PgLOG.PGLOG['RDAUSER']: return 1
+   if logname == PgLOG.PGLOG['GDEXUSER']: return 1
 
    dsids = {}
    if dsid:
@@ -1638,7 +1638,7 @@ def send_request_email_notice(pgrqst, errmsg, fcount, rstat, readyfile = None, p
    exclude = (einfo['SENDER'] if errmsg else einfo['RECEIVER'])
    if not errmsg and pgcntl and pgcntl['ccemail']:
       PgLOG.add_carbon_copy(pgcntl['ccemail'], 1, exclude, pgrqst['specialist'])
-   if PgLOG.PGLOG['CURUID'] != pgrqst['specialist'] and PgLOG.PGLOG['CURUID'] != PgLOG.PGLOG['RDAUSER']:
+   if PgLOG.PGLOG['CURUID'] != pgrqst['specialist'] and PgLOG.PGLOG['CURUID'] != PgLOG.PGLOG['GDEXUSER']:
       PgLOG.add_carbon_copy(PgLOG.PGLOG['CURUID'], 1, exclude)
    if 'CC' in params: PgLOG.add_carbon_copy(params['CC'], 0, exclude)
    einfo['CCD'] = PgLOG.PGLOG['CCDADDR']
