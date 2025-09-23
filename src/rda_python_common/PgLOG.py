@@ -313,7 +313,7 @@ def send_python_email(subject = None, receiver = None, msg = None, sender = None
       else:
          return ''
 
-   docc = False if cc else True 
+   docc = False if cc else True
    if not sender:
       sender = PGLOG['CURUID']
       if sender != PGLOG['GDEXUSER']: docc = False
@@ -359,9 +359,12 @@ def log_email(emlmsg):
    if not CPID['PID']: CPID['PID'] =  "{}-{}-{}".format(PGLOG['HOSTNAME'], get_command(), PGLOG['CURUID'])
    cmdstr = "{} {} at {}\n".format(CPID['PID'], break_long_string(CPID['CMD'], 40, "...", 1), current_datetime())
    fn = "{}/{}".format(PGLOG['LOGPATH'], PGLOG['EMLFILE'])
-   f = open(fn, 'a')
-   f.write(cmdstr + emlmsg)
-   f.close()
+   try:
+      f = open(fn, 'a')
+      f.write(cmdstr + emlmsg)
+      f.close()
+   except FileNotFoundError as e:
+       print(e)
 
 #
 # Function: cmdlog(cmdline)
@@ -1277,6 +1280,7 @@ def set_common_pglog():
    PGLOG['ALLROOTS'] = '|'.join([PGLOG['OLDAROOT'], PGLOG['OLDBROOT'], PGLOG['ARCHROOT'], PGLOG['BACKROOT']])
    SETPGLOG("USRHOME", "/glade/u/home")
    SETPGLOG("DSSHOME", "/glade/u/home/gdexdata")
+   SETPGLOG("GDEXHOME", "/data/local")
    SETPGLOG("ADDPATH", "")
    SETPGLOG("ADDLIB",  "")
    SETPGLOG("OTHPATH", "")
@@ -1378,7 +1382,7 @@ def set_common_pglog():
 
    # empty diretory for HOST-sync
 
-   PGLOG['TMPSYNC'] = PGLOG['DSSDBHM'] + "/tmp/.syncdir" 
+   PGLOG['TMPSYNC'] = PGLOG['DSSDBHM'] + "/tmp/.syncdir"
 
    os.umask(2)
 
