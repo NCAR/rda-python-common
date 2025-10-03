@@ -335,7 +335,7 @@ def send_python_email(subject = None, receiver = None, msg = None, sender = None
       emlmsg['Cc'] = cc
       logmsg += " Cc'd " + cc
    if not subject: subject = "Message from {}-{}".format(PGLOG['HOSTNAME'], get_command())
-   if not re.search(r'!$', subject): subject += '!'
+   # if not re.search(r'!$', subject): subject += '!'
    emlmsg['Subject'] = subject
    if CPID['CPID']: logmsg += " in " + CPID['CPID']
    logmsg += ", Subject: {}\n".format(subject)
