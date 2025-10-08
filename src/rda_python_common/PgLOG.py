@@ -28,6 +28,7 @@ import time
 import socket
 import shutil
 import traceback
+from unidecode import unidecode
 
 # define some constants for logging actions
 MSGLOG = (0x00001)   # logging message
@@ -1579,33 +1580,18 @@ def check_process_host(hosts, chost = None, mflag = None, pinfo = None, logact =
    return ret
 
 #
-# convert special characters
+# convert special foreign characters into ascii characters
 #
 def convert_chars(name, default = 'X'):
 
    if not name: return default
-   if re.match(r'^[a-zA-Z0-9]+$', name): return name  # no need convert
+   if re.match(r'^[a-zA-Z0-9]+$', name): return name  # conversion not needed
 
-   z = ord('z')
-   newchrs = ochrs = ''
-   for i in range(len(name)):
-      ch = name[i]
-      if re.match(r'^[a-zA-Z0-9]$', ch):
-         newchrs += ch
-      elif (ch == ' ' or ch == '_') and newchrs:
-         newchrs += '_'
-      elif ord(ch) > z and ochrs != None:
-         if not ochrs:
-            ochrs = None
-            with open(PGLOG['DSSHOME'] + "/lib/ExtChrs.txt", "r") as CHR:
-               ochrs = CHR.readline()
-               nchrs = CHR.readline()
-            if ochrs is None: continue
-         idx = ochrs.find(ch)
-         if idx >= 0: newchrs += nchrs[idx]
+   decoded_name = unidecode(name).strip()
+   cleaned_name = re.sub(r'[^a-zA-Z0-9]', '', decoded_name)
 
-   if newchrs:
-      return newchrs
+   if cleaned_name:
+      return cleaned_name
    else:
       return default
 
