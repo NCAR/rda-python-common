@@ -1583,13 +1583,11 @@ def check_process_host(hosts, chost = None, mflag = None, pinfo = None, logact =
 # convert special foreign characters into ascii characters
 #
 def convert_chars(name, default = 'X'):
-
    if not name: return default
    if re.match(r'^[a-zA-Z0-9]+$', name): return name  # conversion not needed
-
    decoded_name = unidecode(name).strip()
-   cleaned_name = re.sub(r'[^a-zA-Z0-9]', '', decoded_name)
-
+   # remove any non-alphanumeric and non-underscore characters
+   cleaned_name = re.sub(r'[^a-zA-Z0-9_]', '', decoded_name)
    if cleaned_name:
       return cleaned_name
    else:
