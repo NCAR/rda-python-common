@@ -1683,9 +1683,16 @@ def send_request_email_notice(pgrqst, errmsg, fcount, rstat, readyfile = None, p
 
    for ekey in einfo:
       if ekey == 'CCD' and not einfo['CCD']:
-         ebuf = re.sub(r'Cc:\s*<CCD>\s*', '', ebuf)
+         mp = r'Cc:\s*<CCD>\s*'
+         rep = ''
       else:
-         ebuf = re.sub(r'<{}>'.format(ekey), einfo[ekey], ebuf)
+         mp = r'<{}>'.format(ekey)
+         rep = einfo[ekey]
+         if rep is None:
+            PgLOG.pglog("{}.{}: None ekey value for reuqest email".format(pgrqst['rindex'], ekey),
+                        PGOPT['wrnlog']|PgLOG.FRCLOG)
+            rep = ''
+      ebuf = re.sub(mp, rep, ebuf)
 
    if PgLOG.PGLOG['DSCHECK'] and not pgpart:
       tbl = "dscheck"
