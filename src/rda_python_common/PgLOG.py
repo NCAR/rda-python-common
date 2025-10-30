@@ -1349,12 +1349,12 @@ def set_common_pglog():
    SETPGLOG("DSSWEB",  PGLOG['LOCDATA']+"/web")
    SETPGLOG("DSWHOME", PGLOG['DSSWEB']+"/datasets")     # datast web root path
    PGLOG['HOMEROOTS'] = "{}|{}".format(PGLOG['DSSHOME'], PGLOG['DSWHOME'])
-   SETPGLOG("DSSDATA", "/glade/campaign/collections/gdex")                     # dss data root path
+   SETPGLOG("DSSDATA", "/glade/campaign/collections/gdex")  # dss data root path
    SETPGLOG("DSDHOME", PGLOG['DSSDATA']+"/data")        # dataset data root path
    SETPGLOG("DECSHOME", PGLOG['DSSDATA']+"/decsdata")   # dataset decsdata root path
    SETPGLOG("DSHHOME", PGLOG['DECSHOME']+"/helpfiles")  # dataset help root path
    SETPGLOG("UPDTWKP", PGLOG['DSSDATA']+"/work")        # dsupdt work root path
-   SETPGLOG("TRANSFER", PGLOG['DSSDATA']+"/transfer")   # dss transfer partition
+   SETPGLOG("TRANSFER", "/lustre/desc1/gdex/transfer")   # dss transfer partition
    SETPGLOG("RQSTHOME", PGLOG['TRANSFER']+"/dsrqst")    # dsrqst home
    SETPGLOG("DSAHOME",  "")                    # dataset data alternate root path
    SETPGLOG("RQSTALTH", "")                   # alternate dsrqst path
