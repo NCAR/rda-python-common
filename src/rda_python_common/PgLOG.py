@@ -1333,7 +1333,7 @@ def set_common_pglog():
    if valid_command(sm): SETPGLOG("EMLSEND", f"{sm} -t")   # send email command
    SETPGLOG("DBGLEVEL", '')                             # debug level
    SETPGLOG("DBGPATH", PGLOG['DSSDBHM']+"/log")         # path to debug log file
-   SETPGLOG("OBJCTBKT", "rda-data")                     # default Bucket on Object Store
+   SETPGLOG("OBJCTBKT", "gdex-data")                     # default Bucket on Object Store
    SETPGLOG("BACKUPEP", "gdex-quasar")                   # default Globus Endpoint on Quasar
    SETPGLOG("DRDATAEP", "gdex-quasar-drdata")            # DRDATA Globus Endpoint on Quasar
    SETPGLOG("DBGFILE", "pgdss.dbg")                     # debug file name
@@ -1353,8 +1353,9 @@ def set_common_pglog():
    SETPGLOG("DSDHOME", PGLOG['DSSDATA']+"/data")        # dataset data root path
    SETPGLOG("DECSHOME", PGLOG['DSSDATA']+"/decsdata")   # dataset decsdata root path
    SETPGLOG("DSHHOME", PGLOG['DECSHOME']+"/helpfiles")  # dataset help root path
-   SETPGLOG("UPDTWKP", PGLOG['DSSDATA']+"/work")        # dsupdt work root path
-   SETPGLOG("TRANSFER", "/lustre/desc1/gdex/transfer")   # dss transfer partition
+   SETPGLOG("UPDTWKP", "/lustre/desc1/gdex/work")        # dsupdt work root path
+   SETPGLOG("GDEXWORK", "/lustre/desc1/gdex/work")   # gdex work path
+   SETPGLOG("TRANSFER", "/lustre/desc1/gdex/transfer")   # gdex transfer path
    SETPGLOG("RQSTHOME", PGLOG['TRANSFER']+"/dsrqst")    # dsrqst home
    SETPGLOG("DSAHOME",  "")                    # dataset data alternate root path
    SETPGLOG("RQSTALTH", "")                   # alternate dsrqst path
