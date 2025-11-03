@@ -1353,7 +1353,7 @@ def set_common_pglog():
    SETPGLOG("DSDHOME", PGLOG['DSSDATA']+"/data")        # dataset data root path
    SETPGLOG("DECSHOME", PGLOG['DSSDATA']+"/decsdata")   # dataset decsdata root path
    SETPGLOG("DSHHOME", PGLOG['DECSHOME']+"/helpfiles")  # dataset help root path
-   SETPGLOG("UPDTWKP", "/lustre/desc1/gdex/work")        # dsupdt work root path
+   SETPGLOG("UPDTWKP", PGLOG['DSSDATA']+"/work")        # dsupdt work root path
    SETPGLOG("GDEXWORK", "/lustre/desc1/gdex/work")   # gdex work path
    SETPGLOG("TRANSFER", "/lustre/desc1/gdex/transfer")   # gdex transfer path
    SETPGLOG("RQSTHOME", PGLOG['TRANSFER']+"/dsrqst")    # dsrqst home
