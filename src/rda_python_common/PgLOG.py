@@ -1353,16 +1353,16 @@ def set_common_pglog():
    SETPGLOG("DSDHOME", PGLOG['DSSDATA']+"/data")        # dataset data root path
    SETPGLOG("DECSHOME", PGLOG['DSSDATA']+"/decsdata")   # dataset decsdata root path
    SETPGLOG("DSHHOME", PGLOG['DECSHOME']+"/helpfiles")  # dataset help root path
-   SETPGLOG("UPDTWKP", PGLOG['DSSDATA']+"/work")        # dsupdt work root path
-   SETPGLOG("GDEXWORK", "/lustre/desc1/gdex/work")   # gdex work path
-   SETPGLOG("TRANSFER", "/lustre/desc1/gdex/transfer")   # gdex transfer path
+   SETPGLOG("GDEXWORK", "/lustre/desc1/gdex/work")      # gdex work path
+   SETPGLOG("UPDTWKP", PGLOG['GDEXWORK'])               # dsupdt work root path
+   SETPGLOG("TRANSFER", "/lustre/desc1/gdex/transfer")  # gdex transfer path
    SETPGLOG("RQSTHOME", PGLOG['TRANSFER']+"/dsrqst")    # dsrqst home
-   SETPGLOG("DSAHOME",  "")                    # dataset data alternate root path
+   SETPGLOG("DSAHOME",  "")                   # dataset data alternate root path
    SETPGLOG("RQSTALTH", "")                   # alternate dsrqst path
    SETPGLOG("GPFSHOST", "")                   # empty if writable to glade
-   SETPGLOG("PSQLHOST", "rda-db.ucar.edu")                   # host name for postgresql server
-   SETPGLOG("SLMHOSTS", "cheyenne:casper")                   # host names for SLURM server
-   SETPGLOG("PBSHOSTS", "cheyenne:casper")                   # host names for PBS server
+   SETPGLOG("PSQLHOST", "rda-db.ucar.edu")    # host name for postgresql server
+   SETPGLOG("SLMHOSTS", "cheyenne:casper")    # host names for SLURM server
+   SETPGLOG("PBSHOSTS", "cron:casper")        # host names for PBS server
    SETPGLOG("CHKHOSTS", "")                   # host names for dscheck daemon
    SETPGLOG("PVIEWHOST", "pgdb02.k8s.ucar.edu")             # host name for view only postgresql server
    SETPGLOG("PMISCHOST", "pgdb03.k8s.ucar.edu")             # host name for misc postgresql server
@@ -1374,12 +1374,12 @@ def set_common_pglog():
    os.environ['history'] = '0'
 
    # set tmp dir
-   SETPGLOG("TMPPATH", "/glade/campaign/collections/gdex/work/ptmp")
+   SETPGLOG("TMPPATH", PGLOG['GDEXWORK'] + "/ptmp")
    if not PGLOG['TMPPATH']: PGLOG['TMPPATH'] = "/data/ptmp"
 
    SETPGLOG("TMPDIR", '')
    if not PGLOG['TMPDIR']:
-      PGLOG['TMPDIR'] = "/glade/campaign/collections/gdex/scratch/" + PGLOG['CURUID']
+      PGLOG['TMPDIR'] = "/lustre/desc1/gdex/scratch/" + PGLOG['CURUID']
       os.environ['TMPDIR'] = PGLOG['TMPDIR']
 
    # empty diretory for HOST-sync
