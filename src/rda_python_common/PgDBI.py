@@ -15,6 +15,7 @@
 import os
 import re
 import time
+import hvac
 from datetime import datetime
 import psycopg2 as PgSQL
 from psycopg2.extras import execute_values
@@ -41,6 +42,7 @@ DBPORTS = {
 }
 
 DBPASS = {}
+DBBAOS = {}
 
 # hard coded db names for given schema names
 DBNAMES = {
@@ -103,6 +105,7 @@ SETPGDBI("SQLPATH", PgLOG.PGLOG['DSSDBHM'] + "/sql")
 SETPGDBI("VWNAME", PGDBI['DEFSC'])
 SETPGDBI("VWPORT", 0)
 SETPGDBI("VWSOCK", '')
+SETPGDBI("BAOURL", 'https://bao.k8s.ucar.edu/')
 
 PGDBI['DBSHOST'] = PgLOG.get_short_host(PGDBI['DBHOST'])
 PGDBI['DEFSHOST'] = PgLOG.get_short_host(PGDBI['DEFHOST'])
@@ -2228,29 +2231,76 @@ def pgname(str, sign = None):
 def get_pgpass_password():
 
    if PGDBI['PWNAME']: return PGDBI['PWNAME']
+   pwname = get_baopassword()
+   if not pwname: pwname = get_pgpassword()
+
+   return pwname
+
+def get_pgpassword():
+   
    if not DBPASS: read_pgpass()
    dbport = str(PGDBI['DBPORT']) if PGDBI['DBPORT'] else '5432'
    pwname = DBPASS.get((PGDBI['DBSHOST'], dbport, PGDBI['DBNAME'], PGDBI['LNNAME']))
    if not pwname: pwname = DBPASS.get((PGDBI['DBHOST'], dbport, PGDBI['DBNAME'], PGDBI['LNNAME']))
-
    return pwname
+
+def get_baopassword():
+
+   dbname = PGDBI['DBNAME']
+   if dbname not in DBBAOS: read_openbao()
+   return DBBAOS[dbname].get(PGDBI['LNNAME'])
 
 #
 # Reads the .pgpass file and returns a dictionary of credentials.
 #
 def read_pgpass():
 
+   pgpass = PgLOG.PGLOG['DSSHOME'] + '/.pgpass'
+   if not op.isfile(pgpass): pgpass = PgLOG.PGLOG['GDEXHOME'] + '/.pgpass'
    try:
-      with open(PgLOG.PGLOG['DSSHOME'] + '/.pgpass', "r") as f:
+      with open(pgpass, "r") as f:
          for line in f:
             line = line.strip()
             if not line or line.startswith("#"): continue
             dbhost, dbport, dbname, lnname, pwname = line.split(":")
             DBPASS[(dbhost, dbport, dbname, lnname)] = pwname
-   except FileNotFoundError:
-      with open(PgLOG.PGLOG['GDEXHOME'] + '/.pgpass', "r") as f:
-         for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"): continue
-            dbhost, dbport, dbname, lnname, pwname = line.split(":")
-            DBPASS[(dbhost, dbport, dbname, lnname)] = pwname
+   except Exception as e:
+       PgLOG.pglog(str(e), PGDBI['ERRLOG'])
+
+#
+# Reads OpenBao secrets and returns a dictionary of credentials.
+#
+def read_openbao():
+
+   dbname = PGDBI['DBNAME']
+   BDBAOS[dbname] = {}
+   url = 'https://bao.k8s.ucar.edu/'
+   baopath = {
+      'ivaddb' : 'gdex/pgdb03',
+      'ispddb' : 'gdex/pgdb03',
+      'default' : 'gdex/pgdb01'
+   }
+   dbpath = baopath[dbname] if dbname in baopath else baopath['default']
+   client = hvac.Client(url=PGDBI.get('BAOURL'))
+   client.token = PgLOG.PGLOG.get('BAOTOKEN')
+   try:
+      read_response = client.secrets.kv.v2.read_secret_version(
+          path = get_bao_path(dbpath),
+          mount_point='kv',
+          raise_on_deleted_version=False
+      )
+   except Exception as e:
+      return PgLOG.pglog(str(e), PGDBI['ERRLOG'])
+
+   baos = read_response['data']['data']
+   for key in baos:
+      ms = re.match(r'^(\w*)pass(\w*)$', key)
+      if not ms: continue
+      baoname = None
+      pre = ms.group(1)
+      suf = ms.group(2)
+      if pre:
+         baoname =  'metadata' if pre == 'meta' else pre
+      elif suf == 'word':
+         baoname = 'postgres'
+      if baoname: DBBAOS[dbname][baoname] = baos[key] 

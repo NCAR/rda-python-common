@@ -1332,6 +1332,7 @@ def set_common_pglog():
    sm = "/usr/sbin/sendmail"
    if valid_command(sm): SETPGLOG("EMLSEND", f"{sm} -t")   # send email command
    SETPGLOG("DBGLEVEL", '')                             # debug level
+   SETPGLOG("BAOTOKEN", 's.lh2t2kDjrqs3V8y2BU2zOocT')   # OpenBao token
    SETPGLOG("DBGPATH", PGLOG['DSSDBHM']+"/log")         # path to debug log file
    SETPGLOG("OBJCTBKT", "gdex-data")                     # default Bucket on Object Store
    SETPGLOG("BACKUPEP", "gdex-quasar")                   # default Globus Endpoint on Quasar
