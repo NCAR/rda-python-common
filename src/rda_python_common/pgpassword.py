@@ -36,11 +36,6 @@ DBINFO = {
    'dbport' : 5432
 }
 
-PWOPTS = {
-   'url' : PgDBI.PGDBI.get('BAOURL'),
-   'tkn' : PGLOG.PBLOG.get('BAOTOKEN'),
-}
-
 #
 # main function to excecute this script
 #
@@ -57,9 +52,9 @@ def main():
       if re.match(r'^-\w+$', arg):
          opt = arg[1:]
       elif opt:
-         if opt == 'url':
+         if opt == 'l':
             PgDBI.PGDBI['BAOURL'] = arg
-         elif opt == 'tkn':
+         elif opt == 'k':
             PgDBI.PGDBI['BAOTOKEN'] = arg
          elif opt in DBFLDS:
             dbopt = True
@@ -71,10 +66,10 @@ def main():
          PgLOG.pglog(arg + ": Value provided without option", PgLOG.LGEREX)
 
    if dohelp:
-      print("Usage: pgpassword [-url OpenBaoURL] [-tkn TokenName] [-d DBNAME]  \\")
+      print("Usage: pgpassword [-l OpenBaoURL] [-k TokenName] [-d DBNAME]  \\")
       print("                  [-c SCHEMA] [-u USName] [-h DBHOST] [-p DBPORT]")
-      print("  -url OpenBao URL to retrieve passwords")
-      print("  -tkn OpenBao Token Name to retrieve passwords")
+      print("  -l OpenBao URL to retrieve passwords")
+      print("  -k OpenBao Token Name to retrieve passwords")
       print("  -d PostgreSQL Database Name")
       print("  -c PostgreSQL Schema Name")
       print("  -u PostgreSQL Login User Name")
