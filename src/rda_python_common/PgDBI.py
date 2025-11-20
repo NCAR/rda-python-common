@@ -2273,7 +2273,7 @@ def read_pgpass():
 def read_openbao():
 
    dbname = PGDBI['DBNAME']
-   BDBAOS[dbname] = {}
+   DBBAOS[dbname] = {}
    url = 'https://bao.k8s.ucar.edu/'
    baopath = {
       'ivaddb' : 'gdex/pgdb03',
@@ -2285,7 +2285,7 @@ def read_openbao():
    client.token = PgLOG.PGLOG.get('BAOTOKEN')
    try:
       read_response = client.secrets.kv.v2.read_secret_version(
-          path = get_bao_path(dbpath),
+          path=dbpath,
           mount_point='kv',
           raise_on_deleted_version=False
       )
