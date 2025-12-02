@@ -78,8 +78,8 @@ class PgDBI(PgLOG):
       self.SETPGDBI("PWNAME", None)
       self.SETPGDBI("DBHOST", (os.environ['DSSDBHOST'] if os.environ.get('DSSDBHOST') else self.PGDBI['DEFHOST']))
       self.SETPGDBI("DBPORT", 0)
-      self.SETPGDBI("ERRLOG", PgLOG.LOGERR)   # default error logact
-      self.SETPGDBI("EXITLG", PgLOG.LGEREX)   # default exit logact
+      self.SETPGDBI("ERRLOG", self.LOGERR)   # default error logact
+      self.SETPGDBI("EXITLG", self.LGEREX)   # default exit logact
       self.SETPGDBI("DBSOCK", '')
       self.SETPGDBI("DATADIR", self.PGLOG['DSDHOME'])
       self.SETPGDBI("BCKPATH", self.PGLOG['DSSDBHM'] + "/backup")
@@ -89,12 +89,12 @@ class PgDBI(PgLOG):
       self.SETPGDBI("VWSOCK", '')
       self.SETPGDBI("BAOURL", 'https://bao.k8s.ucar.edu/')
       
-      self.PGDBI['DBSHOST'] = PgLOG.get_short_host(self.PGDBI['DBHOST'])
-      self.PGDBI['DEFSHOST'] = PgLOG.get_short_host(self.PGDBI['DEFHOST'])
+      self.PGDBI['DBSHOST'] = self.get_short_host(self.PGDBI['DBHOST'])
+      self.PGDBI['DEFSHOST'] = self.get_short_host(self.PGDBI['DEFHOST'])
       self.PGDBI['VWHOST'] = self.PGLOG['PVIEWHOST']
       self.PGDBI['MSHOST'] = self.PGLOG['PMISCHOST']
-      self.PGDBI['VWSHOST'] = PgLOG.get_short_host(self.PGDBI['VWHOST'])
-      self.PGDBI['MSSHOST'] = PgLOG.get_short_host(self.PGDBI['MSHOST'])
+      self.PGDBI['VWSHOST'] = self.get_short_host(self.PGDBI['VWHOST'])
+      self.PGDBI['MSSHOST'] = self.get_short_host(self.PGDBI['MSHOST'])
       self.PGDBI['VWHOME'] =  (VIEWHOMES[self.PGLOG['HOSTNAME']] if self.PGLOG['HOSTNAME'] in VIEWHOMES else VIEWHOMES['default'])
       self.PGDBI['SCPATH'] = None       # additional schema path for set search_path
       self.PGDBI['VHSET'] = 0
@@ -258,7 +258,7 @@ class PgDBI(PgLOG):
       # update dscheck record only if it is still locked by the current process
       record = {}
       record['chktime'] = int(time.time())
-      if logact&PgLOG.EXITLG:
+      if logact&self.EXITLG:
          record['status'] = "E"
          record['pid'] = 0   # release lock
       if dflags:
@@ -267,7 +267,7 @@ class PgDBI(PgLOG):
       else:
          record['dflags'] = ''
       if errmsg:
-         errmsg = PgLOG.break_long_string(errmsg, 512, None, 50, None, 50, 25)
+         errmsg = self.break_long_string(errmsg, 512, None, 50, None, 50, 25)
          if pgrec['tcount'] > 1: errmsg = "Try {}: {}".format(pgrec['tcount'], errmsg)
          record['errmsg'] = errmsg
       return self.pgupdt("dscheck", record, cnd, logact)
@@ -277,11 +277,11 @@ class PgDBI(PgLOG):
       retry = " Sleep {}(sec) & ".format(sleep) if sleep else " "
       if sqlstr:
          if sqlstr.find("Retry ") == 0:
-            retry += "the {} ".format(PgLOG.int2order(pgcnt+1))
+            retry += "the {} ".format(self.int2order(pgcnt+1))
          elif sleep:
-            retry += "the {} Retry: \n".format(PgLOG.int2order(pgcnt+1))
+            retry += "the {} Retry: \n".format(self.int2order(pgcnt+1))
          elif pgcnt:
-            retry = " Error the {} Retry: \n".format(PgLOG.int2order(pgcnt))
+            retry = " Error the {} Retry: \n".format(self.int2order(pgcnt))
          else:
             retry = "\n"
          sqlstr = retry + sqlstr
@@ -289,10 +289,10 @@ class PgDBI(PgLOG):
          sqlstr = ''
       if vals: sqlstr += " with values: " + str(vals)
       if dberror: sqlstr = "{}\n{}".format(dberror, sqlstr)
-      if logact&PgLOG.EXITLG and self.PGLOG['DSCHECK']: self.record_dscheck_error(sqlstr, logact)
+      if logact&self.EXITLG and self.PGLOG['DSCHECK']: self.record_dscheck_error(sqlstr, logact)
       self.pglog(sqlstr, logact)
       if sleep: time.sleep(sleep)   
-      return PgLOG.FAILURE    # if not exit in self.pglog()
+      return self.FAILURE    # if not exit in self.pglog()
 
    # try to add a new table according the table not exist error
    def try_add_table(self, dberror, logact):
@@ -333,7 +333,7 @@ class PgDBI(PgLOG):
 
    # local function to log query error
    def check_dberror(self, pgerr, pgcnt, sqlstr, ary, logact = self.PGDBI['ERRLOG']):
-      ret = PgLOG.FAILURE
+      ret = self.FAILURE
       pgcode = pgerr.pgcode
       pgerror = pgerr.pgerror
       dberror = "{} {}".format(pgcode, pgerror) if pgcode and pgerror else str(pgerr)
@@ -341,27 +341,27 @@ class PgDBI(PgLOG):
          if not pgcode:
             if self.PGDBI['DBNAME'] == self.PGDBI['DEFDB'] and self.PGDBI['DBSHOST'] != self.PGDBI['DEFSHOST']:
                self.default_dbinfo()
-               self.qelog(dberror, 0, "Retry Connecting to {} on {}".format(self.PGDBI['DBNAME'], self.PGDBI['DBHOST']), ary, pgcnt, PgLOG.MSGLOG)
+               self.qelog(dberror, 0, "Retry Connecting to {} on {}".format(self.PGDBI['DBNAME'], self.PGDBI['DBHOST']), ary, pgcnt, self.MSGLOG)
             else:
-               self.qelog(dberror, 5+5*pgcnt, "Retry Connecting", ary, pgcnt, PgLOG.LOGWRN)
-            return PgLOG.SUCCESS
+               self.qelog(dberror, 5+5*pgcnt, "Retry Connecting", ary, pgcnt, self.LOGWRN)
+            return self.SUCCESS
          elif re.match(r'^(08|57)', pgcode):
-            self.qelog(dberror, 0, "Retry Connecting", ary, pgcnt, PgLOG.LOGWRN)
+            self.qelog(dberror, 0, "Retry Connecting", ary, pgcnt, self.LOGWRN)
             self.pgconnect(1, pgcnt + 1)
-            return (PgLOG.FAILURE if not self.pgdb else PgLOG.SUCCESS)
+            return (self.FAILURE if not self.pgdb else self.SUCCESS)
          elif re.match(r'^55', pgcode):  #  try to lock again
-            self.qelog(dberror, 10, "Retry Locking", ary, pgcnt, PgLOG.LOGWRN)
-            return PgLOG.SUCCESS
+            self.qelog(dberror, 10, "Retry Locking", ary, pgcnt, self.LOGWRN)
+            return self.SUCCESS
          elif pgcode == '25P02':   #  try to add table
-            self.qelog(dberror, 0, "Rollback transaction", ary, pgcnt, PgLOG.LOGWRN)
+            self.qelog(dberror, 0, "Rollback transaction", ary, pgcnt, self.LOGWRN)
             self.pgdb.rollback()
-            return PgLOG.SUCCESS
-         elif pgcode == '42P01' and logact&PgLOG.ADDTBL:   #  try to add table
-            self.qelog(dberror, 0, "Retry after adding a table", ary, pgcnt, PgLOG.LOGWRN)
+            return self.SUCCESS
+         elif pgcode == '42P01' and logact&self.ADDTBL:   #  try to add table
+            self.qelog(dberror, 0, "Retry after adding a table", ary, pgcnt, self.LOGWRN)
             self.try_add_table(dberror, logact)
-            return PgLOG.SUCCESS
-      if logact&PgLOG.DOLOCK and pgcode and re.match(r'^55\w\w\w$', pgcode):
-         logact &= ~PgLOG.EXITLG   # no exit for lock error
+            return self.SUCCESS
+      if logact&self.DOLOCK and pgcode and re.match(r'^55\w\w\w$', pgcode):
+         logact &= ~self.EXITLG   # no exit for lock error
       return self.qelog(dberror, 0, sqlstr, ary, pgcnt, logact)
 
    # return hash reference to postgresql batch mode command and output file name
@@ -405,11 +405,11 @@ class PgDBI(PgLOG):
          if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, sqlstr)
          try:
             self.PGLOG['PGDBBUF'] = self.pgdb = PgSQL.connect(**config)
-            if reconnect: self.pglog("{} Reconnected at {}".format(sqlstr, self.current_datetime()), PgLOG.MSGLOG|PgLOG.FRCLOG)
+            if reconnect: self.pglog("{} Reconnected at {}".format(sqlstr, self.current_datetime()), self.MSGLOG|self.FRCLOG)
             if autocommit: self.pgdb.autocommit = autocommit
             return self.pgdb
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, self.PGDBI['EXITLG']): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, self.PGDBI['EXITLG']): return self.FAILURE
             pgcnt += 1
 
    # return a PostgreSQL cursor upon success
@@ -417,7 +417,7 @@ class PgDBI(PgLOG):
       pgcur = None
       if not self.pgdb:
          self.pgconnect()
-         if not self.pgdb: return PgLOG.FAILURE
+         if not self.pgdb: return self.FAILURE
       pgcnt = 0
       while True:
          try:
@@ -430,7 +430,7 @@ class PgDBI(PgLOG):
             if pgcnt == 0 and self.pgdb.closed:
                self.pgconnect(1)
             elif not self.check_dberror(pgerr, pgcnt, '', None, self.PGDBI['EXITLG']):
-               return PgLOG.FAILURE
+               return self.FAILURE
          else:
             break
          pgcnt += 1
@@ -455,7 +455,7 @@ class PgDBI(PgLOG):
          pgrecs = self.pgmget('information_schema.columns', fields, condition, logact)
          cnt = len(pgrecs['col']) if pgrecs else 0
          if cnt: break
-         if pgcnt == 0 and logact&PgLOG.ADDTBL:
+         if pgcnt == 0 and logact&self.ADDTBL:
             self.add_new_table(tablename, logact = logact)
          else:
             return self.pglog(tablename + ": Table not exists", logact)
@@ -469,7 +469,7 @@ class PgDBI(PgLOG):
             if re.match(r'^nextval\(', dflt):
                dflt = 0
             else:
-               dflt = PgDBI.check_default_value(dflt, isint)
+               dflt = self.check_default_value(dflt, isint)
          elif pgrecs['nil'][i] == 'YES':
             dflt = None
          elif isint:
@@ -505,7 +505,7 @@ class PgDBI(PgLOG):
    # local fucntion: insert prepare pgadd()/pgmadd() for given table and field names
    # according to options of multiple place holds and returning sequence id
    def prepare_insert(self, tablename, fields, multi = True, getid = None):   
-      strfld = PgDBI.pgnames(fields, '.', ',')
+      strfld = self.pgnames(fields, '.', ',')
       if multi:
          strplc = "(" + ','.join(['%s']*len(fields)) + ")"
       else:
@@ -546,33 +546,33 @@ class PgDBI(PgLOG):
    # insert one record into tablename
    # tablename: add record for one table name each call
    #    record: hash reference with keys as field names and hash values as field values
-   # return PgLOG.SUCCESS or PgLOG.FAILURE
+   # return self.SUCCESS or self.FAILURE
    def pgadd(self, tablename, record, logact = self.PGDBI['ERRLOG'], getid = None):
       if not record: return self.pglog("Nothing adds to " + tablename, logact)
-      if logact&PgLOG.DODFLT: self.prepare_default(tablename, record, logact)
-      if logact&PgLOG.AUTOID and not getid: getid = self.pgsequence(tablename, logact)
+      if logact&self.DODFLT: self.prepare_default(tablename, record, logact)
+      if logact&self.AUTOID and not getid: getid = self.pgsequence(tablename, logact)
       sqlstr = self.prepare_insert(tablename, list(record), True, getid)
       values = tuple(record.values())
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "Insert: " + str(values))
       ret = acnt = pgcnt = 0
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          try:
             pgcur.execute(sqlstr, values)
             acnt = 1
             if getid:
                ret = pgcur.fetchone()[0]
             else:
-               ret = PgLOG.SUCCESS
+               ret = self.SUCCESS
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, values, logact): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, values, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "pgadd: 1 record added to " + tablename + ", return " + str(ret))
-      if(logact&PgLOG.ENDLCK):
+      if(logact&self.ENDLCK):
          self.endtran()
       elif self.curtran:
          self.curtran += acnt
@@ -582,11 +582,11 @@ class PgDBI(PgLOG):
    # insert multiple records into tablename
    # tablename: add records for one table name each call
    #   records: dict with field names as keys and each value is a list of field values
-   #  return PgLOG.SUCCESS or PgLOG.FAILURE
+   #  return self.SUCCESS or self.FAILURE
    def pgmadd(self, tablename, records, logact = self.PGDBI['ERRLOG'], getid = None):
       if not records: return self.pglog("Nothing to insert to table " + tablename, logact)
-      if logact&PgLOG.DODFLT: self.prepare_defaults(tablename, records, logact)
-      if logact&PgLOG.AUTOID and not getid: getid = self.pgsequence(tablename, logact)
+      if logact&self.DODFLT: self.prepare_defaults(tablename, records, logact)
+      if logact&self.AUTOID and not getid: getid = self.pgsequence(tablename, logact)
       multi = True if getid else False
       sqlstr = self.prepare_insert(tablename, list(records), multi, getid)   
       v = records.values()
@@ -598,7 +598,7 @@ class PgDBI(PgLOG):
       count = pgcnt = 0
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          if getid:
             while count < cntrow:
                record = values[count]
@@ -607,19 +607,19 @@ class PgDBI(PgLOG):
                   ids.append(pgcur.fetchone()[0])
                   count += 1
                except PgSQL.Error as pgerr:
-                  if not self.check_dberror(pgerr, pgcnt, sqlstr, record, logact): return PgLOG.FAILURE
+                  if not self.check_dberror(pgerr, pgcnt, sqlstr, record, logact): return self.FAILURE
                   break
          else:
             try:
                execute_values(pgcur, sqlstr, values, page_size=self.PGDBI['PGSIZE'])
                count = cntrow
             except PgSQL.Error as pgerr:
-               if not self.check_dberror(pgerr, pgcnt, sqlstr, values[0], logact): return PgLOG.FAILURE
+               if not self.check_dberror(pgerr, pgcnt, sqlstr, values[0], logact): return self.FAILURE
          if count >= cntrow: break
          pgcnt += 1
       pgcur.close()
       if(self.PGLOG['DBGLEVEL']): self.pgdbg(1000, "pgmadd: {} of {} record(s) added to {}".format(count, cntrow, tablename))
-      if(logact&PgLOG.ENDLCK):
+      if(logact&self.ENDLCK):
          self.endtran()
       elif self.curtran:
          self.curtran += count
@@ -646,7 +646,7 @@ class PgDBI(PgLOG):
             for fld in cndflds:
                sqlstr += " {} {}=%s".format(sep, fld)
                sep = 'AND'
-         if logact&PgLOG.DOLOCK:
+         if logact&self.DOLOCK:
             self.starttran()
             sqlstr += " FOR UPDATE"
       elif fields:
@@ -665,12 +665,12 @@ class PgDBI(PgLOG):
       if fields and condition and not re.search(r'limit 1$', condition, re.I): condition += " LIMIT 1"
       sqlstr = self.prepare_select(tablenames, fields, condition, None, logact)
       if fields and not re.search(r'(^|\s)limit 1($|\s)', sqlstr, re.I): sqlstr += " LIMIT 1"
-      ucname = True if logact&PgLOG.UCNAME else False
+      ucname = True if logact&self.UCNAME else False
       pgcnt = 0
       record = {}
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          try:
             pgcur.execute(sqlstr)
             vals = pgcur.fetchone()
@@ -684,7 +684,7 @@ class PgDBI(PgLOG):
                   record[colname] = val
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
@@ -704,12 +704,12 @@ class PgDBI(PgLOG):
    #        are in a list. All lists are the same length with missing values set to None
    def pgmget(self, tablenames, fields, condition = None, logact = self.PGDBI['ERRLOG']):
       sqlstr = self.prepare_select(tablenames, fields, condition, None, logact)
-      ucname = True if logact&PgLOG.UCNAME else False
+      ucname = True if logact&self.UCNAME else False
       count = pgcnt = 0
       records = {}
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          try:
             pgcur.execute(sqlstr)
             rowvals = pgcur.fetchall()
@@ -727,7 +727,7 @@ class PgDBI(PgLOG):
                   records[colname] = vals
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
@@ -746,14 +746,14 @@ class PgDBI(PgLOG):
       if not cnddict: return self.pglog("Miss condition dict values to query " + tablenames, logact)
       sqlstr = self.prepare_select(tablenames, fields, None, list(cnddict), logact)
       if fields and not re.search(r'limit 1$', sqlstr, re.I): sqlstr += " LIMIT 1"
-      ucname = True if logact&PgLOG.UCNAME else False   
+      ucname = True if logact&self.UCNAME else False   
       values = tuple(cnddict.values())
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "Query from {} for {}".format(tablenames, values))
       pgcnt = 0
       record = {}
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          try:
             pgcur.execute(sqlstr, values)
             vals = pgcur.fetchone()
@@ -767,7 +767,7 @@ class PgDBI(PgLOG):
                   record[colname] = val
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, values, logact): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, values, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
@@ -790,7 +790,7 @@ class PgDBI(PgLOG):
       if not fields: return self.pglog("Nothing to query " + tablenames, logact)
       if not cnddicts: return self.pglog("Miss condition dict values to query " + tablenames, logact)
       sqlstr = self.prepare_select(tablenames, fields, None, list(cnddicts), logact)
-      ucname = True if logact&PgLOG.UCNAME else False   
+      ucname = True if logact&self.UCNAME else False   
       v = cnddicts.values()
       values = list(zip(*v))
       cndcnt = len(values)
@@ -803,7 +803,7 @@ class PgDBI(PgLOG):
       records = {}
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          while ccnt < cndcnt:
             cndvals = values[ccnt]
             try:
@@ -829,7 +829,7 @@ class PgDBI(PgLOG):
                            if vals[j] and vals[j][-1] == ' ': vals[j] = vals[j].rstrip()
                      records[colname].extend(vals)
             except PgSQL.Error as pgerr:
-               if not self.check_dberror(pgerr, pgcnt, sqlstr, cndvals, logact): return PgLOG.FAILURE
+               if not self.check_dberror(pgerr, pgcnt, sqlstr, cndvals, logact): return self.FAILURE
                break
          if ccnt >= cndcnt: break
          pgcnt += 1
@@ -843,13 +843,13 @@ class PgDBI(PgLOG):
       strset = []
       # build set string
       for fld in fields:
-         strset.append("{}=%s".format(PgDBI.pgname(fld, '.')))
+         strset.append("{}=%s".format(self.pgname(fld, '.')))
       strflds = ",".join(strset)
       # build condition string
       if not condition:
          cndset = []
          for fld in cndflds:
-            cndset.append("{}=%s".format(PgDBI.pgname(fld, '.')))
+            cndset.append("{}=%s".format(self.pgname(fld, '.')))
          condition = " AND ".join(cndset)   
       sqlstr = "UPDATE {} SET {} WHERE {}".format(tablename, strflds, condition)
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, sqlstr)   
@@ -864,24 +864,24 @@ class PgDBI(PgLOG):
       if not record: self.pglog("Nothing updates to " + tablename, logact)
       if not condition or isinstance(condition, int): self.pglog("Miss condition to update " + tablename, logact)
       sqlstr = self.prepare_update(tablename, list(record), condition)
-      if logact&PgLOG.DODFLT: self.prepare_default(tablename, record, logact)
+      if logact&self.DODFLT: self.prepare_default(tablename, record, logact)
       values = tuple(record.values())
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "Update {} for {}".format(tablename, values))
       ucnt = pgcnt = 0
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          try:
             pgcur.execute(sqlstr, values)
             ucnt = pgcur.rowcount
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, values, logact): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, values, logact): return self.FAILURE
          else:
             break
          pgcnt += 1   
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "pgupdt: {} record(s) updated to {}".format(ucnt, tablename))
-      if(logact&PgLOG.ENDLCK):
+      if(logact&self.ENDLCK):
          self.endtran()
       elif self.curtran:
          self.curtran += ucnt
@@ -896,26 +896,26 @@ class PgDBI(PgLOG):
    def pghupdt(self, tablename, record, cnddict, logact = self.PGDBI['ERRLOG']):
       if not record: self.pglog("Nothing updates to " + tablename, logact)
       if not cnddict or isinstance(cnddict, int): self.pglog("Miss condition to update to " + tablename, logact)
-      if logact&PgLOG.DODFLT: self.prepare_defaults(tablename, record, logact)
+      if logact&self.DODFLT: self.prepare_defaults(tablename, record, logact)
       sqlstr = self.prepare_update(tablename, list(record), None, list(cnddict))
       values = tuple(record.values()) + tuple(cnddict.values())
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "Update {} for {}".format(tablename, values))
       ucnt = count = pgcnt = 0
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          try:
             pgcur.execute(sqlstr, values)
             count += 1
             ucnt = pgcur.rowcount
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, values, logact): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, values, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "pghupdt: {}/{} record(s) updated to {}".format(ucnt, tablename))
-      if(logact&PgLOG.ENDLCK):
+      if(logact&self.ENDLCK):
          self.endtran()
       elif self.curtran:
          self.curtran += ucnt
@@ -930,7 +930,7 @@ class PgDBI(PgLOG):
    def pgmupdt(self, tablename, records, cnddicts, logact = self.PGDBI['ERRLOG']):
       if not records: self.pglog("Nothing updates to " + tablename, logact)
       if not cnddicts or isinstance(cnddicts, int): self.pglog("Miss condition to update to " + tablename, logact)
-      if logact&PgLOG.DODFLT: self.prepare_defaults(tablename, records, logact)
+      if logact&self.DODFLT: self.prepare_defaults(tablename, records, logact)
       sqlstr = self.prepare_update(tablename, list(records), None, list(cnddicts))
       fldvals = tuple(records.values())
       cntrow = len(fldvals[0])
@@ -944,18 +944,18 @@ class PgDBI(PgLOG):
       ucnt = pgcnt = 0
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          try:
             execute_batch(pgcur, sqlstr, values, page_size=self.PGDBI['PGSIZE'])
             ucnt = cntrow
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, values[0], logact): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, values[0], logact): return self.FAILURE
          else:
             break
          pgcnt += 1
       pgcur.close()
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "pgmupdt: {} record(s) updated to {}".format(ucnt, tablename))
-      if(logact&PgLOG.ENDLCK):
+      if(logact&self.ENDLCK):
          self.endtran()
       elif self.curtran:
          self.curtran += ucnt
@@ -984,18 +984,18 @@ class PgDBI(PgLOG):
       dcnt = pgcnt = 0
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          try:
             pgcur.execute(sqlstr)
             dcnt = pgcur.rowcount
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "pgdel: {} record(s) deleted from {}".format(dcnt, tablename))
-      if logact&PgLOG.ENDLCK:
+      if logact&self.ENDLCK:
          self.endtran()
       elif self.curtran:
          self.curtran += dcnt
@@ -1014,18 +1014,18 @@ class PgDBI(PgLOG):
       dcnt = pgcnt = 0
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          try:
             pgcur.execute(sqlstr, values)
             dcnt = pgcur.rowcount
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, values, logact): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, values, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "pghdel: {} record(s) deleted from {}".format(dcnt, tablename))
-      if logact&PgLOG.ENDLCK:
+      if logact&self.ENDLCK:
          self.endtran()
       elif self.curtran:
          self.curtran += dcnt
@@ -1047,18 +1047,18 @@ class PgDBI(PgLOG):
       dcnt = pgcnt = 0
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          try:
             execute_batch(pgcur, sqlstr, values, page_size=self.PGDBI['PGSIZE'])
             dcnt = len(values)
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, values[0], logact): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, values[0], logact): return self.FAILURE
          else:
             break
          pgcnt += 1
       pgcur.close()
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "pgmdel: {} record(s) deleted from {}".format(dcnt, tablename))
-      if logact&PgLOG.ENDLCK:
+      if logact&self.ENDLCK:
          self.endtran()
       elif self.curtran:
          self.curtran += dcnt
@@ -1072,18 +1072,18 @@ class PgDBI(PgLOG):
       ret = pgcnt = 0
       while True:
          pgcur = self.pgcursor()
-         if not pgcur: return PgLOG.FAILURE
+         if not pgcur: return self.FAILURE
          try:
             pgcur.execute(sqlstr)
             ret = pgcur.rowcount
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return PgLOG.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "pgexec: {} record(s) affected for {}".format(ret, sqlstr))
-      if logact&PgLOG.ENDLCK:
+      if logact&self.ENDLCK:
          self.endtran()
       elif self.curtran:
          self.curtran += ret
@@ -1116,7 +1116,7 @@ class PgDBI(PgLOG):
    def pgcheck(self, tablename, logact = 0):
       condition = self.table_condition(tablename)
       ret = self.pgget('information_schema.tables', None, condition, logact)
-      return (PgLOG.SUCCESS if ret else PgLOG.FAILURE)
+      return (self.SUCCESS if ret else self.FAILURE)
 
    # group of functions to check parent records and add an empty one if missed
    # return user.uid upon success, 0 otherwise
@@ -1131,15 +1131,15 @@ class PgDBI(PgLOG):
       pgrec = self.pgget("dssdb.user", "uid", "userno = {} AND {}".format(userno, datecond), self.PGDBI['ERRLOG'])
       if pgrec: return pgrec['uid']   
       if userno not in self.NMISSES:
-         self.pglog("{}: Scientist ID NOT on file for {}".format(userno, date), PgLOG.LGWNEM)
+         self.pglog("{}: Scientist ID NOT on file for {}".format(userno, date), self.LGWNEM)
          self.NMISSES.append(userno)
       # check again if a user is on file with different date range
       pgrec = self.pgget("dssdb.user", "uid", "userno = {}".format(userno), self.PGDBI['ERRLOG'])
       if pgrec: return pgrec['uid']
       pgrec = self.ucar_user_info(userno)
       if not pgrec: pgrec = {'userno' : userno, 'stat_flag' : 'M'}
-      uid = self.pgadd("dssdb.user", pgrec, (self.PGDBI['EXITLG']|PgLOG.AUTOID))
-      if uid: self.pglog("{}: Scientist ID Added as user.uid = {}".format(userno, uid), PgLOG.LGWNEM)
+      uid = self.pgadd("dssdb.user", pgrec, (self.PGDBI['EXITLG']|self.AUTOID))
+      if uid: self.pglog("{}: Scientist ID Added as user.uid = {}".format(userno, uid), self.LGWNEM)
       return uid
 
    # return user.uid upon success, 0 otherwise
@@ -1153,15 +1153,15 @@ class PgDBI(PgLOG):
       pgrec = self.pgget("dssdb.user", "uid", "logname = '{}' AND {}".format(logname, datecond), self.PGDBI['ERRLOG'])
       if pgrec: return pgrec['uid']   
       if logname not in self.LMISSES:
-         self.pglog("{}: UCAR Login Name NOT on file for {}".format(logname, date), PgLOG.LGWNEM)
+         self.pglog("{}: UCAR Login Name NOT on file for {}".format(logname, date), self.LGWNEM)
          self.LMISSES.append(logname)
       # check again if a user is on file with different date range
       pgrec = self.pgget("dssdb.user", "uid", "logname = '{}'".format(logname), self.PGDBI['ERRLOG'])
       if pgrec: return pgrec['uid']
       pgrec = self.ucar_user_info(0, logname)
       if not pgrec: pgrec = {'logname' : logname, 'stat_flag' : 'M'}
-      uid = self.pgadd("dssdb.user", pgrec, (self.PGDBI['EXITLG']|PgLOG.AUTOID))
-      if uid: self.pglog("{}: UCAR Login Name Added as user.uid = {}".format(logname, uid), PgLOG.LGWNEM)
+      uid = self.pgadd("dssdb.user", pgrec, (self.PGDBI['EXITLG']|self.AUTOID))
+      if uid: self.pglog("{}: UCAR Login Name Added as user.uid = {}".format(logname, uid), self.LGWNEM)
       return uid
 
    # get ucar user info for given userno (scientist number) or logname (Ucar login)
@@ -1180,7 +1180,7 @@ class PgDBI(PgLOG):
          'email' : "ucaremail",
          'phone' : "phoneno"
       }
-      buf = self.pgsystem("pgperson " + ("-uid {}".format(userno) if userno else "-username {}".format(logname)), PgLOG.LOGWRN, 20)
+      buf = self.pgsystem("pgperson " + ("-uid {}".format(userno) if userno else "-username {}".format(logname)), self.LOGWRN, 20)
       if not buf: return None
       pgrec = {}
       for line in buf.split('\n'):
@@ -1207,7 +1207,7 @@ class PgDBI(PgLOG):
       else:
          val = None
       pgrec['org_type'] = self.get_org_type(val, pgrec['email'])
-      buf = self.pgsystem("pgusername {}".format(pgrec['logname']), PgLOG.LOGWRN, 20)
+      buf = self.pgsystem("pgusername {}".format(pgrec['logname']), self.LOGWRN, 20)
       if not buf: return pgrec
       for line in buf.split('\n'):
          ms = re.match(r'^(.+)<=>(.*)$', line)
@@ -1261,7 +1261,7 @@ class PgDBI(PgLOG):
       pgrec = self.pgget("wuser", "wuid", "{} AND {}".format(emcond, datecond), self.PGDBI['ERRLOG'])
       if pgrec: return pgrec['wuid']   
       # check again if a user is on file with different date range
-      pgrec = self.pgget("wuser", "wuid", emcond, PgLOG.LOGERR)
+      pgrec = self.pgget("wuser", "wuid", emcond, self.LOGERR)
       if pgrec: return pgrec['wuid']
       # now add one in
       record = {'email' : email}
@@ -1287,12 +1287,12 @@ class PgDBI(PgLOG):
          record['stat_flag'] = 'M'
          record['org_type'] = self.get_org_type('', email)
          record['country'] = self.email_to_country(email)
-      wuid = self.pgadd("wuser", record, PgLOG.LOGERR|PgLOG.AUTOID)
+      wuid = self.pgadd("wuser", record, self.LOGERR|self.AUTOID)
       if wuid:
          if pgrec:
-            self.pglog("{}({}, {}) Added as wuid({})".format(email, pgrec['lname'], pgrec['fname'], wuid), PgLOG.LGWNEM)
+            self.pglog("{}({}, {}) Added as wuid({})".format(email, pgrec['lname'], pgrec['fname'], wuid), self.LGWNEM)
          else:
-            self.pglog("{} Added as wuid({})".format(email, wuid), PgLOG.LGWNEM)
+            self.pglog("{} Added as wuid({})".format(email, wuid), self.LGWNEM)
          return wuid   
       return 0
    
@@ -1311,9 +1311,9 @@ class PgDBI(PgLOG):
          pgrec['stat_flag'] = 'A'
          pgrec['org_type'] = self.get_org_type(pgrec['org_type'], pgrec['email'])
          pgrec['country'] = self.email_to_country(pgrec['email'])
-         wuid = self.pgadd("wuser", pgrec, self.PGDBI['EXITLG']|PgLOG.AUTOID)
+         wuid = self.pgadd("wuser", pgrec, self.PGDBI['EXITLG']|self.AUTOID)
          if wuid > 0:
-            self.pglog("CDP User {} added as wuid = {} in RDADB".format(username, wuid), PgLOG.LGWNEM)
+            self.pglog("CDP User {} added as wuid = {} in RDADB".format(username, wuid), self.LGWNEM)
       return wuid
 
    # for given email to get long country name
@@ -1410,7 +1410,7 @@ class PgDBI(PgLOG):
                scnt = 0
       if scnt > 0:
          s = 's' if scnt > 1 else ''
-         self.pglog("Need {} value{} after sign '{}'".format(scnt, s, osign), PgLOG.LGEREX)
+         self.pglog("Need {} value{} after sign '{}'".format(scnt, s, osign), self.LGEREX)
       if wcnt > 1: wcnd = "({})".format(wcnd)
       if cnt > 0:
          if cnt > 1:
@@ -1486,22 +1486,22 @@ class PgDBI(PgLOG):
 
    #  build customized email from get_email()
    def build_customized_email(self, table, field, condition, subject, logact = 0):
-      estat = PgLOG.FAILURE
+      estat = self.FAILURE
       msg = self.get_email()
       if not msg: return estat
       sender = self.PGLOG['CURUID'] + "@ucar.edu"
       receiver = self.PGLOG['EMLADDR'] if self.PGLOG['EMLADDR'] else (self.PGLOG['CURUID'] + "@ucar.edu")
       if receiver.find(sender) < 0: self.add_carbon_copy(sender, 1)
       cc = self.PGLOG['CCDADDR']
-      if not subject: subject = "Message from {}-{}".format(self.PGLOG['HOSTNAME'], PgLOG.get_command())
+      if not subject: subject = "Message from {}-{}".format(self.PGLOG['HOSTNAME'], self.get_command())
       estat = self.send_python_email(subject, receiver, msg, sender, cc, logact)
-      if estat != PgLOG.SUCCESS:
+      if estat != self.SUCCESS:
          ebuf = "From: {}\nTo: {}\n".format(sender, receiver)
          if cc: ebuf += "Cc: {}\n".format(cc)
          ebuf += "Subject: {}!\n\n{}\n".format(subject, msg)
          if self.PGLOG['EMLSEND']:
             estat = self.send_customized_email(f"{table}.{condition}", ebuf, logact)
-         if estat != PgLOG.SUCCESS:
+         if estat != self.SUCCESS:
             estat = cache_customized_email(table, field, condition, ebuf, 0)
             if estat and logact:
                self.pglog("Email {} cached to '{}.{}' for {}, Subject: {}".format(receiver, table, field, condition, subject), logact)
@@ -1527,11 +1527,11 @@ class PgDBI(PgLOG):
          datecond = "end_date IS NULL"
          date = time.strftime("%Y-%m-%d", (time.gmtime() if self.PGLOG['GMTZ'] else time.localtime()))
       emcnd = "email = '{}'".format(email)
-      pgrec = self.pgget("ruser", fields, "{} AND {}".format(emcnd, datecond), PgLOG.LGEREX)
+      pgrec = self.pgget("ruser", fields, "{} AND {}".format(emcnd, datecond), self.LGEREX)
       if not pgrec:   # missing user record add one in
-         self.pglog("{}: email not in ruser for {}".format(email, date), PgLOG.LOGWRN)
+         self.pglog("{}: email not in ruser for {}".format(email, date), self.LOGWRN)
          # check again if a user is on file with different date range
-         pgrec = self.pgget("ruser", fields, emcnd, PgLOG.LGEREX)
+         pgrec = self.pgget("ruser", fields, emcnd, self.LGEREX)
          if not pgrec and self.pgget("dssdb.user", '', emcnd):
             fields = "lstname, fstname"
             if opts&1: fields += ", email"
@@ -1539,7 +1539,7 @@ class PgDBI(PgLOG):
             if opts&4: fields += ", country"
             if opts&8: fields += ", email valid_email"
             if opts&16: fields += ", org_name org"
-            pgrec = self.pgget("dssdb.user", fields, emcnd, PgLOG.LGEREX)
+            pgrec = self.pgget("dssdb.user", fields, emcnd, self.LGEREX)
       if pgrec and pgrec['lstname']:
          pgrec['name'] = (pgrec['fstname'].capitalize() + ' ') if pgrec['fstname'] else ''
          pgrec['name'] += pgrec['lstname'].capitalize()
@@ -1552,12 +1552,12 @@ class PgDBI(PgLOG):
    # cache a customized email for sending it later
    def cache_customized_email(self, table, field, condition, emlmsg, logact = 0):
       pgrec = {field: emlmsg}
-      if self.pgupdt(table, pgrec, condition, logact|PgLOG.ERRLOG):
-         if logact: self.pglog("Email cached to '{}.{}' for {}".format(table, field, condition), logact&(~PgLOG.EXITLG))
-         return PgLOG.SUCCESS
+      if self.pgupdt(table, pgrec, condition, logact|self.ERRLOG):
+         if logact: self.pglog("Email cached to '{}.{}' for {}".format(table, field, condition), logact&(~self.EXITLG))
+         return self.SUCCESS
       else:
          msg = "cache email to '{}.{}' for {}".format(table, field, condition)
-         self.pglog(f"Error {msg}, try to send directly now", logact|PgLOG.ERRLOG)
+         self.pglog(f"Error {msg}, try to send directly now", logact|self.ERRLOG)
          return self.send_customized_email(msg, emlmsg, logact)
 
    # otype: user organization type
@@ -1634,7 +1634,7 @@ class PgDBI(PgLOG):
       down = self.get_system_downs(hostname, logact)
       msg = None
       if down['start'] and down['curtime'] >= (down['start'] - offset):
-         match = PgDBI.match_down_path(path, down['path'])
+         match = self.match_down_path(path, down['path'])
          if match:
             msg = "{}{}:".format(hostname, ('-' + path) if match > 0 else '')
             if not down['active']:
@@ -1661,8 +1661,8 @@ class PgDBI(PgLOG):
    def validate_decs_group(self, cmdname, logname, skpdsg):
       if skpdsg and self.PGLOG['DSGHOSTS'] and re.search(r'(^|:){}'.format(self.PGLOG['HOSTNAME']), self.PGLOG['DSGHOSTS']): return
       if not logname: lgname = self.PGLOG['CURUID']
-      if not self.pgget("dssgrp", '', "logname = '{}'".format(logname), PgLOG.LGEREX):
-         self.pglog("{}: Must be in DECS Group to run '{}' on {}".format(logname, cmdname, self.PGLOG['HOSTNAME']), PgLOG.LGEREX)
+      if not self.pgget("dssgrp", '', "logname = '{}'".format(logname), self.LGEREX):
+         self.pglog("{}: Must be in DECS Group to run '{}' on {}".format(logname, cmdname, self.PGLOG['HOSTNAME']), self.LGEREX)
 
    # add an allusage record into yearly table; create a new yearly table if it does not exist
    # year    -- year to identify the yearly table, evaluated if missing
@@ -1705,17 +1705,17 @@ class PgDBI(PgLOG):
                   record[key] = records[key][i]
                cnd = "email = '{}' AND dsid = '{}' AND method = '{}' AND date = '{}' AND time = '{}'".format(
                       record['email'], record['dsid'], record['method'], record['date'], record['time'])
-               pgrec = self.pgget(tname, 'aidx', cnd, PgLOG.LOGERR|PgLOG.ADDTBL)
+               pgrec = self.pgget(tname, 'aidx', cnd, self.LOGERR|self.ADDTBL)
                if docheck == 4 and not pgrec:
                   cnd = "email IS NULL AND dsid = '{}' AND method = '{}' AND date = '{}' AND time = '{}'".format(
                          record['dsid'], record['method'], record['date'], record['time'])
-                  pgrec = self.pgget(tname, 'aidx', cnd, PgLOG.LOGERR|PgLOG.ADDTBL)
+                  pgrec = self.pgget(tname, 'aidx', cnd, self.LOGERR|self.ADDTBL)
                if pgrec:
-                  if docheck > 1: acnt += self.pgupdt(tname, record, "aidx = {}".format(pgrec['aidx']), PgLOG.LGEREX)
+                  if docheck > 1: acnt += self.pgupdt(tname, record, "aidx = {}".format(pgrec['aidx']), self.LGEREX)
                else:
-                  acnt += self.pgadd(tname, record, PgLOG.LGEREX|PgLOG.ADDTBL)
+                  acnt += self.pgadd(tname, record, self.LGEREX|self.ADDTBL)
          else:
-            acnt = pgmadd(tname, records, PgLOG.LGEREX|PgLOG.ADDTBL)
+            acnt = pgmadd(tname, records, self.LGEREX|self.ADDTBL)
       else:
          record = records
          if not ('quarter' in record and record['quarter']):
@@ -1724,15 +1724,15 @@ class PgDBI(PgLOG):
          if docheck:
             cnd = "email = '{}' AND dsid = '{}' AND method = '{}' AND date = '{}' AND time = '{}'".format(
                    record['email'], record['dsid'], record['method'], record['date'], record['time'])
-            pgrec = self.pgget(tname, 'aidx', cnd, PgLOG.LOGERR|PgLOG.ADDTBL)
+            pgrec = self.pgget(tname, 'aidx', cnd, self.LOGERR|self.ADDTBL)
             if docheck == 4 and not pgrec:
                cnd = "email IS NULL AND dsid = '{}' AND method = '{}' AND date = '{}' AND time = '{}'".format(
                       record['dsid'], record['method'], record['date'], record['time'])
-               pgrec = self.pgget(tname, 'aidx', cnd, PgLOG.LOGERR|PgLOG.ADDTBL)
+               pgrec = self.pgget(tname, 'aidx', cnd, self.LOGERR|self.ADDTBL)
             if pgrec:
-               if docheck > 1: acnt = self.pgupdt(tname, record, "aidx = {}".format(pgrec['aidx']), PgLOG.LGEREX)
+               if docheck > 1: acnt = self.pgupdt(tname, record, "aidx = {}".format(pgrec['aidx']), self.LGEREX)
                return acnt
-         acnt = self.pgadd(tname, record, PgLOG.LGEREX|PgLOG.ADDTBL)
+         acnt = self.pgadd(tname, record, self.LGEREX|self.ADDTBL)
       return acnt
 
    # add a wusage record into yearly table; create a new yearly table if it does not exist
@@ -1762,13 +1762,13 @@ class PgDBI(PgLOG):
             for i in range(cnt):
                ms = re.search(r'-(\d+)-', str(records['date_read'][i]))
                if ms: records['quarter'][i] = (int((int(ms.group(1))-1)/3)+1)
-         acnt = pgmadd(tname, records, PgLOG.LGEREX|PgLOG.ADDTBL)
+         acnt = pgmadd(tname, records, self.LGEREX|self.ADDTBL)
       else:
          record = records
          if 'quarter' not in record:
             ms = re.search(r'-(\d+)-', str(record['date_read']))
             if ms: record['quarter'] = (int((int(ms.group(1))-1)/3)+1)
-         acnt = self.pgadd(tname, record, PgLOG.LGEREX|PgLOG.ADDTBL)
+         acnt = self.pgadd(tname, record, self.LGEREX|self.ADDTBL)
       return acnt
 
    # double quote a array of single or sign delimited strings

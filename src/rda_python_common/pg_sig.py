@@ -71,7 +71,7 @@ class PgSIG(PgDBI):
                break
          if valid == 0:
             vuser = ', '.join(self.VUSERS)
-            self.pglog("{}: must be '{}' to run '{}'  in Daemon mode".format(user, vuser, aname), PgLOG.LGEREX) 
+            self.pglog("{}: must be '{}' to run '{}'  in Daemon mode".format(user, vuser, aname), self.LGEREX) 
 
    # turn this process into a daemon
    # aname - application name, or daemon name
@@ -88,8 +88,8 @@ class PgSIG(PgDBI):
          self.pglog("***************** WARNNING **************************\n" +
                      "**  {} is running as PID={}\n".format(dstr, pid) +
                      "**  You need stop it before starting a new one!\n" +
-                     "*****************************************************" , PgLOG.WARNLG)
-         self.pglog("{} is already running as PID={}".format(dstr, pid), PgLOG.FRCLOG|PgLOG.MSGLOG)
+                     "*****************************************************" , self.WARNLG)
+         self.pglog("{} is already running as PID={}".format(dstr, pid), self.FRCLOG|self.MSGLOG)
          sys.exit(0)
       if mproc > 1: self.PGSIG['MPROC'] = mproc
       if bproc > 1: self.PGSIG['BPROC'] = bproc
@@ -102,7 +102,7 @@ class PgSIG(PgDBI):
       logmsg = "{}({}) started".format(dstr, msg)
       if logon: logmsg += " With Logging On"
       if pid > 0:
-         self.pglog(logmsg, PgLOG.WARNLG)
+         self.pglog(logmsg, self.WARNLG)
          sys.exit(0)
       os.setsid()
       os.umask(0)
@@ -120,10 +120,10 @@ class PgSIG(PgDBI):
       sys.stdin = open(self.SDUMP['DEF'])
       self.cmdlog("{} By {}".format(logmsg, self.PGSIG['STRTM']))
       if logon:
-         self.PGLOG['LOGMASK'] &= ~(PgLOG.WARNLG|PgLOG.EMLLOG)   # turn off warn/email in daemon
+         self.PGLOG['LOGMASK'] &= ~(self.WARNLG|self.EMLLOG)   # turn off warn/email in daemon
          self.set_dump()
       else:
-         self.PGLOG['LOGMASK'] &= ~(PgLOG.LGWNEM)   # turn off log/warn/email in daemon
+         self.PGLOG['LOGMASK'] &= ~(self.LGWNEM)   # turn off log/warn/email in daemon
          self.set_dump(self.SDUMP['DEF'])
       self.PGLOG['BCKGRND'] = 1   # make sure the background flag is always on
       self.pgdisconnect(1)   # disconnect database in daemon
@@ -147,8 +147,8 @@ class PgSIG(PgDBI):
    # stop daemon and log the ending info
    def stop_daemon(self, msg):
       msg = " with " + msg if msg else ''
-      self.PGLOG['LOGMASK'] |= PgLOG.MSGLOG    # turn on logging before daemon stops
-      self.pglog("{} Started at {}, Stopped gracefully{} by {}".format(self.PGSIG['DSTR'], self.PGSIG['STRTM'], msg, self.current_datetime()), PgLOG.LOGWRN)
+      self.PGLOG['LOGMASK'] |= self.MSGLOG    # turn on logging before daemon stops
+      self.pglog("{} Started at {}, Stopped gracefully{} by {}".format(self.PGSIG['DSTR'], self.PGSIG['STRTM'], msg, self.current_datetime()), self.LOGWRN)
 
    # check if a daemon is running already
    # aname - application name for the daemon
@@ -162,7 +162,7 @@ class PgSIG(PgDBI):
       else:
          pcmd = "ps -C {} -f | grep ' 1 '".format(aname)
          mp = "^\s*\w+\s+(\d+)\s+1\s+"
-      buf = self.pgsystem(pcmd, PgLOG.LOGWRN, 20+1024)
+      buf = self.pgsystem(pcmd, self.LOGWRN, 20+1024)
       if buf:
          cpid = os.getpid()
          lines = buf.split('\n')
@@ -185,7 +185,7 @@ class PgSIG(PgDBI):
       else:
          pcmd = "ps -C {} -f".format(aname)
          mp = "^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
-      buf = self.pgsystem(pcmd, PgLOG.LOGWRN, 20+1024)
+      buf = self.pgsystem(pcmd, self.LOGWRN, 20+1024)
       if not buf: return 0
       cpids = [os.getpid(), os.getppid()]
       pids = []
@@ -221,7 +221,7 @@ class PgSIG(PgDBI):
       return 0
 
    # validate if the current process is a single one. Quit if not
-   def validate_single_process(self, aname, uname = None, sargv = None, logact = PgLOG.LOGWRN):
+   def validate_single_process(self, aname, uname = None, sargv = None, logact = self.LOGWRN):
       pid = self.check_application(aname, uname, sargv)
       if pid:
          msg = aname
@@ -244,7 +244,7 @@ class PgSIG(PgDBI):
       else:
          pcmd = "ps -C {} -f".format(aname)
          mp = "^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
-      buf = self.pgsystem(pcmd, PgLOG.LOGWRN, 20+1024)
+      buf = self.pgsystem(pcmd, self.LOGWRN, 20+1024)
       if not buf: return 0
       dpids = [os.getpid(), os.getppid()]
       pids = []
@@ -287,7 +287,7 @@ class PgSIG(PgDBI):
       return ccnt
 
    # validate if the running processes reach the limit for the given app; Quit if yes
-   def validate_multiple_process(self, aname, plimit, uname = None, sargv = None, logact = PgLOG.LOGWRN):
+   def validate_multiple_process(self, aname, plimit, uname = None, sargv = None, logact = self.LOGWRN):
       pcnt = self.check_multiple_application(aname, uname, sargv)
       if pcnt >= plimit:
          msg = aname
@@ -308,9 +308,9 @@ class PgSIG(PgDBI):
             if e.errno == errno.EAGAIN: 
                os.sleep(5)
             else:
-               self.pglog("{}: {}".format(dstr, str(e)), PgLOG.LGEREX)
+               self.pglog("{}: {}".format(dstr, str(e)), self.LGEREX)
                break
-      self.pglog("{}: too many tries (10) for os.fork()".format(dstr), PgLOG.LGEREX)
+      self.pglog("{}: too many tries (10) for os.fork()".format(dstr), self.LGEREX)
 
    # process the predefined signals
    def signal_catch(self, signum, frame):
@@ -324,7 +324,7 @@ class PgSIG(PgDBI):
          sname = "<{} - signal.SIGQUIT - Quit>".format(signum)
       elif signum == signal.SIGUSR1:
          linfo = 'Logging On'
-         if self.PGLOG['LOGMASK']&PgLOG.MSGLOG: linfo += ' & Debugging On'
+         if self.PGLOG['LOGMASK']&self.MSGLOG: linfo += ' & Debugging On'
          sname = "<{} - signal.SIGUSR1 - {}>".format(signum, linfo)
       elif signum == signal.SIGUSR2:
          if self.PGLOG['DBGLEVEL']:
@@ -336,14 +336,14 @@ class PgSIG(PgDBI):
          sname = "<{} - Signal Not Supports Yet>".format(signum)
       dumpon = 1 if self.SDUMP['OUT'] and self.SDUMP['OUT'] != self.SDUMP['DEF'] else 0
       if not dumpon: self.set_dump()
-      self.pglog("catches {} in {} {}".format(sname, tmp, self.PGSIG['DSTR']), PgLOG.LOGWRN|PgLOG.FRCLOG)
+      self.pglog("catches {} in {} {}".format(sname, tmp, self.PGSIG['DSTR']), self.LOGWRN|self.FRCLOG)
       if signum == signal.SIGUSR1:
-         if self.PGLOG['LOGMASK']&PgLOG.MSGLOG:
+         if self.PGLOG['LOGMASK']&self.MSGLOG:
             self.PGLOG['DBGLEVEL'] = 1000  # turn logon twice
          else:
-            self.PGLOG['LOGMASK'] |= PgLOG.MSGLOG   # turn on logging
+            self.PGLOG['LOGMASK'] |= self.MSGLOG   # turn on logging
       elif signum == signal.SIGUSR2:
-         self.PGLOG['LOGMASK'] &= ~(PgLOG.MSGLOG)   # turn off logging
+         self.PGLOG['LOGMASK'] &= ~(self.MSGLOG)   # turn off logging
          self.PGLOG['DBGLEVEL'] = 0   # turn off debugging
          self.set_dump(self.SDUMP['DEF'])
       else:
@@ -353,12 +353,12 @@ class PgSIG(PgDBI):
          for pid in self.CPIDS: kill_process(pid, signum)
 
    # wrapper function to call os.kill() logging caught error based on logact
-   # return PgLOG.SUCCESS is success; PgLog.FAILURE if not
+   # return self.SUCCESS is success; PgLog.FAILURE if not
    def kill_process(self, pid, signum, logact = 0):
       try:
          os.kill(pid, signum)
       except Exception as e:
-         ret = PgLOG.FAILURE
+         ret = self.FAILURE
          if logact:
             if type(signum) is int:
                sigstr = str(signum)
@@ -366,7 +366,7 @@ class PgSIG(PgDBI):
                sigstr = "{}-{}".format(signum.name, int(signum))
             self.pglog("Error pass signal {} to pid {}: {}".format(sigstr, pid, str(e)), logact)
       else:
-         ret = PgLOG.SUCCESS
+         ret = self.SUCCESS
       return ret
 
    # wait child process to finish
@@ -378,7 +378,7 @@ class PgSIG(PgDBI):
          except ChildProcessError as e:
             break  # no child process any more
          except Exception as e:
-            self.pglog("Error check child process: {}".format(str(e)), PgLOG.ERRLOG)
+            self.pglog("Error check child process: {}".format(str(e)), self.ERRLOG)
             break
          else:
             if dpid == 0:
@@ -389,7 +389,7 @@ class PgSIG(PgDBI):
 
    # send signal to daemon and exit
    def signal_daemon(self, sname, aname, uname):
-      dstr = "Daemon '{}'{} on {}".format(aname, ((" By " + uname) if uname else ""), PgLOG.PGLOG['HOSTNAME'])
+      dstr = "Daemon '{}'{} on {}".format(aname, ((" By " + uname) if uname else ""), self.PGLOG['HOSTNAME'])
       pid = self.check_daemon(aname, uname)
       if pid > 0:
          dstr += " (PID = {})".format(pid)
@@ -404,17 +404,17 @@ class PgSIG(PgDBI):
             msg = "Logging OFF"
             self.PGLOG['DBGLEVEL'] = 0
          else:
-            self.pglog("{}: invalid Signal for {}".format(sname, dstr), PgLOG.LGEREX)
+            self.pglog("{}: invalid Signal for {}".format(sname, dstr), self.LGEREX)
    
-         if self.kill_process(pid, signum, PgLOG.LOGERR) == PgLOG.SUCCESS:
-            self.pglog("{}: signal sent to {}".format(msg, dstr), PgLOG.LOGWRN|PgLOG.FRCLOG)
+         if self.kill_process(pid, signum, self.LOGERR) == self.SUCCESS:
+            self.pglog("{}: signal sent to {}".format(msg, dstr), self.LOGWRN|self.FRCLOG)
       else:
-         self.pglog(dstr + ": not running currently", PgLOG.LOGWRN|PgLOG.FRCLOG)
+         self.pglog(dstr + ": not running currently", self.LOGWRN|self.FRCLOG)
       sys.exit(0)
 
    # start a time child to run the command in case hanging
-   def timeout_command(self, cmd, logact = PgLOG.LOGWRN, cmdopt = 4):
-      if logact&PgLOG.EXITLG: logact &= ~PgLOG.EXITLG
+   def timeout_command(self, cmd, logact = self.LOGWRN, cmdopt = 4):
+      if logact&self.EXITLG: logact &= ~self.EXITLG
       self.pglog("> " + cmd, logact)
       if self.start_timeout_child(cmd, logact):
          self.pgsystem(cmd, logact, cmdopt)
@@ -422,7 +422,7 @@ class PgSIG(PgDBI):
 
    # start a timeout child process 
    # return: 1 - in child, 0 - in parent
-   def start_timeout_child(self, msg, logact = PgLOG.LOGWRN):
+   def start_timeout_child(self, msg, logact = self.LOGWRN):
       pid = self.process_fork(msg)
       if pid == 0:  # in child
          signal.signal(signal.SIGQUIT, signal_catch)   # catch quit signal only
@@ -439,13 +439,13 @@ class PgSIG(PgDBI):
          msg += ": timeout({} secs) in CPID {}".format(2*self.PGLOG['TIMEOUT'], pid)
          pids = self.kill_children(pid, 0)
          sys.sleep(6)
-         if self.kill_process(pid, signal.SIGKILL, PgLOG.LOGERR): pids.insert(0, pid)
+         if self.kill_process(pid, signal.SIGKILL, self.LOGERR): pids.insert(0, pid)
          if pids: msg += "\nProcess({}) Killed".format(','.join(map(str, pids)))
          self.pglog(msg, logact)
       return 0
 
    # kill children recursively start from the deepest and return the pids got killed
-   def kill_children(self, pid, logact = PgLOG.LOGWRN):
+   def kill_children(self, pid, logact = self.LOGWRN):
       buf = self.pgsystem("ps --ppid {} -o pid".format(pid), logact, 20)
       pids = []
       if buf:
@@ -457,16 +457,16 @@ class PgSIG(PgDBI):
             if not self.check_process(cid): continue
             cids = self.kill_children(cid, logact)
             if cids: pids = cids + pids
-            if self.kill_process(cid, signal.SIGKILL, logact) == PgLOG.SUCCESS: pids.insert(0, cid)
+            if self.kill_process(cid, signal.SIGKILL, logact) == self.SUCCESS: pids.insert(0, cid)
       if logact and len(pids): self.pglog("Process({}) Killed".format(','.join(map(str, pids))), logact)
       return pids
 
    # start a child process
    # pname - unique process name 
-   def start_child(self, pname, logact = PgLOG.LOGWRN, dowait = 0):
+   def start_child(self, pname, logact = self.LOGWRN, dowait = 0):
       if self.PGSIG['MPROC'] < 2: return 1  # no need child process
-      if logact&PgLOG.EXITLG: logact &= ~PgLOG.EXITLG
-      if logact&PgLOG.MSGLOG: logact |= PgLOG.FRCLOG
+      if logact&self.EXITLG: logact &= ~self.EXITLG
+      if logact&self.MSGLOG: logact |= self.FRCLOG
       if self.PGSIG['QUIT']:
          return self.pglog("{} is in QUIT mode, cannot start CPID for {}".format(self.PGSIG['DSTR'], pname), logact)
       elif len(self.CPIDS) >= self.PGSIG['MPROC']:
@@ -486,7 +486,7 @@ class PgSIG(PgDBI):
          self.pglog("{}: starts CPID {} for {}".format(self.PGSIG['DSTR'], pid, pname))
       else:
          signal.signal(signal.SIGQUIT, signal.SIG_DFL)   # turn off catch QUIT signal in child
-         self.PGLOG['LOGMASK'] &= ~PgLOG.WARNLG   # turn off warn in child
+         self.PGLOG['LOGMASK'] &= ~self.WARNLG   # turn off warn in child
          self.PGSIG['PPID'] = self.PGSIG['PID']
          self.PGSIG['PID'] = pid = os.getpid()
          self.PGSIG['MPROC'] = 1   # 1 in child process
@@ -508,9 +508,9 @@ class PgSIG(PgDBI):
    # dowait - 0 no wait, 1 wait all done, -1 wait only when all children are running
    # return the number of running processes if dowait == 0 or 1
    # return the number of none-running processes if dowait == -1
-   def check_child(self, pname, pid = 0, logact = PgLOG.LOGWRN, dowait = 0):
+   def check_child(self, pname, pid = 0, logact = self.LOGWRN, dowait = 0):
       if self.PGSIG['MPROC'] < 2: return 0   # no child process
-      if logact&PgLOG.EXITLG: logact &= ~PgLOG.EXITLG
+      if logact&self.EXITLG: logact &= ~self.EXITLG
       ccnt = i = 0
       if dowait < 0: ccnt = 1 if (pid or pname) else self.PGSIG['MPROC']
       while True:
@@ -560,13 +560,13 @@ class PgSIG(PgDBI):
       self.PGLOG['CMDTIME'] = self.PGSIG['WTIME'] = self.get_wait_time(wtime, 120, "Polling Wait Time")
       if self.PGSIG['MPROC'] > 1:
          self.cmdlog("starts non-daemon {}(ML={},WI={})".format(aname, self.PGSIG['MPROC'], self.PGSIG['WTIME']))
-         if not logon: self.PGLOG['LOGMASK'] &= ~PgLOG.MSGLOG  # turn off message logging
+         if not logon: self.PGLOG['LOGMASK'] &= ~self.MSGLOG  # turn off message logging
 
    # check one process id other than the current one if it is still running
    # pid - specified process id
    # pmsg - process message if given
    def check_process(self, pid):
-      buf = self.pgsystem("ps -p {} -o pid".format(pid), PgLOG.LGWNEX, 20)
+      buf = self.pgsystem("ps -p {} -o pid".format(pid), self.LGWNEX, 20)
       if buf:
          mp = r'^\s*{}$'.format(pid)
          lines = buf.split('\n')
@@ -575,13 +575,13 @@ class PgSIG(PgDBI):
       return 0
 
    # check a process id on give host
-   def check_host_pid(self, host, pid, pmsg = None, logact = PgLOG.LOGWRN):
+   def check_host_pid(self, host, pid, pmsg = None, logact = self.LOGWRN):
       cmd = 'rdaps'
       if host: cmd += " -h " + host
       cmd += " -p {}".format(pid)
       buf = self.pgsystem(cmd, logact, 276)   # 4+16+256
       if not buf: return (-1 if self.PGLOG['SYSERR'] else 0)
-      if pmsg: self.pglog(pmsg, logact&(~PgLOG.EXITLG))
+      if pmsg: self.pglog(pmsg, logact&(~self.EXITLG))
       return 1
 
    # check one process id on a given host name if it is still running, with default timeout
@@ -592,7 +592,7 @@ class PgSIG(PgDBI):
    # aname - application name
    #  pmsg - process message if given
    # return 1 if process is steal live, 0 died already, -1 error checking
-   def check_host_process(self, host, pid, ppid = 0, uname = None, aname = None, pmsg = None, logact = PgLOG.LOGWRN):
+   def check_host_process(self, host, pid, ppid = 0, uname = None, aname = None, pmsg = None, logact = self.LOGWRN):
       cmd = "rdaps"
       if host: cmd += " -h " + host
       if pid: cmd += " -p {}".format(pid)
@@ -601,7 +601,7 @@ class PgSIG(PgDBI):
       if aname: cmd += " -a " + aname
       buf = self.pgsystem(cmd, logact, 276)   # 4+16+256
       if not buf: return (-1 if self.PGLOG['SYSERR'] else 0)
-      if pmsg: self.pglog(pmsg, logact&(~PgLOG.EXITLG))
+      if pmsg: self.pglog(pmsg, logact&(~self.EXITLG))
       return 1
 
    # get a single pbs status record via qstat
@@ -621,7 +621,7 @@ class PgSIG(PgDBI):
          if chkt:
             if re.match(r'^Job ID', line):
                line = re.sub(r'^Job ID', 'JobID', line, 1)
-               ckeys = re.split(r'\s+', PgLOG.pgtrim(line))
+               ckeys = re.split(r'\s+', self.pgtrim(line))
                ckeys[1] = 'UserName'
                ckeys[3] = 'JobName'
                ckeys[7] = 'Reqd' + ckeys[7]
@@ -637,7 +637,7 @@ class PgSIG(PgDBI):
          elif chkd:
             if re.match(r'^-----', line): chkd = 0
          else:
-            vals = re.split(r'\s+', PgLOG.pgtrim(line))
+            vals = re.split(r'\s+', self.pgtrim(line))
             vcnt = len(vals)
             if vcnt == 1:
                if multiple:
@@ -659,7 +659,7 @@ class PgSIG(PgDBI):
    # check status of a pbs batch id
    #   bid - specified batch id
    # return hash of batch status, 0 if cannot check any more
-   def check_pbs_status(self, bid, logact = PgLOG.LOGWRN):
+   def check_pbs_status(self, bid, logact = self.LOGWRN):
       stat = {}
       buf = self.pgsystem("qhist -w -j {}".format(bid), logact, 20)
       if not buf: return stat
@@ -675,12 +675,12 @@ class PgSIG(PgDBI):
                line = re.sub(r'Avg CPU \(%\)', 'AvgCPU(%)', line, 1)
                line = re.sub(r'Elapsed \(h\)', 'WallTime(h)', line, 1)
                line = re.sub(r'Job Name', 'JobName', line, 1)
-               ckeys = re.split(r'\s+', PgLOG.pgtrim(line))
+               ckeys = re.split(r'\s+', self.pgtrim(line))
                ckeys[1] = 'UserName'
                kcnt = len(ckeys)
                chkt = 0
          else:
-            vals = re.split(r'\s+', PgLOG.pgtrim(line))
+            vals = re.split(r'\s+', self.pgtrim(line))
             for i in range(kcnt):
                stat[ckeys[i]] = vals[i]
             break   
@@ -689,7 +689,7 @@ class PgSIG(PgDBI):
    # check if a pbs batch id is live
    #   bid - specified batch id
    # return 1 if process is steal live, 0 died already or error checking
-   def check_pbs_process(self, bid, pmsg = None, logact = PgLOG.LOGWRN):
+   def check_pbs_process(self, bid, pmsg = None, logact = self.LOGWRN):
       stat = self.get_pbs_info(bid, 0, logact)
       ret = -1
       if stat:
@@ -702,7 +702,7 @@ class PgSIG(PgDBI):
             ret = 0
       elif pmsg:
          pmsg += ", Process Not Exists and returns -1"
-      if pmsg: self.pglog(pmsg, logact&~PgLOG.EXITLG)
+      if pmsg: self.pglog(pmsg, logact&~self.EXITLG)
       return ret
 
    # get wait time
@@ -715,7 +715,7 @@ class PgSIG(PgDBI):
          ret = int(ms.group(1))
          unit = ms.group(2)
       else:
-         self.pglog("{}: '{}' NOT in (D,H,M,S)".format(wtime, tmsg), PgLOG.LGEREX)
+         self.pglog("{}: '{}' NOT in (D,H,M,S)".format(wtime, tmsg), self.LGEREX)
       if unit != 'S':
          ret *= 60   # seconds in a minute
          if unit != 'M':
@@ -724,23 +724,23 @@ class PgSIG(PgDBI):
                ret *= 24   # hours in a day
       return ret   # in seconds
 
-   # start a background process and record its id; check PgLOG.pgsystem() in PgLOG.pm for
+   # start a background process and record its id; check self.pgsystem() in self.pm for
    # valid cmdopt values
-   def start_background(self, cmd, logact = PgLOG.LOGWRN, cmdopt = 5, dowait = 0):
+   def start_background(self, cmd, logact = self.LOGWRN, cmdopt = 5, dowait = 0):
       if self.PGSIG['BPROC'] < 2: return self.pgsystem(cmd, logact, cmdopt)  # no background
-      act = logact&(~PgLOG.EXITLG)
-      if act&PgLOG.MSGLOG: act |= PgLOG.FRCLOG  # make sure background calls always logged
+      act = logact&(~self.EXITLG)
+      if act&self.MSGLOG: act |= self.FRCLOG  # make sure background calls always logged
       if len(self.CBIDS) >= self.PGSIG['BPROC']:
          i = 0
          while True:
-            bcnt = check_background(None, 0, act)
+            bcnt = self.check_background(None, 0, act)
             if bcnt < self.PGSIG['BPROC']: break
             if dowait:
                self.show_wait_message(i, "{}-{}: wait any {} background calls".format(self.PGSIG['DSTR'], cmd, bcnt), act, dowait)
                i += 1
             else:
                return self.pglog("{}-{}: {} background calls already at {}".format(self.PGSIG['DSTR'], cmd, bcnt, self.current_datetime()), act)   
-      cmdlog = (act if cmdopt&1 else PgLOG.WARNLG)
+      cmdlog = (act if cmdopt&1 else self.WARNLG)
       if cmdopt&8:
          self.cmdlog("starts '{}'".format(cmd), None, cmdlog)
       else:
@@ -765,9 +765,9 @@ class PgSIG(PgDBI):
    # check one or all child processes if they are still running
    # bid - check this specified background process id if given
    # return the number of processes are still running
-   def check_background(self, bcmd, bid = 0, logact = PgLOG.LOGWRN, dowait = 0):
+   def check_background(self, bcmd, bid = 0, logact = self.LOGWRN, dowait = 0):
       if self.PGSIG['BPROC'] < 2: return 0  # no background process
-      if logact&PgLOG.EXITLG: logact &= ~PgLOG.EXITLG
+      if logact&self.EXITLG: logact &= ~self.EXITLG
       if not bid and bcmd: bid = self.bcmd2cbid(bcmd)
       bcnt = i = 0
       while True:
@@ -794,7 +794,7 @@ class PgSIG(PgDBI):
 
    # check and record process id for background command; return 1 if success full;
    # 0 otherwise; -1 if done already
-   def record_background(self, bcmd, logact = PgLOG.LOGWRN):
+   def record_background(self, bcmd, logact = self.LOGWRN):
       ms = re.match(r'^(\S+)', bcmd)
       if ms:
          aname = ms.group(1)
@@ -833,17 +833,16 @@ class PgSIG(PgDBI):
       return wtime
 
    # show wait message every dintv and then sleep for PGSIG['WTIME']
-   def show_wait_message(self, loop, msg, logact = PgLOG.LOGWRN, dowait = 0):
+   def show_wait_message(self, loop, msg, logact = self.LOGWRN, dowait = 0):
       if loop > 0 and (loop%30) == 0:
          self.pglog("{} at {}".format(msg, self.current_datetime()), logact)   
       if dowait: time.sleep(self.PGSIG['WTIME'])
 
    # register a time out function to raise a time out error
-   @staticmethod
    @contextmanager
-   def pgtimeout(seconds = 0, logact = 0):
+   def pgtimeout(self, seconds = 0, logact = 0):
       if not seconds: seconds = self.PGLOG['TIMEOUT']
-      signal.signal(signal.SIGALRM, PgSIG.raise_pgtimeout)
+      signal.signal(signal.SIGALRM, self.raise_pgtimeout)
       signal.alarm(seconds)
       try:
          yield
@@ -858,9 +857,8 @@ class PgSIG(PgDBI):
        raise TimeoutError
 
    # Add a timeout block.
-   @staticmethod
-   def timeout_func():
-       with PgSIG.pgtimeout(1):
+   def timeout_func(self):
+       with self.pgtimeout(1):
            print('entering block')
            time.sleep(10)
            print('This should never get printed because the line before timed out')

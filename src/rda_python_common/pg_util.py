@@ -283,7 +283,7 @@ class PgUtil(PgLOG):
          if ms:
             fromfmt = "Y" + ms.group(1) + "M" + ms.group(2) + "D"
          else:
-            self.pglog(cdate + ": Invalid date, should be in format YYYY-MM-DD", PgLOG.LGEREX)
+            self.pglog(cdate + ": Invalid date, should be in format YYYY-MM-DD", self.LGEREX)
       pattern = fromfmt
       fmts = {}
       formats = {}
@@ -410,7 +410,6 @@ class PgUtil(PgLOG):
    def fmtdate(self, yr, mn, dy, tofmt = None):
       (y, m, d) = adjust_ymd(yr, mn, dy)
       if not tofmt or tofmt == 'YYYY-MM-DD': return "{}-{:02}-{:02}".format(y, m, d)
-   
       if dy != None:
          md = re.search(self.DATEFMTS['D'], tofmt, re.I)
          if md:
@@ -424,7 +423,6 @@ class PgUtil(PgLOG):
             else:
                sdy = str(d)
             tofmt = re.sub(fmt, sdy, tofmt, 1)
-   
       if mn != None:
          md = re.search(self.DATEFMTS['M'], tofmt, re.I)
          if md:
@@ -448,7 +446,6 @@ class PgUtil(PgLOG):
                m = int((m+2)/3)
                smn = "{:02}".format(m) if len(fmt) == 2 else str(m)
                tofmt = re.sub(fmt, smn, tofmt, 1)
-   
       if yr != None:
          md = re.search(self.DATEFMTS['Y'], tofmt, re.I)
          if md:
@@ -474,20 +471,16 @@ class PgUtil(PgLOG):
                   y = 1 + int(yr/10)
                syr = "{:02}".format(y)
                tofmt = re.sub(fmt, syr, tofmt, 1)
-   
       return tofmt
-   
-   #
+
    # format given date and time into standard timestamp
-   #
+   @staticmethod
    def join_datetime(sdate, stime):
-   
       if not sdate: return None
       if not stime: stime = "00:00:00"
       if not isinstance(sdate, str): sdate = str(sdate)
       if not isinstance(stime, str): stime = str(stime)
       if re.match(r'^\d:', stime): stime = '0' + stime
-   
       return "{} {}".format(sdate, stime)
    fmttime = join_datetime
 
@@ -595,7 +588,7 @@ class PgUtil(PgLOG):
    #  dsid: given dataset id in form of dsNNN(.|)N, NNNN.N or [a-z]NNNNNN
    # newid: True to format a new dsid; defaults to False for now
    # returns a new or old dsid according to the newid option
-   def format_dataset_id(self, dsid, newid = self.PGLOG['NEWDSID'], logact = PgLOG.LGEREX):
+   def format_dataset_id(self, dsid, newid = self.PGLOG['NEWDSID'], logact = self.LGEREX):
       dsid = str(dsid)
       ms = re.match(r'^([a-z])(\d\d\d)(\d\d\d)$', dsid)
       if ms:
@@ -621,7 +614,7 @@ class PgUtil(PgLOG):
    #  dsid: given dataset id in form of dsNNN(.|)N, NNNN.N or [a-z]NNNNNN
    # newid: True to format a new dsid; defaults to False for now
    # returns a new or old metadata dsid according to the newid option
-   def metadata_dataset_id(self, dsid, newid = self.PGLOG['NEWDSID'], logact = PgLOG.LGEREX):
+   def metadata_dataset_id(self, dsid, newid = self.PGLOG['NEWDSID'], logact = self.LGEREX):
       ms = re.match(r'^([a-z])(\d\d\d)(\d\d\d)$', dsid)
       if ms:
          ids = list(ms.groups())
@@ -849,7 +842,7 @@ class PgUtil(PgLOG):
       nums = [1]*fcnt   # initialize each column as numerical
       for i in range(fcnt):
          if flds[i].islower(): desc[i] = -1
-         fld = PgUtil.strip_field(hash[flds[i].upper()][1])
+         fld = self.strip_field(hash[flds[i].upper()][1])
          fields.append(fld)
       count = len(pgrecs[fields[0]])    # row count of pgrecs
       if count < 2: return pgrecs       # no need of sording
@@ -857,7 +850,7 @@ class PgUtil(PgLOG):
       # prepare the dict list for sortting
       srecs = []
       for i in range(count):
-         pgrec = PgUtil.onerecord(pgrecs, i)
+         pgrec = self.onerecord(pgrecs, i)
          rec = []
          for j in range(fcnt):
             if j < pcnt and patterns[j]:
@@ -870,13 +863,13 @@ class PgUtil(PgLOG):
             rec.append(val)
          rec.append(i)   # add column to cache the row index
          srecs.append(rec)
-      srecs = PgUtil.quicksort(srecs, 0, count-1, desc, fcnt, nums)
+      srecs = self.quicksort(srecs, 0, count-1, desc, fcnt, nums)
       # sort pgrecs according the cached row index column in ordered srecs
       rets = {}
       for fld in pgrecs:
          rets[fld] = []
       for i in range(count):
-         pgrec = PgUtil.onerecord(pgrecs, srecs[i][fcnt])
+         pgrec = self.onerecord(pgrecs, srecs[i][fcnt])
          for fld in pgrecs:
             rets[fld].append(pgrec[fld])
       return rets
@@ -951,37 +944,29 @@ class PgUtil(PgLOG):
       return (hour1 - hour2) + 24*PgUtil.diffdate(date1, date2)
 
    # hour difference between GMT and local time
-   @staticmethod
-   def diffgmthour():
+   def diffgmthour(self):
       tg = time.gmtime()
       tl = time.localtime()
-      dg = fmtdate(tg[0], tg[1], tg[2])
-      dl = fmtdate(tl[0], tl[1], tl[2])
+      dg = self.fmtdate(tg[0], tg[1], tg[2])
+      dl = self.fmtdate(tl[0], tl[1], tl[2])
       hg = tg[3]
       hl = tl[3]
-      return PgUtil.diffdatehour(dg, hg, dl, hl)
-   
-   #
+      return self.diffdatehour(dg, hg, dl, hl)
+
    # compare date and time (if given) and return 1, 0 and -1
-   #
+   @staticmethod
    def cmptime(date1, time1, date2, time2):
-   
-      stime1 = join_datetime(date1, time1)
-      stime2 = join_datetime(date2, time2)
-   
-      return pgcmp(stime1, stime2)
-   
-   #
+      stime1 = PgUtil.join_datetime(date1, time1)
+      stime2 = PgUtil.join_datetime(date2, time2)
+      return PgUtil.pgcmp(stime1, stime2)
+
    #   date: the original date in format of 'YYYY-MM-DD',
    #     mf: the number of month fractions to add
    #     nf: number of fractions of a month
    # Return: new date
-   #
-   def addmonth(cdate, mf, nf = 1):
-   
+   def addmonth(self, cdate, mf, nf = 1):
       if not mf: return cdate
-      if not nf or nf < 2: return adddate(cdate, 0, mf, 0)
-   
+      if not nf or nf < 2: return self.adddate(cdate, 0, mf, 0)
       ms = re.match(r'^(\d+)-(\d+)-(\d+)$', cdate)
       if ms:
          (syr, smn, sdy) = ms.groups()
@@ -993,7 +978,6 @@ class PgUtil(PgLOG):
          while ody > ndy:
             dy += ndy
             ody -= ndy
-   
          dy += mf * ndy
          if mf > 0:
             while dy >= 30:
@@ -1003,18 +987,15 @@ class PgUtil(PgLOG):
             while dy < 0:
                dy += 30
                mn -= 1
-   
          dy += ody
-         cdate = fmtdate(yr, mn, dy)
-   
+         cdate = self.fmtdate(yr, mn, dy)
       return cdate
    
    # add yr years & mn months to yearmonth ym in format YYYYMM
+   @staticmethod
    def addyearmonth(ym, yr, mn):
-   
       if yr == None: yr = 0
-      if mn == None: mn = 0
-   
+      if mn == None: mn = 0   
       ms =re.match(r'^(\d\d\d\d)(\d\d)$', ym)
       if ms:
          (syr, smn) = ms.groups()
@@ -1028,21 +1009,14 @@ class PgUtil(PgLOG):
             while mn > 12:
                yr += 1
                mn -= 12
-   
          ym = "{:04}{:02}".format(yr, mn)
-   
       return ym
-   
-   #
+
    #  a wrapper to adddate()
-   #
-   def addNoLeapDate(cdate, yr, mn, dy): return adddate(cdate, yr, mn, dy)
-   
-   #
+   addNoLeapDate = adddate
+
    # set number of days in Beburary for Leap year according PGLOG['NOLEAP']
-   #
-   def set_leap_mdays(year):
-   
+   def set_leap_mdays(self, year):
       if not self.PGLOG['NOLEAP'] and calendar.isleap(year):
          self.MDAYS[0] = 366
          self.MDAYS[2] = 29
@@ -1052,11 +1026,9 @@ class PgUtil(PgLOG):
          self.MDAYS[2] = 28
          ret = 0
       return ret
-   
-   #
+
    # wrap on calendar.isleap()
-   #
-   def is_leapyear(year): return calendar.isleap(year)
+   is_leapyear = calendar.isleap
 
    # reutn 1 if is end of month
    def is_end_month(self, yr, mn, dy):
@@ -1302,7 +1274,7 @@ class PgUtil(PgLOG):
       if stime and not isinstance(stime, str): stime = str(stime)
       if not (unit and unit in 'HNS'): return stime  
       if stime:
-         tm = PgUtil.split_datetime(stime, 'T')
+         tm = self.split_datetime(stime, 'T')
       else:
          tm = [0, 0, 0]
       if unit == 'H':
@@ -1434,7 +1406,7 @@ class PgUtil(PgLOG):
       ofiles = []
       for file in infiles:
          if op.isdir(file):
-            ofiles.extend(recursive_files(glob.glob(file + "/*")))
+            ofiles.extend(PgUtil.recursive_files(glob.glob(file + "/*")))
          else:
             ofiles.append(file)
       return ofiles
@@ -1492,8 +1464,8 @@ class PgUtil(PgLOG):
       j = hi
       mrec = srecs[int((lo+hi)/2)]
       while True:
-         while cmp_records(srecs[i], mrec, desc, cnt, nums) < 0: i += 1
-         while cmp_records(srecs[j], mrec, desc, cnt, nums) > 0: j -= 1
+         while PgUtil.cmp_records(srecs[i], mrec, desc, cnt, nums) < 0: i += 1
+         while PgUtil.cmp_records(srecs[j], mrec, desc, cnt, nums) > 0: j -= 1
          if i <= j:
             if i < j:
                tmp = srecs[i]

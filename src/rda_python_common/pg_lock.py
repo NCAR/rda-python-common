@@ -49,11 +49,11 @@ class PgLock(PgFile):
    def lock_dscheck(self, cidx, dolock, logact = 0):
       if not cidx: return 0
       if logact:
-         logerr = logact|PgLOG.ERRLOG
-         logout = logact&(~PgLOG.EXITLG)
+         logerr = logact|self.ERRLOG
+         logout = logact&(~self.EXITLG)
       else:
-         logerr = PgLOG.LOGERR
-         logout = PgLOG.LOGWRN if dolock > 1 or dolock < 0 else 0
+         logerr = self.LOGERR
+         logout = self.LOGWRN if dolock > 1 or dolock < 0 else 0
       table = "dscheck"
       cnd = "cindex = {}".format(cidx)
       fields = "command, pid, lockhost, lockcmd"
@@ -63,9 +63,9 @@ class PgLock(PgFile):
       host = pgrec['lockhost']
       lockcmd = pgrec['lockcmd']
       (chost, cpid) = self.current_process_info()
-      clockcmd = PgLOG.get_command()
+      clockcmd = self.get_command()
       if pid == 0 and dolock <= 0: return cidx   # no need unlock
-      lckpid = -pid if pid > 0 and pid == cpid and not PgUtil.pgcmp(host, chost, 1) else pid
+      lckpid = -pid if pid > 0 and pid == cpid and not self.pgcmp(host, chost, 1) else pid
       if dolock > 0 and lckpid < 0: return cidx   # no need lock again
       cinfo = "{}-{}-Chk{}({})".format(self.PGLOG['HOSTNAME'], self.current_datetime(), cidx, pgrec['command'])
       if lckpid > 0 and (clockcmd == "dscheck" or lockcmd != "dscheck"):
@@ -79,11 +79,11 @@ class PgLock(PgFile):
       else:
          if pid: record['pid'] = 0
       if not record: return cidx
-      lkrec = self.pgget(table, fields, cnd, logerr|PgLOG.DOLOCK)
+      lkrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not lkrec: return self.end_db_transaction(0)   # dscheck is gone or db error
       if (not lkrec['pid'] or 
-          lkrec['pid'] == pid and PgUtil.pgcmp(lkrec['lockhost'], host, 1) == 0 or
-          lkrec['pid'] == cpid and PgUtil.pgcmp(lkrec['lockhost'], chost, 1) == 0):
+          lkrec['pid'] == pid and self.pgcmp(lkrec['lockhost'], host, 1) == 0 or
+          lkrec['pid'] == cpid and self.pgcmp(lkrec['lockhost'], chost, 1) == 0):
          if not self.pgupdt(table, record, cnd, logerr):
             if logout: self.pglog(cinfo + ": Error update lock", logout)
             cidx = -cidx
@@ -96,10 +96,10 @@ class PgLock(PgFile):
    def lock_host_dscheck(self, cidx, pid, host, logact = 0):
       if not (cidx and pid): return 0
       if logact:
-         logerr = logact|PgLOG.ERRLOG
-         logout = logact&(~PgLOG.EXITLG)
+         logerr = logact|self.ERRLOG
+         logout = logact&(~self.EXITLG)
       else:
-         logerr = PgLOG.LOGERR
+         logerr = self.LOGERR
          logout = 0
       table = "dscheck"
       cnd = "cindex = {}".format(cidx)
@@ -109,9 +109,9 @@ class PgLock(PgFile):
       (chost, cpid) = self.current_process_info()
       cinfo = "{}-{}-Chk{}({})".format(self.PGLOG['HOSTNAME'], self.current_datetime(), cidx, pgrec['command'])
       if pgrec['pid']:
-         if pid == pgrec['pid'] and PgUtil.pgcmp(pgrec['lockhost'], host, 1) == 0:
+         if pid == pgrec['pid'] and self.pgcmp(pgrec['lockhost'], host, 1) == 0:
             return -cidx   # locked by the real process already
-         elif cpid != pgrec['pid'] or PgUtil.pgcmp(pgrec['lockhost'], chost, 1):
+         elif cpid != pgrec['pid'] or self.pgcmp(pgrec['lockhost'], chost, 1):
             if logout:
                lmsg = "{} Locked by {}/{}/{}".format(cinfo, pid, host, pgrec['lockcmd'])
                self.pglog(lmsg +": Cannot Lock", logout)
@@ -119,12 +119,12 @@ class PgLock(PgFile):
       record = {}
       record['pid'] = pid
       record['lockhost'] = host
-      record['lockcmd'] = PgLOG.get_command(pgrec['command'])
-      lkrec = self.pgget(table, fields, cnd, logerr|PgLOG.DOLOCK)
+      record['lockcmd'] = self.get_command(pgrec['command'])
+      lkrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not lkrec: return self.end_db_transaction(0)
       if (not lkrec['pid'] or
-          lkrec['pid'] == pid and PgUtil.pgcmp(lkrec['lockhost'], host, 1) == 0 or
-          lkrec['pid'] == cpid and PgUtil.pgcmp(lkrec['lockhost'], chost, 1) == 0):
+          lkrec['pid'] == pid and self.pgcmp(lkrec['lockhost'], host, 1) == 0 or
+          lkrec['pid'] == cpid and self.pgcmp(lkrec['lockhost'], chost, 1) == 0):
          if not self.pgupdt(table, record, cnd, logerr):
             if logout: self.pglog(cinfo + ": Error update lock", logout)
             cidx = -cidx
@@ -139,11 +139,11 @@ class PgLock(PgFile):
    def lock_request(self, ridx, dolock, logact = 0):
       if not ridx: return 0
       if logact:
-         logerr = logact|PgLOG.ERRLOG
-         logout = logact&(~PgLOG.EXITLG)
+         logerr = logact|self.ERRLOG
+         logout = logact&(~self.EXITLG)
       else:
-         logerr = PgLOG.LOGERR
-         logout = PgLOG.LOGWRN if dolock > 1 or dolock < 0 else 0
+         logerr = self.LOGERR
+         logout = self.LOGWRN if dolock > 1 or dolock < 0 else 0
       table = "dsrqst"
       cnd = "rindex = {}".format(ridx)
       fields = "pid, lockhost"
@@ -153,7 +153,7 @@ class PgLock(PgFile):
       host = pgrec['lockhost']
       (chost, cpid) = self.current_process_info()
       if pid == 0 and dolock <= 0: return ridx   # no need unlock
-      lckpid = -pid if pid > 0 and pid == cpid and not PgUtil.pgcmp(host, chost, 1) else pid
+      lckpid = -pid if pid > 0 and pid == cpid and not self.pgcmp(host, chost, 1) else pid
       if dolock > 0 and lckpid < 0: return ridx    # no need lock again
       rinfo = "{}-{}-Rqst{}".format(self.PGLOG['HOSTNAME'], self.current_datetime(), ridx)
       if lckpid > 0:
@@ -168,11 +168,11 @@ class PgLock(PgFile):
          if pid: record['pid'] = 0
          if host: record['lockhost'] = ""
       if not record: return ridx
-      lkrec = self.pgget(table, fields, cnd, logerr|PgLOG.DOLOCK)
+      lkrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not lkrec: return self.end_db_transaction(0)   # request is gone or db error
       if (not lkrec['pid']  or
-          lkrec['pid'] == pid and PgUtil.pgcmp(lkrec['lockhost'], host, 1) == 0 or
-          lkrec['pid'] == cpid and PgUtil.pgcmp(lkrec['lockhost'], chost, 1) == 0):
+          lkrec['pid'] == pid and self.pgcmp(lkrec['lockhost'], host, 1) == 0 or
+          lkrec['pid'] == cpid and self.pgcmp(lkrec['lockhost'], chost, 1) == 0):
          if not self.pgupdt(table, record, cnd, logerr):
             if logout: self.pglog(rinfo + ": Error update lock", logout)
             ridx = -ridx
@@ -185,10 +185,10 @@ class PgLock(PgFile):
    def lock_host_request(self, ridx, pid, host, logact = 0):
       if not (ridx and pid): return 0
       if logact:
-         logerr = logact|PgLOG.ERRLOG
-         logout = logact&(~PgLOG.EXITLG)
+         logerr = logact|self.ERRLOG
+         logout = logact&(~self.EXITLG)
       else:
-         logerr = PgLOG.LOGERR
+         logerr = self.LOGERR
          logout = 0
       table = "dsrqst"
       cnd = "rindex = {}".format(ridx)
@@ -197,7 +197,7 @@ class PgLock(PgFile):
       if not pgrec: return 0   # dscheck is gone or db error
       rinfo = "{}-{}-Rqst{}".format(self.PGLOG['HOSTNAME'], self.current_datetime(), ridx)
       if pgrec['pid']:
-         if pid == pgrec['pid'] and PgUtil.pgcmp(pgrec['lockhost'], host, 1) == 0: return ridx
+         if pid == pgrec['pid'] and self.pgcmp(pgrec['lockhost'], host, 1) == 0: return ridx
          if logout:
             lmsg = "{} Locked by {}/{}".format(rinfo, pid, host)
             self.pglog(lmsg +": Cannot Lock", logout)
@@ -206,9 +206,9 @@ class PgLock(PgFile):
       record['pid'] = pid
       record['lockhost'] = host
       record['locktime'] = int(time.time())
-      pgrec = self.pgget(table, fields, cnd, logerr|PgLOG.DOLOCK)
+      pgrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not pgrec: return self.end_db_transaction(0)
-      if not pgrec['pid'] or pid == pgrec['pid'] and PgUtil.pgcmp(pgrec['lockhost'], host, 1) == 0:
+      if not pgrec['pid'] or pid == pgrec['pid'] and self.pgcmp(pgrec['lockhost'], host, 1) == 0:
          if not self.pgupdt(table, record, cnd, logerr):
             if logout: self.pglog(rinfo + ": Error update lock", logout)
             ridx = -ridx
@@ -223,11 +223,11 @@ class PgLock(PgFile):
    def lock_update(self, lidx, linfo, dolock, logact = 0):
       if not lidx: return 0
       if logact:
-         logerr = logact|PgLOG.ERRLOG
-         logout = logact&(~PgLOG.EXITLG)
+         logerr = logact|self.ERRLOG
+         logout = logact&(~self.EXITLG)
       else:
-         logerr = PgLOG.LOGERR
-         logout = PgLOG.LOGWRN if dolock > 1 or dolock < 0 else 0
+         logerr = self.LOGERR
+         logout = self.LOGWRN if dolock > 1 or dolock < 0 else 0
       table = "dlupdt"
       cnd = "lindex = {}".format(lidx)
       fields = "pid, hostname"
@@ -237,7 +237,7 @@ class PgLock(PgFile):
       host = pgrec['hostname']
       (chost, cpid) = self.current_process_info()
       if pid == 0 and dolock <= 0: return lidx   # no need unlock
-      lckpid = -pid if pid > 0 and pid == cpid and not PgUtil.pgcmp(host, chost, 1) else pid
+      lckpid = -pid if pid > 0 and pid == cpid and not self.pgcmp(host, chost, 1) else pid
       if dolock > 0 and lckpid < 0: return lidx   # no need lock again
       if not linfo: linfo = "{}-{}-Updt{}".format(self.PGLOG['HOSTNAME'], self.current_datetime(), lidx)
       if lckpid > 0:
@@ -252,9 +252,9 @@ class PgLock(PgFile):
          if pid: record['pid'] = 0
          if host: record['hostname'] = ''
       if not record: return lidx
-      lkrec = self.pgget(table, fields, cnd, logerr|PgLOG.DOLOCK)
+      lkrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not lkrec: return self.end_db_transaction(0)   # update record is deleted
-      if not lkrec['pid'] or lkrec['pid'] == pid and PgUtil.pgcmp(lkrec['hostname'], host, 1) == 0:
+      if not lkrec['pid'] or lkrec['pid'] == pid and self.pgcmp(lkrec['hostname'], host, 1) == 0:
          if not self.pgupdt(table, record, cnd, logerr):
             if logout: self.pglog(linfo + ": Error update lock", logout)
             lidx = -lidx
@@ -269,11 +269,11 @@ class PgLock(PgFile):
    def lock_update_control(self, cidx, dolock, logact = 0):
       if not cidx: return 0
       if logact:
-         logerr = logact|PgLOG.ERRLOG
-         logout = logact&(~PgLOG.EXITLG)
+         logerr = logact|self.ERRLOG
+         logout = logact&(~self.EXITLG)
       else:
-         logerr = PgLOG.LOGERR
-         logout = PgLOG.LOGWRN if dolock > 1 or dolock < 0 else 0
+         logerr = self.LOGERR
+         logout = self.LOGWRN if dolock > 1 or dolock < 0 else 0
       table = "dcupdt"
       cnd = "cindex = {}".format(cidx)
       fields = "pid, lockhost"
@@ -283,7 +283,7 @@ class PgLock(PgFile):
       host = pgrec['lockhost']
       (chost, cpid) = self.current_process_info()
       if pid == 0 and dolock <= 0: return cidx  # no need unlock
-      lckpid = -pid if pid > 0 and pid == cpid and not PgUtil.pgcmp(host, chost, 1) else pid
+      lckpid = -pid if pid > 0 and pid == cpid and not self.pgcmp(host, chost, 1) else pid
       if dolock > 0 and lckpid < 0: return cidx   # no need lock again
       cinfo = "{}-{}-UC{}".format(self.PGLOG['HOSTNAME'], self.current_datetime(), cidx)
       if lckpid > 0:
@@ -298,11 +298,11 @@ class PgLock(PgFile):
          if pid: record['pid'] = 0
          if host: record['lockhost'] = ''
       if not record: return cidx
-      lkrec = self.pgget(table, fields, cnd, logerr|PgLOG.DOLOCK)
+      lkrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not lkrec: return self.end_db_transaction(0)   # update control record is deleted
       if (not lkrec['pid'] or
-          lkrec['pid'] == pid and PgUtil.pgcmp(lkrec['lockhost'], host, 1) == 0 or
-          lkrec['pid'] == cpid and PgUtil.pgcmp(lkrec['lockhost'], chost, 1) == 0):
+          lkrec['pid'] == pid and self.pgcmp(lkrec['lockhost'], host, 1) == 0 or
+          lkrec['pid'] == cpid and self.pgcmp(lkrec['lockhost'], chost, 1) == 0):
          if not self.pgupdt(table, record, cnd, logerr):
             if logout: self.pglog(cinfo + ": Error update lock", logout)
             cidx = -cidx
@@ -315,10 +315,10 @@ class PgLock(PgFile):
    def lock_host_update_control(self, cidx, pid, host, logact = 0):
       if not (cidx and pid): return 0
       if logact:
-         logerr = logact|PgLOG.ERRLOG
-         logout = logact&(~PgLOG.EXITLG)
+         logerr = logact|self.ERRLOG
+         logout = logact&(~self.EXITLG)
       else:
-         logerr = PgLOG.LOGERR
+         logerr = self.LOGERR
          logout = 0
       table = "dcupdt"
       cnd = "cindex = {}".format(cidx)
@@ -327,7 +327,7 @@ class PgLock(PgFile):
       if not pgrec: return 0   # dscheck is gone or db error
       cinfo = "{}-{}-UC{}".format(self.PGLOG['HOSTNAME'], self.current_datetime(), cidx)
       if pgrec['pid']:
-         if pid == pgrec['pid'] and PgUtil.pgcmp(pgrec['lockhost'], host, 1) == 0: return cidx
+         if pid == pgrec['pid'] and self.pgcmp(pgrec['lockhost'], host, 1) == 0: return cidx
          if logout:
             lmsg = "{} Locked by {}/{}".format(cinfo, pid, host)
             self.pglog(lmsg +": Cannot Lock", logout)
@@ -336,9 +336,9 @@ class PgLock(PgFile):
       record['pid'] = pid
       record['lockhost'] = host
       record['chktime'] = int(time.time())
-      pgrec = self.pgget(table, fields, cnd, logerr|PgLOG.DOLOCK)
+      pgrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not pgrec: return self.end_db_transaction(0)
-      if not pgrec['pid'] or pid == pgrec['pid'] and PgUtil.pgcmp(pgrec['lockhost'], host, 1) == 0:
+      if not pgrec['pid'] or pid == pgrec['pid'] and self.pgcmp(pgrec['lockhost'], host, 1) == 0:
          if not self.pgupdt(table, record, cnd, logerr):
             if logout: self.pglog(cinfo + ": Error update lock", logout)
             cidx = -cidx
@@ -362,11 +362,11 @@ class PgLock(PgFile):
    def lock_partition(self, pidx, dolock, logact = 0):
       if not pidx: return 0
       if logact:
-         logerr = logact|PgLOG.ERRLOG
-         logout = logact&(~PgLOG.EXITLG)
+         logerr = logact|self.ERRLOG
+         logout = logact&(~self.EXITLG)
       else:
-         logerr = PgLOG.LOGERR
-         logout = PgLOG.LOGWRN if dolock > 1 or dolock < 0 else 0
+         logerr = self.LOGERR
+         logout = self.LOGWRN if dolock > 1 or dolock < 0 else 0
       table = "ptrqst"
       cnd = "pindex = {}".format(pidx)
       fields = "pid, lockhost"
@@ -377,7 +377,7 @@ class PgLock(PgFile):
       host = pgrec['lockhost']
       (chost, cpid) = self.current_process_info()
       if pid == 0 and dolock <= 0: return pidx   # no need unlock
-      lckpid = -pid if pid > 0 and pid == cpid and not PgUtil.pgcmp(host, chost, 1) else pid
+      lckpid = -pid if pid > 0 and pid == cpid and not self.pgcmp(host, chost, 1) else pid
       if dolock > 0 and lckpid < 0: return pidx   # no need lock again
       pinfo = "{}-{}-RPT{}(Rqst{}/PTO{})".format(self.PGLOG['HOSTNAME'], self.current_datetime(), pidx, ridx, pgrec['ptorder'])
       if lckpid > 0:
@@ -392,11 +392,11 @@ class PgLock(PgFile):
          if pid: record['pid'] = 0
          if host: record['lockhost'] = ""
       if not record: return pidx
-      lkrec = self.pgget(table, fields, cnd, logerr|PgLOG.DOLOCK)
+      lkrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not lkrec: return self.end_db_transaction(0)   # request partition is gone or db error
       if (not lkrec['pid'] or
-          lkrec['pid'] == pid and PgUtil.pgcmp(lkrec['lockhost'], host, 1) == 0 or
-          lkrec['pid'] == cpid and PgUtil.pgcmp(lkrec['lockhost'], chost, 1) == 0):
+          lkrec['pid'] == pid and self.pgcmp(lkrec['lockhost'], host, 1) == 0 or
+          lkrec['pid'] == cpid and self.pgcmp(lkrec['lockhost'], chost, 1) == 0):
          lmsg = self.update_partition_lock(ridx, record, logout)
          if lmsg:
             if logout: self.pglog("{}: {}".format(pinfo, lmsg), logout)
@@ -413,10 +413,10 @@ class PgLock(PgFile):
    def lock_host_partition(self, pidx, pid, host, logact = 0):
       if not (pidx and pid): return 0
       if logact:
-         logerr = logact|PgLOG.ERRLOG
-         logout = logact&(~PgLOG.EXITLG)
+         logerr = logact|self.ERRLOG
+         logout = logact&(~self.EXITLG)
       else:
-         logerr = PgLOG.LOGERR
+         logerr = self.LOGERR
          logout = 0
       table = "ptrqst"
       cnd = "pindex = {}".format(pidx)
@@ -426,7 +426,7 @@ class PgLock(PgFile):
       ridx = pgrec['rindex']
       pinfo = "{}-{}-RPT{}(Rqst{}/PTO{})".format(self.PGLOG['HOSTNAME'], self.current_datetime(), pidx, ridx, pgrec['ptorder'])
       if pgrec['pid']:
-         if pid == pgrec['pid'] and PgUtil.pgcmp(pgrec['lockhost'], host, 1) == 0: return pidx
+         if pid == pgrec['pid'] and self.pgcmp(pgrec['lockhost'], host, 1) == 0: return pidx
          if logout:
             lmsg = "{} Locked by {}/{}".format(pinfo, pid, host)
             self.pglog(lmsg +": Cannot Lock", logout)
@@ -435,9 +435,9 @@ class PgLock(PgFile):
       record['pid'] = pid
       record['lockhost'] = host
       record['locktime'] = int(time.time())
-      pgrec = self.pgget(table, fields, cnd, logerr|PgLOG.DOLOCK)
+      pgrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not pgrec: return self.end_db_transaction(0)
-      if not pgrec['pid']  or pid == pgrec['pid'] and PgUtil.pgcmp(pgrec['lockhost'], host, 1) == 0:
+      if not pgrec['pid']  or pid == pgrec['pid'] and self.pgcmp(pgrec['lockhost'], host, 1) == 0:
          lmsg = self.update_partition_lock(ridx, record, logout)
          if lmsg:
             if logout: self.pglog("{}: {}".format(pinfo, lmsg), logout)
@@ -455,15 +455,15 @@ class PgLock(PgFile):
    def update_partition_lock(self, ridx, ptrec, logact = 0):
       if not ridx: return 0
       if logact:
-         logerr = logact|PgLOG.ERRLOG
-         logout = logact&(~PgLOG.EXITLG)
+         logerr = logact|self.ERRLOG
+         logout = logact&(~self.EXITLG)
       else:
-         logerr = PgLOG.LOGERR
-         logout = PgLOG.LOGWRN
+         logerr = self.LOGERR
+         logout = self.LOGWRN
       table = "dsrqst"
       lockhost = "partition"
       cnd = "rindex = {}".format(ridx)
-      pgrec = self.pgget(table, "pid, lockhost", cnd, logact|PgLOG.DOLOCK)
+      pgrec = self.pgget(table, "pid, lockhost", cnd, logact|self.DOLOCK)
       if not pgrec: return "Error get Rqst{} record".format(ridx)   # should not happen
       if pgrec['pid'] > 0 and pgrec['lockhost'] != lockhost:
          return "Rqst{} locked by non-lockhost process ({}/{})".format(ridx, pgrec['pid'], pgrec['lockhost'])      
@@ -491,11 +491,11 @@ class PgLock(PgFile):
    def lock_dataset(self, dsid, dolock, logact = 0):
       if not dsid: return 0
       if logact:
-         logerr = logact|PgLOG.ERRLOG
-         logout = logact&(~PgLOG.EXITLG)
+         logerr = logact|self.ERRLOG
+         logout = logact&(~self.EXITLG)
       else:
-         logerr = PgLOG.LOGERR
-         logout = PgLOG.LOGWRN if dolock > 1 or dolock < 0 else 0
+         logerr = self.LOGERR
+         logout = self.LOGWRN if dolock > 1 or dolock < 0 else 0
       table = "dataset"
       cnd = "dsid = '{}'".format(dsid)
       fields = "pid, lockhost"
@@ -505,7 +505,7 @@ class PgLock(PgFile):
       host = pgrec['lockhost']
       (chost, cpid) = self.current_process_info()
       if pid == 0 and dolock <= 0: return 1  # no need unlock
-      lckpid = -pid if pid > 0 and pid == cpid and not PgUtil.pgcmp(host, chost, 1) else pid
+      lckpid = -pid if pid > 0 and pid == cpid and not self.pgcmp(host, chost, 1) else pid
       if dolock > 0 and lckpid < 0: return 1   # no need lock again
       dinfo = "{}-{}-{}".format(self.PGLOG['HOSTNAME'], self.current_datetime(), dsid)
       if lckpid > 0:
@@ -518,12 +518,12 @@ class PgLock(PgFile):
       else:
          if pid: record['pid'] = 0
       if not record: return 1
-      lkrec = self.pgget(table, fields, cnd, logerr|PgLOG.DOLOCK)
+      lkrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not lkrec: return self.end_db_transaction(0)   # dscheck is gone or db error
       lstat = 1
       if (not lkrec['pid'] or 
-          lkrec['pid'] == pid and PgUtil.pgcmp(lkrec['lockhost'], host, 1) == 0 or
-          lkrec['pid'] == cpid and PgUtil.pgcmp(lkrec['lockhost'], chost, 1) == 0):
+          lkrec['pid'] == pid and self.pgcmp(lkrec['lockhost'], host, 1) == 0 or
+          lkrec['pid'] == cpid and self.pgcmp(lkrec['lockhost'], chost, 1) == 0):
          if not self.pgupdt(table, record, cnd, logerr):
             if logout: self.pglog(dinfo + ": Error update lock", logout)
             lstat = -1

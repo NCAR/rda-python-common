@@ -99,14 +99,14 @@ class PgOPT(PgFile):
          'wpg'  : "",
          'gatherxml'  : "gatherxml",
          'cosconvert' : "cosconvert",
-         'emllog' : PgLOG.LGWNEM,
-         'emlerr' : PgLOG.LOGERR|PgLOG.EMEROL,
-         'emerol' : PgLOG.LOGWRN|PgLOG.EMEROL,
-         'emlsum' : PgLOG.LOGWRN|PgLOG.EMLSUM,
-         'emlsep' : PgLOG.LGWNEM|PgLOG.SEPLIN,
-         'wrnlog' : PgLOG.LOGWRN,
-         'errlog' : PgLOG.LOGERR,
-         'extlog' : PgLOG.LGEREX,
+         'emllog' : self.LGWNEM,
+         'emlerr' : self.LOGERR|self.EMEROL,
+         'emerol' : self.LOGWRN|self.EMEROL,
+         'emlsum' : self.LOGWRN|self.EMLSUM,
+         'emlsep' : self.LGWNEM|self.SEPLIN,
+         'wrnlog' : self.LOGWRN,
+         'errlog' : self.LOGERR,
+         'extlog' : self.LGEREX,
          'PTYPE'  : "CPRV",
          'WDTYP'  : "ADNU",
          'HFTYP'  : "DS",
@@ -270,7 +270,7 @@ class PgOPT(PgFile):
    def validate_infile_names(self, dsid):
       i = 0
       for infile in self.params['IF']:
-         if not self.validate_one_infile(infile, dsid): return PgLOG.FAILURE
+         if not self.validate_one_infile(infile, dsid): return self.FAILURE
          i += 1
          if self.PGOPT['IFCNT'] and i >= self.PGOPT['IFCNT']: break
       return i
@@ -283,7 +283,7 @@ class PgOPT(PgFile):
       fdsid = self.format_dataset_id(ndsid)
       if fdsid != dsid:
          return self.pglog("{}: Different dsid {} found in Input file name {}!".format(dsid, fdsid, infile), self.PGOPT['extlog'])
-      return PgLOG.SUCCESS
+      return self.SUCCESS
 
    # gather input information from input files
    def get_input_info(self, infiles, table = None):
@@ -432,7 +432,7 @@ class PgOPT(PgFile):
                self.input_error(linidx, '', infile, "Miss end divider '{}'".format(self.params['DV']))
          return 1   # read something
       else:
-         if table: self.pglog("No option information found for '{}'".format(table), PgLOG.WARNLG)
+         if table: self.pglog("No option information found for '{}'".format(table), self.WARNLG)
          return 0  # read nothing
 
    # clean self.params for input option values when set mutiple tables 
@@ -516,9 +516,9 @@ class PgOPT(PgFile):
    # set email logging bits
    def set_email_logact(self):
       if 'NE' in self.params:
-         self.PGLOG['LOGMASK'] &= ~PgLOG.EMLALL   # remove all email bits
+         self.PGLOG['LOGMASK'] &= ~self.EMLALL   # remove all email bits
       elif 'SE' in self.params:
-         self.PGLOG['LOGMASK'] &= ~PgLOG.EMLLOG    # no normal email
+         self.PGLOG['LOGMASK'] &= ~self.EMLLOG    # no normal email
 
    # validate dataset owner
    # return: 0 or fatal if not valid, 1 if valid, -1 if can not be validated
@@ -1151,7 +1151,7 @@ class PgOPT(PgFile):
       gidxs = [pidx]
       gflds = "gindex"
       if gtype: gflds += ", grptype"
-      grecs = self.pgmget("dsgroup", gflds, "{} and pindex = {}".format(dcnd, pidx), PgLOG.LGWNEX)
+      grecs = self.pgmget("dsgroup", gflds, "{} and pindex = {}".format(dcnd, pidx), self.LGWNEX)
       if not grecs: return gidxs
       gcnt = len(grecs['gindex'])
       for i in range(gcnt):
@@ -1175,7 +1175,7 @@ class PgOPT(PgFile):
          if not pfcnt: return None
       gflds = "gindex, " + cfld
       gcnd = "{} AND pindex = {} AND {} > 0".format(dcnd, pidx, cfld)
-      grecs = self.pgmget("dsgroup", gflds, gcnd, PgLOG.LGWNEX)
+      grecs = self.pgmget("dsgroup", gflds, gcnd, self.LGWNEX)
       if not grecs: return ([pidx] if pfcnt > 0 else None)
       gcnt = len(grecs['gindex'])
       gidxs = []
@@ -1256,15 +1256,15 @@ class PgOPT(PgFile):
    #  check if valid data time for given pindex
    def valid_data_time(self, pgrec, cstr = None, logact = 0):
       if pgrec['pindex'] and pgrec['datatime']:
-         (freq, unit) = PgOPT.get_control_frequency(pgrec['frequency'])
+         (freq, unit) = self.get_control_frequency(pgrec['frequency'])
          if not freq:
             if cstr: self.pglog("{}: {}".format(cstr, unit), logact)
-            return PgLOG.FAILURE
+            return self.FAILURE
          dtime = PgUtil.adddatetime(pgrec['datatime'], freq[0], freq[1], freq[2], freq[3], freq[4], freq[5], freq[6])
          if self.pgget("dcupdt", "", "cindex = {} AND datatime < '{}'".format(pgrec['pindex'], dtime), self.PGOPT['extlog']):
             if cstr: self.pglog("{}: MUST be processed After Control Index {}".format(cstr, pgrec['pindex']), logact)
-            return PgLOG.FAILURE
-      return PgLOG.SUCCESS
+            return self.FAILURE
+      return self.SUCCESS
 
    # publish filelists for given datasets
    def publish_dataset_filelist(self, dsids):
@@ -1354,7 +1354,7 @@ class PgOPT(PgFile):
                        (self.PGOPT['errlog'] if rstat else self.PGOPT['extlog']))
             return "E"
          else:
-            errmsg = self.pglog("{}: {}\nCannot email notice to {}".format(enote, ferror, pgrqst['email']), self.PGOPT['errlog']|PgLOG.RETMSG)
+            errmsg = self.pglog("{}: {}\nCannot email notice to {}".format(enote, ferror, pgrqst['email']), self.PGOPT['errlog']|self.RETMSG)
             enote = rhome + "/notices/email_error"
             ef = open(enote, 'r')
             rstat = 'E'
@@ -1425,7 +1425,7 @@ class PgOPT(PgFile):
             rep = einfo[ekey]
             if rep is None:
                self.pglog("{}.{}: None ekey value for reuqest email".format(pgrqst['rindex'], ekey),
-                           self.PGOPT['wrnlog']|PgLOG.FRCLOG)
+                           self.PGOPT['wrnlog']|self.FRCLOG)
                rep = ''
          ebuf = re.sub(mp, rep, ebuf)
       if self.PGLOG['DSCHECK'] and not pgpart:
@@ -1440,7 +1440,7 @@ class PgOPT(PgFile):
             readyfile = None
          else:
             self.pglog("{}Email sent to {} for {}.{}\nSubset: {}".format(("Customized " if pgrqst['enotice'] else ""), einfo['RECEIVER'], tbl, cnd, einfo['SUBJECT']),
-                        self.PGOPT['wrnlog']|PgLOG.FRCLOG)
+                        self.PGOPT['wrnlog']|self.FRCLOG)
       else:
          if not self.cache_customized_email(tbl, "einfo", cnd, ebuf, 0): return 'E'
          if errmsg:
@@ -1448,12 +1448,12 @@ class PgOPT(PgFile):
             readyfile = None
          else:
             self.pglog("{}Email {} cached to {}.einfo for {}\nSubset: {}".format(("Customized " if pgrqst['enotice'] else ""), einfo['RECEIVER'], tbl, cnd, einfo['SUBJECT']),
-                       self.PGOPT['wrnlog']|PgLOG.FRCLOG)
+                       self.PGOPT['wrnlog']|self.FRCLOG)
       if readyfile:
          rf = open(readyfile, 'w')
          rf.write(ebuf)
          rf.close()
-         PgFile.set_local_mode(readyfile, 1, self.PGLOG['FILEMODE'])
+         self.set_local_mode(readyfile, 1, self.PGLOG['FILEMODE'])
          return rstat
 
    #  cache partition process error to existing email buffer

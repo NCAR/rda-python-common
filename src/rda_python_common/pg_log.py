@@ -181,7 +181,7 @@ class PgLOG:
    # cache the msg string to global email entries for later call of send_email()
    def set_email(self,  msg, logact = 0):
       if logact and msg:
-         if logact&PgLOG.EMLTOP:
+         if logact&self.EMLTOP:
             if self.PGLOG['PRGMSG']:
                msg = self.PGLOG['PRGMSG'] + "\n" + msg
                self.PGLOG['PRGMSG'] = ""
@@ -192,32 +192,32 @@ class PgLOG:
                   msg += " with 1 Error:\n"
                else:
                   msg += " with {} Errors:\n".format(self.PGLOG['ERRCNT'])
-               msg +=  PgLOG.break_long_string(self.PGLOG['ERRMSG'], 512, None, self.PGLOG['EMLMAX']/2, None, 50, 25)
+               msg +=  self.break_long_string(self.PGLOG['ERRMSG'], 512, None, self.PGLOG['EMLMAX']/2, None, 50, 25)
                self.PGLOG['ERRCNT'] = 0
                self.PGLOG['ERRMSG'] = ''
             if self.PGLOG['SUMMSG']:
                msg += self.PGLOG['SEPLINE']
                if self.PGLOG['SUMMSG']: msg += "Summary:\n"
-               msg += PgLOG.break_long_string(self.PGLOG['SUMMSG'], 512, None, self.PGLOG['EMLMAX']/2, None, 50, 25)
+               msg += self.break_long_string(self.PGLOG['SUMMSG'], 512, None, self.PGLOG['EMLMAX']/2, None, 50, 25)
             if self.PGLOG['EMLMSG']:
                msg += self.PGLOG['SEPLINE']
                if self.PGLOG['SUMMSG']: msg += "Detail Information:\n"
-            self.PGLOG['EMLMSG'] = msg + PgLOG.break_long_string(self.PGLOG['EMLMSG'], 512, None, self.PGLOG['EMLMAX'], None, 50, 40)
+            self.PGLOG['EMLMSG'] = msg + self.break_long_string(self.PGLOG['EMLMSG'], 512, None, self.PGLOG['EMLMAX'], None, 50, 40)
             self.PGLOG['SUMMSG'] = ""   # in case not
          else:
-            if logact&PgLOG.ERRLOG:      # record error for email summary
+            if logact&self.ERRLOG:      # record error for email summary
                self.PGLOG['ERRCNT'] += 1
-               if logact&PgLOG.BRKLIN: self.PGLOG['ERRMSG'] += "\n"
+               if logact&self.BRKLIN: self.PGLOG['ERRMSG'] += "\n"
                self.PGLOG['ERRMSG'] += "{}. {}".format(self.PGLOG['ERRCNT'], msg)
-            elif logact&PgLOG.EMLSUM:
+            elif logact&self.EMLSUM:
                if self.PGLOG['SUMMSG']:
-                  if logact&PgLOG.BRKLIN: self.PGLOG['SUMMSG'] += "\n"
-                  if logact&PgLOG.SEPLIN: self.PGLOG['SUMMSG'] += self.PGLOG['SEPLINE']
+                  if logact&self.BRKLIN: self.PGLOG['SUMMSG'] += "\n"
+                  if logact&self.SEPLIN: self.PGLOG['SUMMSG'] += self.PGLOG['SEPLINE']
                self.PGLOG['SUMMSG'] += msg    # append
             if logact&EMLLOG:
                if self.PGLOG['EMLMSG']:
-                  if logact&PgLOG.BRKLIN: self.PGLOG['EMLMSG'] += "\n"
-                  if logact&PgLOG.SEPLIN: self.PGLOG['EMLMSG'] += self.PGLOG['SEPLINE']
+                  if logact&self.BRKLIN: self.PGLOG['EMLMSG'] += "\n"
+                  if logact&self.SEPLIN: self.PGLOG['EMLMSG'] += self.PGLOG['SEPLINE']
                self.PGLOG['EMLMSG'] += msg    # append
       elif msg is None:
          self.PGLOG['EMLMSG'] = ""
@@ -227,7 +227,7 @@ class PgLOG:
       return self.PGLOG['EMLMSG']
 
    #  send a customized email with all entries included
-   def send_customized_email(self, logmsg, emlmsg, logact = PgLOG.LOGWRN):
+   def send_customized_email(self, logmsg, emlmsg, logact = self.LOGWRN):
       entries = {
          'fr' : ["From",    1, None],
          'to' : ["To",      1, None],
@@ -247,9 +247,9 @@ class PgLOG:
             msg = msg.replace(vals[1], '')
             if vals[2]: entries[ekey][2] = vals[2]
          elif entries[ekey][1]:
-            return self.pglog("{}Missing Entry '{}' for sending email".format(logmsg, entry), logact|PgLOG.ERRLOG)
+            return self.pglog("{}Missing Entry '{}' for sending email".format(logmsg, entry), logact|self.ERRLOG)
       ret = self.send_python_email(entries['sb'][2], entries['to'][2], msg, entries['fr'][2], entries['cc'][2], logact)
-      if ret == PgLOG.SUCCESS or not self.PGLOG['EMLSEND']: return ret   
+      if ret == self.SUCCESS or not self.PGLOG['EMLSEND']: return ret   
       # try commandline sendmail
       ret = self.pgsystem(self.PGLOG['EMLSEND'], logact, 4, emlmsg)
       logmsg += "Email " + entries['to'][2]
@@ -257,19 +257,19 @@ class PgLOG:
       logmsg += " Subject: " + entries['sb'][2]
       if ret:
          self.log_email(emlmsg)
-         self.pglog(logmsg, logact&(~PgLOG.EXITLG))
+         self.pglog(logmsg, logact&(~self.EXITLG))
       else:
          errmsg = "Error sending email: " + logmsg
-         self.pglog(errmsg, (logact|PgLOG.ERRLOG)&~PgLOG.EXITLG)
+         self.pglog(errmsg, (logact|self.ERRLOG)&~self.EXITLG)
       return ret
 
    #  send an email; if empty msg send email message saved in self.PGLOG['EMLMSG'] instead
-   def send_email(self, subject = None, receiver = None, msg = None, sender = None, logact = PgLOG.LOGWRN):
+   def send_email(self, subject = None, receiver = None, msg = None, sender = None, logact = self.LOGWRN):
       return self.send_python_email(subject, receiver, msg, sender, None, logact)
 
    #  send an email via python module smtplib; if empty msg send email message saved
    #  in self.PGLOG['EMLMSG'] instead. pass cc = '' for skipping 'Cc: '
-   def send_python_email(self, subject = None, receiver = None, msg = None, sender = None, cc = None, logact = PgLOG.LOGWRN):
+   def send_python_email(self, subject = None, receiver = None, msg = None, sender = None, cc = None, logact = self.LOGWRN):
       if not msg:
          if self.PGLOG['EMLMSG']:
             msg = self.PGLOG['EMLMSG']
@@ -296,7 +296,7 @@ class PgLOG:
       if cc:
          emlmsg['Cc'] = cc
          logmsg += " Cc'd " + cc
-      if not subject: subject = "Message from {}-{}".format(self.PGLOG['HOSTNAME'], self.PgLOG.get_command())
+      if not subject: subject = "Message from {}-{}".format(self.PGLOG['HOSTNAME'], self.self.get_command())
       # if not re.search(r'!$', subject): subject += '!'
       emlmsg['Subject'] = subject
       if self.CPID['CPID']: logmsg += " in " + self.CPID['CPID']
@@ -306,17 +306,17 @@ class PgLOG:
          eml.send_message(emlmsg)
       except smtplib.SMTPException as err:
          errmsg = f"Error sending email:\n{err}\n{logmsg}"
-         return self.pglog(errmsg, (logact|PgLOG.ERRLOG)&~PgLOG.EXITLG)
+         return self.pglog(errmsg, (logact|self.ERRLOG)&~self.EXITLG)
       finally:
          eml.quit()
          self.log_email(str(emlmsg))
-         self.pglog(logmsg, logact&~PgLOG.EXITLG)
-         return PgLOG.SUCCESS
+         self.pglog(logmsg, logact&~self.EXITLG)
+         return self.SUCCESS
 
    # log email sent
    def log_email(self, emlmsg):
-      if not self.CPID['PID']: self.CPID['PID'] =  "{}-{}-{}".format(self.PGLOG['HOSTNAME'], PgLOG.get_command(), self.PGLOG['CURUID'])
-      cmdstr = "{} {} at {}\n".format(self.CPID['PID'], PgLOG.break_long_string(self.CPID['CMD'], 40, "...", 1), self.current_datetime())
+      if not self.CPID['PID']: self.CPID['PID'] =  "{}-{}-{}".format(self.PGLOG['HOSTNAME'], self.get_command(), self.PGLOG['CURUID'])
+      cmdstr = "{} {} at {}\n".format(self.CPID['PID'], self.break_long_string(self.CPID['CMD'], 40, "...", 1), self.current_datetime())
       fn = "{}/{}".format(self.PGLOG['LOGPATH'], self.PGLOG['EMLFILE'])
       try:
          f = open(fn, 'a')
@@ -335,7 +335,7 @@ class PgLOG:
          cmdline = cmdline.capitalize() if cmdline else "Ends"
          cinfo = self.cmd_execute_time("{} {}".format(self.CPID['PID'], cmdline), (ctime - self.CPID['CTM'])) + ": "
          if self.CPID['CPID']: cinfo += self.CPID['CPID'] + " <= "
-         cinfo += PgLOG.break_long_string(self.CPID['CMD'], 40, "...", 1)
+         cinfo += self.break_long_string(self.CPID['CMD'], 40, "...", 1)
          if logact: self.pglog(cinfo, logact)
       else:
          cinfo = self.current_datetime(ctime)
@@ -351,78 +351,78 @@ class PgLOG:
             self.CPID['CMD'] = cmdline
          self.CPID['CTM'] = ctime
 
-   # Function: self.pglog(msg, logact) return PgLOG.FAILURE or log message if not exit
+   # Function: self.pglog(msg, logact) return self.FAILURE or log message if not exit
    #   msg  -- message to log
    # locact -- logging actions: MSGLOG, WARNLG, ERRLOG, EXITLG, EMLLOG, & SNDEML
    # log and display message/error and exit program according logact value
-   def pglog(self, msg, logact = PgLOG.MSGLOG):   
+   def pglog(self, msg, logact = self.MSGLOG):   
       retmsg = None
       logact &= self.PGLOG['LOGMASK']   # filtering the log actions
-      if logact&PgLOG.RCDMSG: logact |= PgLOG.MSGLOG
-      if self.PGLOG['NOQUIT']: logact &= ~PgLOG.EXITLG
-      if logact&PgLOG.EMEROL:
-         if logact&PgLOG.EMLLOG: logact &= ~PgLOG.EMLLOG
-         if not logact&PgLOG.ERRLOG: logact &= ~PgLOG.EMEROL
+      if logact&self.RCDMSG: logact |= self.MSGLOG
+      if self.PGLOG['NOQUIT']: logact &= ~self.EXITLG
+      if logact&self.EMEROL:
+         if logact&self.EMLLOG: logact &= ~self.EMLLOG
+         if not logact&self.ERRLOG: logact &= ~self.EMEROL
       msg = msg.lstrip() if msg else ''  # remove leading whitespaces for logging message
-      if logact&PgLOG.EXITLG:
+      if logact&self.EXITLG:
          ext = "Exit 1 in {}\n".format(os.getcwd())
          if msg: msg = msg.rstrip() + "; "
          msg += ext
       else:
          if msg and not re.search(r'(\n|\r)$', msg): msg += "\n"
-         if logact&PgLOG.RETMSG: retmsg = msg
-      if logact&PgLOG.EMLALL:
-         if logact&PgLOG.SNDEML or not msg:
-            title = (msg if msg else "Message from {}-{}".format(self.PGLOG['HOSTNAME'], PgLOG.get_command()))
+         if logact&self.RETMSG: retmsg = msg
+      if logact&self.EMLALL:
+         if logact&self.SNDEML or not msg:
+            title = (msg if msg else "Message from {}-{}".format(self.PGLOG['HOSTNAME'], self.get_command()))
             msg = title
             self.send_email(title.rstrip())
          elif msg:
             self.set_email(msg, logact)
-      if not msg: return (retmsg if retmsg else PgLOG.FAILURE)
-      if logact&PgLOG.EXITLG and (self.PGLOG['EMLMSG'] or self.PGLOG['SUMMSG'] or self.PGLOG['ERRMSG'] or self.PGLOG['PRGMSG']):
-         if not logact&PgLOG.EMLALL: self.set_email(msg, logact)
-         title = "ABORTS {}-{}".format(self.PGLOG['HOSTNAME'], PgLOG.get_command())
+      if not msg: return (retmsg if retmsg else self.FAILURE)
+      if logact&self.EXITLG and (self.PGLOG['EMLMSG'] or self.PGLOG['SUMMSG'] or self.PGLOG['ERRMSG'] or self.PGLOG['PRGMSG']):
+         if not logact&self.EMLALL: self.set_email(msg, logact)
+         title = "ABORTS {}-{}".format(self.PGLOG['HOSTNAME'], self.get_command())
          self.set_email((("ABORTS " + self.CPID['PID']) if self.CPID['PID'] else title), EMLTOP)
          msg = title + '\n' + msg
          self.send_email(title)   
-      if logact&PgLOG.LOGERR: # make sure error is always logged
-         msg = PgLOG.break_long_string(msg)
-         if logact&(PgLOG.ERRLOG|PgLOG.EXITLG):
+      if logact&self.LOGERR: # make sure error is always logged
+         msg = self.break_long_string(msg)
+         if logact&(self.ERRLOG|self.EXITLG):
             cmdstr = self.get_error_command(int(time.time()), logact)
             msg = cmdstr + msg
-         if not logact&PgLOG.NOTLOG:
-            if logact&PgLOG.ERRLOG:
+         if not logact&self.NOTLOG:
+            if logact&self.ERRLOG:
                if not self.PGLOG['ERRFILE']: self.PGLOG['ERRFILE'] = re.sub(r'.log$', '.err', self.PGLOG['LOGFILE'])
                self.write_message(msg, f"{self.PGLOG['LOGPATH']}/{self.PGLOG['ERRFILE']}", logact)
-               if logact&PgLOG.EXITLG:
+               if logact&self.EXITLG:
                   self.write_message(cmdstr, f"{self.PGLOG['LOGPATH']}/{self.PGLOG['LOGFILE']}", logact)
             else:
                self.write_message(msg, f"{self.PGLOG['LOGPATH']}/{self.PGLOG['LOGFILE']}", logact)
-      if not self.PGLOG['BCKGRND'] and logact&(PgLOG.ERRLOG|PgLOG.WARNLG):
+      if not self.PGLOG['BCKGRND'] and logact&(self.ERRLOG|self.WARNLG):
          self.write_message(msg, None, logact)
    
-      if logact&PgLOG.EXITLG:
+      if logact&self.EXITLG:
          self.pgexit(1)
       else:
-         return (retmsg if retmsg else PgLOG.FAILURE)
+         return (retmsg if retmsg else self.FAILURE)
 
    # write a log message
    def write_message(self, msg, file, logact):   
       doclose = False
-      errlog = logact&PgLOG.ERRLOG
+      errlog = logact&self.ERRLOG
       if file:
          try:
              OUT = open(file, 'a')
              doclose = True
          except FileNotFoundError:
-            OUT = sys.stderr if logact&(PgLOG.ERRLOG|PgLOG.EXITLG) else sys.stdout
+            OUT = sys.stderr if logact&(self.ERRLOG|self.EXITLG) else sys.stdout
             OUT.write(f"Log File not found: {file}")
       else:
-         OUT = sys.stderr if logact&(PgLOG.ERRLOG|PgLOG.EXITLG) else sys.stdout
-         if logact&PgLOG.BRKLIN: OUT.write("\n")
-         if logact&PgLOG.SEPLIN: OUT.write(self.PGLOG['SEPLINE'])
+         OUT = sys.stderr if logact&(self.ERRLOG|self.EXITLG) else sys.stdout
+         if logact&self.BRKLIN: OUT.write("\n")
+         if logact&self.SEPLIN: OUT.write(self.PGLOG['SEPLINE'])
       OUT.write(msg)
-      if errlog and file and not logact&(PgLOG.EMLALL|PgLOG.SKPTRC): OUT.write(PgLOG.get_call_trace())
+      if errlog and file and not logact&(self.EMLALL|self.SKPTRC): OUT.write(self.get_call_trace())
       if doclose: OUT.close()
 
    # check and disconnet database before exit
@@ -432,11 +432,11 @@ class PgLOG:
 
    # get a command string for error log dump
    def get_error_command(self, ctime, logact):
-      if not self.CPID['PID']: self.CPID['PID'] =  "{}-{}-{}".format(self.PGLOG['HOSTNAME'], PgLOG.get_command(), self.PGLOG['CURUID'])
-      cmdstr = "{} {}".format((("ABORTS" if logact&PgLOG.ERRLOG else "QUITS") if logact&PgLOG.EXITLG else "ERROR"), self.CPID['PID'])
+      if not self.CPID['PID']: self.CPID['PID'] =  "{}-{}-{}".format(self.PGLOG['HOSTNAME'], self.get_command(), self.PGLOG['CURUID'])
+      cmdstr = "{} {}".format((("ABORTS" if logact&self.ERRLOG else "QUITS") if logact&self.EXITLG else "ERROR"), self.CPID['PID'])
       cmdstr = self.cmd_execute_time(cmdstr, (ctime - self.CPID['CTM']))
       if self.CPID['CPID']: cmdstr += " {} <=".format(self.CPID['CPID'])
-      cmdstr += " {} at {}\n".format(PgLOG.break_long_string(self.CPID['CMD'], 40, "...", 1), self.current_datetime(ctime))
+      cmdstr += " {} at {}\n".format(self.break_long_string(self.CPID['CMD'], 40, "...", 1), self.current_datetime(ctime))
       return cmdstr
 
    # get call trace track
@@ -484,11 +484,11 @@ class PgLOG:
          self.pglog("Append debug Info (levels {}-{}) to {}".format(levels[0], levels[1], dfile), WARNLG)
          msg = "DEBUG for " + self.CPID['PID'] + " "
          if self.CPID['CPID']: msg += self.CPID['CPID'] + " <= "
-         msg += PgLOG.break_long_string(self.CPID['CMD'], 40, "...", 1)
+         msg += self.break_long_string(self.CPID['CMD'], 40, "...", 1)
       # logging debug info
       DBG = open(dfile, 'a')
       DBG.write("{}:{}\n".format(level, msg))
-      if do_trace: DBG.write(PgLOG.get_call_trace())
+      if do_trace: DBG.write(self.get_call_trace())
       DBG.close()
 
    # return trimed string (strip leading and trailling spaces); remove comments led by '#' if rmcmt > 0
@@ -515,8 +515,8 @@ class PgLOG:
    # show program usage in file "self.PGLOG['PUSGDIR']/progname.usg" on screen with unix
    # system function 'pg', exit program when done.
    def show_usage(self, progname, opts = None):
-      if self.PGLOG['PUSGDIR'] is None: self.set_help_path(PgLOG.get_caller_file(1))
-      usgname = PgLOG.join_paths(self.PGLOG['PUSGDIR'], progname + '.usg')
+      if self.PGLOG['PUSGDIR'] is None: self.set_help_path(self.get_caller_file(1))
+      usgname = self.join_paths(self.PGLOG['PUSGDIR'], progname + '.usg')
       if opts:   # show usage for individual option of dsarch
          for opt in opts:
             if opts[opt][0] == 0:
@@ -563,7 +563,7 @@ class PgLOG:
 
    # Function: pgsystem(pgcmd, logact, cmdopt, instr)
    #  pgcmd  - Linux system command, can be a string, "ls -l", or a list, ['ls', '-l']
-   # logact  - logging action option, defaults to PgLOG.LOGWRN
+   # logact  - logging action option, defaults to self.LOGWRN
    # cmdopt  - command control option, default to 5 (1+4)
    #           0 - no command control,
    #           1 - log pgcmd (include the sub command calls),
@@ -573,21 +573,21 @@ class PgLOG:
    #           8 - log command with time,
    #          16 - return standard output message upon success
    #          32 - log error as standard output
-   #          64 - force returning PgLOG.FAILURE if called process aborts
+   #          64 - force returning self.FAILURE if called process aborts
    #         128 - tries 2 times for failed command before quits
    #         256 - cache standard error message
    #         512 - log instr & seconds with pgcmd if cmdopt&1
    #        1024 - turn on shell
    # instr   - input string passing to the command via stdin if not None
    # seconds - number of seconds to wait for a timeout process if > 0
-   def pgsystem(self, pgcmd, logact = PgLOG.LOGWRN, cmdopt = 5, instr = None, seconds = 0):   
-      ret = PgLOG.SUCCESS
+   def pgsystem(self, pgcmd, logact = self.LOGWRN, cmdopt = 5, instr = None, seconds = 0):   
+      ret = self.SUCCESS
       if not pgcmd: return ret  # empty command
-      act = logact&~PgLOG.EXITLG
-      if act&PgLOG.ERRLOG:
-         act &= ~PgLOG.ERRLOG
-         act |= PgLOG.WARNLG
-      if act&PgLOG.MSGLOG: act |= PgLOG.FRCLOG   # make sure system calls always logged
+      act = logact&~self.EXITLG
+      if act&self.ERRLOG:
+         act &= ~self.ERRLOG
+         act |= self.WARNLG
+      if act&self.MSGLOG: act |= self.FRCLOG   # make sure system calls always logged
       cmdact = act if cmdopt&1 else 0
       doshell = True if cmdopt&1024 else self.PGLOG['DOSHELL']
       if isinstance(pgcmd, str):
@@ -630,12 +630,12 @@ class PgLOG:
          except TimeoutError as e:
             errbuf = str(e)
             FD.kill()
-            ret = PgLOG.FAILURE
+            ret = self.FAILURE
          except Exception as e:
             errbuf = str(e)
-            ret = PgLOG.FAILURE
+            ret = self.FAILURE
          else:
-            ret = PgLOG.FAILURE if FD.returncode else PgLOG.SUCCESS
+            ret = self.FAILURE if FD.returncode else self.SUCCESS
             if isinstance(outbuf, bytes): outbuf = str(outbuf, errors='replace')
             if isinstance(errbuf, bytes): errbuf = str(errbuf, errors='replace')   
          if errbuf and cmdopt&32:
@@ -645,7 +645,7 @@ class PgLOG:
          if outbuf:
             lines = outbuf.split('\n')
             for line in lines:
-               line = PgLOG.strip_output_line(line.strip())
+               line = self.strip_output_line(line.strip())
                if not line: continue
                if self.PGLOG['STD2ERR'] and self.std2err(line):
                   if cmdopt&260: error += line + "\n"
@@ -660,7 +660,7 @@ class PgLOG:
          if errbuf:
             lines = errbuf.split('\n')
             for line in lines:
-               line = PgLOG.strip_output_line(line.strip())
+               line = self.strip_output_line(line.strip())
                if not line: continue
                if self.PGLOG['ERR2STD'] and self.err2std(line):
                   if stdlog: self.pglog(line, stdlog)
@@ -668,26 +668,26 @@ class PgLOG:
                else:
                   if cmdopt&260: error += line + "\n"
                   if abort == -1 and re.match('ABORTS ', line): abort = 1
-         if ret == PgLOG.SUCCESS and abort == 1: ret = PgLOG.FAILURE
+         if ret == self.SUCCESS and abort == 1: ret = self.FAILURE
          end = time.time()
          last = end - last
          if error:
-            if ret == PgLOG.FAILURE:
+            if ret == self.FAILURE:
                error = "Error Execute: {}\n{}".format(cmdstr, error)
             else:
                error = "Error From: {}\n{}".format(cmdstr, error)
             if loop > 1: error = "Retry "
             if cmdopt&256: self.PGLOG['SYSERR'] += error
             if cmdopt&4:
-               errlog = (act|PgLOG.ERRLOG)
-               if ret == PgLOG.FAILURE and loop >= loops: errlog |= logact
+               errlog = (act|self.ERRLOG)
+               if ret == self.FAILURE and loop >= loops: errlog |= logact
                self.pglog(error, errlog)
          if last > self.PGLOG['CMDTIME'] and not re.search(r'(^|/|\s)(dsarch|dsupdt|dsrqst)\s', cmdstr):
-            cmdstr = "> {} Ends By {}".format(PgLOG.break_long_string(cmdstr, 100, "...", 1), self.current_datetime())
+            cmdstr = "> {} Ends By {}".format(self.break_long_string(cmdstr, 100, "...", 1), self.current_datetime())
             self.cmd_execute_time(cmdstr, last, cmdact)
-         if ret == PgLOG.SUCCESS or loop >= loops: break
+         if ret == self.SUCCESS or loop >= loops: break
          time.sleep(6)
-      if ret == PgLOG.FAILURE and retbuf and cmdopt&272 == 272:
+      if ret == self.FAILURE and retbuf and cmdopt&272 == 272:
          if self.PGLOG['SYSERR']: self.PGLOG['SYSERR'] += '\n'
          self.PGLOG['SYSERR'] += retbuf
          retbuf = ''
@@ -706,7 +706,7 @@ class PgLOG:
    def cmd_execute_time(self, cmdstr, last, logact = None):
       msg = cmdstr
       if last >= self.PGLOG['CMDTIME']:   # show running for at least one minute
-         msg += " ({})".format(PgLOG.seconds_to_string_time(last))
+         msg += " ({})".format(self.seconds_to_string_time(last))
       if logact:
          return self.pglog(msg, logact)
       else:
@@ -735,10 +735,10 @@ class PgLOG:
       return msg
 
    #  wrap function to call pgsystem() with a timeout control
-   #  return PgLOG.FAILURE if error eval or time out
-   def tosystem(cmd, timeout = 0, logact = PgLOG.LOGWRN, cmdopt = 5, instr = None):
+   #  return self.FAILURE if error eval or time out
+   def tosystem(self, cmd, timeout = 0, logact = self.LOGWRN, cmdopt = 5, instr = None):
       if not timeout: timeout = self.PGLOG['TIMEOUT']   # set default timeout if missed
-      return pgsystem(cmd, logact, cmdopt, instr, timeout)
+      return self.pgsystem(cmd, logact, cmdopt, instr, timeout)
 
    # insert breaks, default to '\n', for every length, default to 1024,
    # for long string; return specified number lines if mline given
@@ -842,10 +842,10 @@ class PgLOG:
          return '/'.join(adir1 + adir2)
 
    # validate if a command for a given BATCH host is accessable and executable
-   # Return PgLOG.SUCCESS if valid; PgLOG.FAILURE if not
+   # Return self.SUCCESS if valid; self.FAILURE if not
    def valid_batch_host(self, host, logact = 0):
       HOST = host.upper()
-      return PgLOG.SUCCESS if HOST in self.BCHCMDS and self.valid_command(self.BCHCMDS[HOST], logact) else PgLOG.FAILURE
+      return self.SUCCESS if HOST in self.BCHCMDS and self.valid_command(self.BCHCMDS[HOST], logact) else self.FAILURE
 
    # validate if a given command is accessable and executable
    # Return the full command path if valid; '' if not
@@ -932,7 +932,7 @@ class PgLOG:
             self.PBSSTATS[host] = stat
 
    #  reset the batch host name in case was not set properly
-   def reset_batch_host(self, bhost, logact = PgLOG.LOGWRN):
+   def reset_batch_host(self, bhost, logact = self.LOGWRN):
       bchhost = bhost.upper()
       if bchhost != self.PGLOG['PGBATCH']:
          if self.PGLOG['CURBID'] > 0:
@@ -1112,8 +1112,8 @@ class PgLOG:
    # check and return TMPSYNC path, and add it if not exists
    def get_tmpsync_path(self):
       if 'DSSHOME' in self.PGLOG and self.PGLOG['DSSHOME'] and not op.exists(self.PGLOG['TMPSYNC']):
-         self.pgsystem("mkdir " + self.PGLOG['TMPSYNC'], 0, PgLOG.LGWNEX, 4)
-         self.pgsystem("chmod 775 " + self.PGLOG['TMPSYNC'], PgLOG.LOGWRN, 4)
+         self.pgsystem("mkdir " + self.PGLOG['TMPSYNC'], 0, self.LGWNEX, 4)
+         self.pgsystem("chmod 775 " + self.PGLOG['TMPSYNC'], self.LOGWRN, 4)
       return self.PGLOG['TMPSYNC']
 
    # append or prepend locpath to pgpath
@@ -1147,7 +1147,7 @@ class PgLOG:
          os.environ['MAIL'] = re.sub(self.PGLOG['CURUID'], specialist, os.environ['MAIL'])   
       home = "{}/{}".format(self.PGLOG['USRHOME'], specialist)
       shell = "tcsh"
-      buf = self.pgsystem("grep ^{}: /etc/passwd".format(specialist), PgLOG.LOGWRN, 20)
+      buf = self.pgsystem("grep ^{}: /etc/passwd".format(specialist), self.LOGWRN, 20)
       if buf:
          lines = buf.split('\n')
          for line in lines:
@@ -1172,7 +1172,7 @@ class PgLOG:
          return   # skip if cannot open   
       nline = rf.readline()
       while nline:
-         line = PgLOG.pgtrim(nline)
+         line = self.pgtrim(nline)
          nline = rf.readline()
          if not line: continue
          if checkif == 0:
@@ -1258,7 +1258,7 @@ class PgLOG:
             ret = 0
             if pinfo: error = "not matched"
       if error:
-         if logact is None: logact = PgLOG.LOGERR
+         if logact is None: logact = self.LOGERR
          self.pglog("{}: CANNOT be processed on {} for hosthame {}".format(pinfo, chost, error), logact)
       return ret
 
@@ -1291,7 +1291,7 @@ class PgLOG:
          ms = re.search(r'([<>\|\s])', arg)
          if ms:
             if action:
-               self.pglog("{}: Cannot {} for special character '{}' in argument value".format(arg, action, ms.group(1)), PgLOG.LGEREX)
+               self.pglog("{}: Cannot {} for special character '{}' in argument value".format(arg, action, ms.group(1)), self.LGEREX)
             if quote:
                if re.search(r"\'", arg):
                   arg = "\"{}\"".format(arg)
@@ -1319,7 +1319,6 @@ class PgLOG:
    # convert a non-10 based string to an integer
    @staticmethod
    def base2int(x, base):
-
       if not isinstance(x, int): x = int(x)
       if x == 0: return 0
       negative = 0

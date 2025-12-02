@@ -108,9 +108,9 @@ class PgCMD(PgLock):
    # find an existing dscheck record from the cached command argument; create and initialize one if not exist
    def init_dscheck(self, oindex, otype, cmd, dsid, action, workdir = None, specialist = None, doptions = None, logact = 0):
       cidx = 0
-      argv = PgLOG.argv_to_string(sys.argv[1:], 0, "Process in Delayed Mode")
+      argv = self.argv_to_string(sys.argv[1:], 0, "Process in Delayed Mode")
       argextra = None
-      if not logact: logact = PgLOG.LGEREX
+      if not logact: logact = self.LGEREX
       if not workdir: workdir = os.getcwd()
       if not specialist: specialist = self.PGLOG['CURUID']
       (mcount, hosts) = self.get_delay_options(doptions, cmd)
@@ -123,10 +123,10 @@ class PgCMD(PgLock):
       pgrec = self.get_dscheck(cmd, argv, workdir, specialist, argextra, logact)   
       if pgrec:  # found existing dscheck record
          cidx = pgrec['cindex']
-         cmsg = "{}{}: {} batch process ".format(cinfo, cidx, PgCMD.get_command_info(pgrec))
-         cidx = self.lock_dscheck(cidx, 1, PgLOG.LOGWRN)
+         cmsg = "{}{}: {} batch process ".format(cinfo, cidx, self.get_command_info(pgrec))
+         cidx = self.lock_dscheck(cidx, 1, self.LOGWRN)
          if cidx < 0:
-            self.pglog(cmsg + "is Running, No restart", PgLOG.LOGWRN)
+            self.pglog(cmsg + "is Running, No restart", self.LOGWRN)
             sys.exit(0)
          if cidx > 0:
             if not hosts and pgrec['hostname']:
@@ -136,19 +136,19 @@ class PgCMD(PgLock):
             self.DSCHK['chkcnd'] = "cindex = {}".format(cidx)
             if(pgrec['status'] == 'D' or pgrec['fcount'] and pgrec['dcount'] >= pgrec['fcount'] or
                pgrec['tcount'] > pgrec['mcount'] or not pgrec['pid'] and pgrec['tcount'] == pgrec['mcount']):
-               self.pglog("{}is {}".format(cmsg, ('Done' if pgrec['status'] == 'D' else 'Finished')), PgLOG.LOGWRN)
+               self.pglog("{}is {}".format(cmsg, ('Done' if pgrec['status'] == 'D' else 'Finished')), self.LOGWRN)
                self.lock_dscheck(cidx, 0, logact)
                sys.exit(0)
       if not cidx:  # add new dscheck record
          record = {}
          if hosts and re.match(r'^(ds\d|\d)\d\d.\d$', hosts):
-            self.pglog(hosts + ": Cannot pass DSID for hostname to submit batch process", PgLOG.LGEREX)
+            self.pglog(hosts + ": Cannot pass DSID for hostname to submit batch process", self.LGEREX)
          if oindex: self.set_command_control(oindex, otype, cmd, logact)
          record['oindex'] = oindex
          record['dsid'] = dsid
          record['action'] = action
          record['otype'] = otype
-         (record['date'], record['time']) = PgUtil.get_date_time()
+         (record['date'], record['time']) = self.get_date_time()
          record['command'] = cmd
          record['argv'] = argv
          if mcount > 0: record['mcount'] = mcount
@@ -156,16 +156,16 @@ class PgCMD(PgLock):
          record['workdir'] = workdir
          if argextra: record['argextra'] = argextra
          record.update(get_batch_options())
-         cidx = self.pgadd("dscheck", record, logact|PgLOG.AUTOID)
+         cidx = self.pgadd("dscheck", record, logact|self.AUTOID)
          if cidx:
-            cmsg = "{}{}: {} Adds a new check".format(cinfo, cidx, PgCMD.get_command_info(record))
-            self.pglog(cmsg, PgLOG.LOGWRN)
+            cmsg = "{}{}: {} Adds a new check".format(cinfo, cidx, self.get_command_info(record))
+            self.pglog(cmsg, self.LOGWRN)
          sys.exit(0)
    
       (chost, cpid) = self.current_process_info()
       (rhost, rpid) = self.current_process_info(1)
    
-      if not check_command_specialist_host(hosts, chost, specialist, cmd, action, PgLOG.LOGERR):
+      if not check_command_specialist_host(hosts, chost, specialist, cmd, action, self.LOGERR):
          self.lock_dscheck(cidx, 0, logact)
          sys.exit(1)
    
@@ -174,7 +174,7 @@ class PgCMD(PgLock):
       if mcount > 0: record['mcount'] = mcount
       record['bid'] = (cpid if self.PGLOG['CURBID'] else 0)
       if pgrec['stttime'] and pgrec['chktime'] > pgrec['stttime']:
-         (record['ttltime'], record['quetime']) = PgCMD.get_dscheck_runtime(pgrec)
+         (record['ttltime'], record['quetime']) = self.get_dscheck_runtime(pgrec)
       record['chktime'] = record['stttime'] = int(time.time())
       if not pgrec['subtime']: record['subtime'] = record['stttime']
       if dsid and not pgrec['dsid']: record['dsid'] = dsid
@@ -195,10 +195,10 @@ class PgCMD(PgLock):
       if not self.PGLOG['BCKGRND']: self.PGLOG['BCKGRND'] = 1         # turn off screen output if not yet
       tcnt = pgrec['tcount']
       if not pgrec['pid']: tcnt += 1
-      tstr = "the {} run".format(PgLOG.int2order(tcnt)) if tcnt > 1 else "running"
+      tstr = "the {} run".format(self.int2order(tcnt)) if tcnt > 1 else "running"
       pstr = "{}<{}>".format(chost, cpid)
       if rhost != chost: pstr += "/{}<{}>".format(rhost, rpid)
-      self.pglog("{}Starts {} ({})".format(cmsg, tstr, pstr), PgLOG.LOGWRN)
+      self.pglog("{}Starts {} ({})".format(cmsg, tstr, pstr), self.LOGWRN)
       self.PGLOG['BCKGRND'] = bck
       return cidx
 
@@ -271,9 +271,9 @@ class PgCMD(PgLock):
       if otype: cmd +=  ' ' + otype
       ret = options = ''
       for loop in range(3):
-         ret = self.pgsystem(cmd, PgLOG.LOGWRN, 279)  # 1+2+4+16+256
+         ret = self.pgsystem(cmd, self.LOGWRN, 279)  # 1+2+4+16+256
          if loop < 2 and self.PGLOG['SYSERR'] and 'Connection timed out' in self.PGLOG['SYSERR']:
-            time.sleep(PgSIG.PGSIG['ETIME'])
+            time.sleep(self.PGSIG['ETIME'])
          else:
             break   
       if ret:
@@ -309,9 +309,9 @@ class PgCMD(PgLock):
             pgrecs = self.pgmget("dscheck", "*", cnd, logact)
             cnt = len(pgrecs['cindex']) if pgrecs else 0
       for i in range(cnt):
-         pgrec = PgUtil.onerecord(pgrecs, i)
-         if pgrec['workdir'] and PgUtil.pgcmp(workdir, pgrec['workdir']): continue
-         if PgUtil.pgcmp(argextra, pgrec['argextra']): continue 
+         pgrec = self.onerecord(pgrecs, i)
+         if pgrec['workdir'] and self.pgcmp(workdir, pgrec['workdir']): continue
+         if self.pgcmp(argextra, pgrec['argextra']): continue 
          return pgrec
       return None
 
@@ -344,8 +344,8 @@ class PgCMD(PgLock):
       record['tcount'] = pgrec['tcount']
       record['date'] = pgrec['date']
       record['time'] = pgrec['time']
-      record['closetime'] = PgUtil.curtime(1)
-      (record['ttltime'], record['quetime']) = PgCMD.get_dscheck_runtime(pgrec)
+      record['closetime'] = self.curtime(1)
+      (record['ttltime'], record['quetime']) = self.get_dscheck_runtime(pgrec)
       record['argv'] = pgrec['argv']
       if pgrec['argextra']:
          record['argv'] += pgrec['argextra']
@@ -357,11 +357,11 @@ class PgCMD(PgLock):
       else:
          stat = self.pgadd("dschkhist", record, logact)      
       if stat:
-         cmsg = "{} cleaned as '{}' at {} on {}".format(PgCMD.get_command_info(pgrec), record['status'], self.current_datetime(), self.PGLOG['HOSTNAME'])
-         self.pglog("Chk{}: {}".format(pgrec['cindex'], cmsg), PgLOG.LOGWRN|PgLOG.FRCLOG)
+         cmsg = "{} cleaned as '{}' at {} on {}".format(self.get_command_info(pgrec), record['status'], self.current_datetime(), self.PGLOG['HOSTNAME'])
+         self.pglog("Chk{}: {}".format(pgrec['cindex'], cmsg), self.LOGWRN|self.FRCLOG)
          stat = self.pgdel("dscheck", chkcnd, logact)
       if record['status'] == "E" and 'errmsg' in record:
-         self.pglog("Chk{}: {} Exits with Error\n{}".format(pgrec['cindex'], PgCMD.get_command_info(pgrec), record['errmsg']), logact)
+         self.pglog("Chk{}: {} Exits with Error\n{}".format(pgrec['cindex'], self.get_command_info(pgrec), record['errmsg']), logact)
       return stat
 
    # get dsrqst fcount and dcount
@@ -485,10 +485,10 @@ class PgCMD(PgLock):
    # change the dscheck original command information
    def change_dscheck_oinfo(self, oidx, otype, nidx, ntype):
       cnd = "oindex = {} AND otype = '{}'".format(oidx, otype)
-      pgchk = self.pgget('dscheck', 'cindex, oindex, otype', cnd, PgLOG.LGEREX)
+      pgchk = self.pgget('dscheck', 'cindex, oindex, otype', cnd, self.LGEREX)
       if not pgchk: return 0    # miss dscheck record to change
       record = {}
       self.DSCHK['oindex'] = record['oindex'] = nidx
       self.DSCHK['otype'] = record['otype'] = ntype
       cnd = "cindex = {}".format(pgchk['cindex'])
-      return self.pgupdt('dscheck', record, cnd, PgLOG.LGEREX)
+      return self.pgupdt('dscheck', record, cnd, self.LGEREX)
