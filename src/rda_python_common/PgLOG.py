@@ -1380,7 +1380,7 @@ def set_common_pglog():
 
    SETPGLOG("TMPDIR", '')
    if not PGLOG['TMPDIR']:
-      PGLOG['TMPDIR'] = "/lustre/desc1/gdex/scratch/" + PGLOG['CURUID']
+      PGLOG['TMPDIR'] = "/lustre/desc1/scratch/" + PGLOG['CURUID']
       os.environ['TMPDIR'] = PGLOG['TMPDIR']
 
    # empty diretory for HOST-sync
