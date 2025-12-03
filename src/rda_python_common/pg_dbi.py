@@ -95,7 +95,7 @@ class PgDBI(PgLOG):
       self.PGDBI['MSHOST'] = self.PGLOG['PMISCHOST']
       self.PGDBI['VWSHOST'] = self.get_short_host(self.PGDBI['VWHOST'])
       self.PGDBI['MSSHOST'] = self.get_short_host(self.PGDBI['MSHOST'])
-      self.PGDBI['VWHOME'] =  (VIEWHOMES[self.PGLOG['HOSTNAME']] if self.PGLOG['HOSTNAME'] in VIEWHOMES else VIEWHOMES['default'])
+      self.PGDBI['VWHOME'] =  (self.VIEWHOMES[self.PGLOG['HOSTNAME']] if self.PGLOG['HOSTNAME'] in self.VIEWHOMES else self.VIEWHOMES['default'])
       self.PGDBI['SCPATH'] = None       # additional schema path for set search_path
       self.PGDBI['VHSET'] = 0
       self.PGDBI['PGSIZE'] = 1000        # number of records for page_size
@@ -246,7 +246,8 @@ class PgDBI(PgLOG):
       self.curtran = 0 if autocommit else 1
 
    # record error message to dscheck record and clean the lock
-   def record_dscheck_error(self, errmsg, logact = self.PGDBI['EXITLG']):
+   def record_dscheck_error(self, errmsg, logact = None):
+      if logact is None: logact = self.PGDBI['EXITLG']
       cnd = self.PGLOG['DSCHECK']['chkcnd']
       if self.PGLOG['NOQUIT']: self.PGLOG['NOQUIT'] = 0
       dflags = self.PGLOG['DSCHECK']['dflags']
@@ -273,7 +274,8 @@ class PgDBI(PgLOG):
       return self.pgupdt("dscheck", record, cnd, logact)
 
    # local function to log query error
-   def qelog(self, dberror, sleep, sqlstr, vals, pgcnt, logact = self.PGDBI['ERRLOG']):
+   def qelog(self, dberror, sleep, sqlstr, vals, pgcnt, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       retry = " Sleep {}(sec) & ".format(sleep) if sleep else " "
       if sqlstr:
          if sqlstr.find("Retry ") == 0:
@@ -332,7 +334,8 @@ class PgDBI(PgLOG):
       return tbname
 
    # local function to log query error
-   def check_dberror(self, pgerr, pgcnt, sqlstr, ary, logact = self.PGDBI['ERRLOG']):
+   def check_dberror(self, pgerr, pgcnt, sqlstr, ary, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       ret = self.FAILURE
       pgcode = pgerr.pgcode
       pgerror = pgerr.pgerror
@@ -445,7 +448,8 @@ class PgDBI(PgLOG):
    # gather table field default information as hash array with field names as keys
    # and default values as values
    # the whole table information is cached to a hash array with table names as keys
-   def pgtable(self, tablename, logact = self.PGDBI['ERRLOG']):
+   def pgtable(self, tablename, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if tablename in self.TABLES: return self.TABLES[tablename].copy()  # cached already
       intms = r'^(smallint||bigint|integer)$'
       fields = "column_name col, data_type typ, is_nullable nil, column_default def"
@@ -481,7 +485,8 @@ class PgDBI(PgLOG):
       return pgdefs
 
    # get sequence field name for given table name
-   def pgsequence(self, tablename, logact = self.PGDBI['ERRLOG']):
+   def pgsequence(self, tablename, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if tablename in self.SEQUENCES: return self.SEQUENCES[tablename]  # cached already
       condition = self.table_condition(tablename) + " AND column_default LIKE 'nextval(%'"
       pgrec = self.pgget('information_schema.columns', 'column_name', condition, logact)
@@ -547,7 +552,8 @@ class PgDBI(PgLOG):
    # tablename: add record for one table name each call
    #    record: hash reference with keys as field names and hash values as field values
    # return self.SUCCESS or self.FAILURE
-   def pgadd(self, tablename, record, logact = self.PGDBI['ERRLOG'], getid = None):
+   def pgadd(self, tablename, record, logact = None, getid = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if not record: return self.pglog("Nothing adds to " + tablename, logact)
       if logact&self.DODFLT: self.prepare_default(tablename, record, logact)
       if logact&self.AUTOID and not getid: getid = self.pgsequence(tablename, logact)
@@ -583,7 +589,8 @@ class PgDBI(PgLOG):
    # tablename: add records for one table name each call
    #   records: dict with field names as keys and each value is a list of field values
    #  return self.SUCCESS or self.FAILURE
-   def pgmadd(self, tablename, records, logact = self.PGDBI['ERRLOG'], getid = None):
+   def pgmadd(self, tablename, records, logact = None, getid = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if not records: return self.pglog("Nothing to insert to table " + tablename, logact)
       if logact&self.DODFLT: self.prepare_defaults(tablename, records, logact)
       if logact&self.AUTOID and not getid: getid = self.pgsequence(tablename, logact)
@@ -702,7 +709,8 @@ class PgDBI(PgLOG):
    #  condition: querry conditions for where clause
    # return a dict reference with keys as field names upon success, values for each field name
    #        are in a list. All lists are the same length with missing values set to None
-   def pgmget(self, tablenames, fields, condition = None, logact = self.PGDBI['ERRLOG']):
+   def pgmget(self, tablenames, fields, condition = None, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       sqlstr = self.prepare_select(tablenames, fields, condition, None, logact)
       ucname = True if logact&self.UCNAME else False
       count = pgcnt = 0
@@ -740,7 +748,8 @@ class PgDBI(PgLOG):
    #    cnddict: condition dict with field names : values
    # return a dict(field names : values) upon success
    # retrieve one records from tablenames condition dict
-   def pghget(self, tablenames, fields, cnddict, logact = self.PGDBI['ERRLOG']):
+   def pghget(self, tablenames, fields, cnddict, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if not tablenames: return self.pglog("Miss Table name to query", logact)
       if not fields: return self.pglog("Nothing to query " + tablenames, logact)
       if not cnddict: return self.pglog("Miss condition dict values to query " + tablenames, logact)
@@ -785,7 +794,8 @@ class PgDBI(PgLOG):
    #   cnddicts: condition dict with field names : value lists
    # return a dict(field names : value lists) upon success
    # retrieve multiple records from tablenames for condition dict
-   def pgmhget(self, tablenames, fields, cnddicts, logact = self.PGDBI['ERRLOG']):
+   def pgmhget(self, tablenames, fields, cnddicts, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if not tablenames: return self.pglog("Miss Table name to query", logact)
       if not fields: return self.pglog("Nothing to query " + tablenames, logact)
       if not cnddicts: return self.pglog("Miss condition dict values to query " + tablenames, logact)
@@ -860,7 +870,8 @@ class PgDBI(PgLOG):
    #    record: dict with field names : values
    # condition: update conditions for where clause)
    # return number of rows undated upon success
-   def pgupdt(self, tablename, record, condition, logact = self.PGDBI['ERRLOG']):
+   def pgupdt(self, tablename, record, condition, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if not record: self.pglog("Nothing updates to " + tablename, logact)
       if not condition or isinstance(condition, int): self.pglog("Miss condition to update " + tablename, logact)
       sqlstr = self.prepare_update(tablename, list(record), condition)
@@ -893,7 +904,8 @@ class PgDBI(PgLOG):
    #    record: update values, dict with field names : values
    #   cnddict: condition dict with field names : values
    # return number of records updated upon success
-   def pghupdt(self, tablename, record, cnddict, logact = self.PGDBI['ERRLOG']):
+   def pghupdt(self, tablename, record, cnddict, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if not record: self.pglog("Nothing updates to " + tablename, logact)
       if not cnddict or isinstance(cnddict, int): self.pglog("Miss condition to update to " + tablename, logact)
       if logact&self.DODFLT: self.prepare_defaults(tablename, record, logact)
@@ -927,7 +939,8 @@ class PgDBI(PgLOG):
    #   records: update values, dict with field names : value lists
    #   cnddicts: condition dict with field names : value lists
    # return number of records updated upon success
-   def pgmupdt(self, tablename, records, cnddicts, logact = self.PGDBI['ERRLOG']):
+   def pgmupdt(self, tablename, records, cnddicts, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if not records: self.pglog("Nothing updates to " + tablename, logact)
       if not cnddicts or isinstance(cnddicts, int): self.pglog("Miss condition to update to " + tablename, logact)
       if logact&self.DODFLT: self.prepare_defaults(tablename, records, logact)
@@ -978,7 +991,8 @@ class PgDBI(PgLOG):
    # tablename: delete for one table name each call
    # condition: delete conditions for where clause
    # return number of records deleted upon success
-   def pgdel(self, tablename, condition, logact = self.PGDBI['ERRLOG']):
+   def pgdel(self, tablename, condition, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if not condition or isinstance(condition, int): self.pglog("Miss condition to delete from " + tablename, logact)
       sqlstr = self.prepare_delete(tablename, condition)
       dcnt = pgcnt = 0
@@ -1006,7 +1020,8 @@ class PgDBI(PgLOG):
    # tablename: delete for one table name each call
    #    cndict: delete condition dict for names : values
    # return number of records deleted upon success
-   def pghdel(self, tablename, cnddict, logact = self.PGDBI['ERRLOG']):
+   def pghdel(self, tablename, cnddict, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if not cnddict or isinstance(cnddict, int): self.pglog("Miss condition dict to delete from " + tablename, logact)
       sqlstr = self.prepare_delete(tablename, None, list(cnddict))
       values = tuple(cnddict.values())
@@ -1036,7 +1051,8 @@ class PgDBI(PgLOG):
    # tablename: delete for one table name each call
    #   cndicts: delete condition dict for names : value lists
    # return number of records deleted upon success
-   def pgmdel(tablename, cnddicts, logact = self.PGDBI['ERRLOG']):
+   def pgmdel(tablename, cnddicts, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if not cnddicts or isinstance(cnddicts, int): self.pglog("Miss condition dict to delete from " + tablename, logact)
       sqlstr = self.prepare_delete(tablename, None, list(cnddicts))
       v = cnddicts.values()
@@ -1067,7 +1083,8 @@ class PgDBI(PgLOG):
 
    # sqlstr: a complete sql string
    # return number of record affected upon success
-   def pgexec(self, sqlstr, logact = self.PGDBI['ERRLOG']):
+   def pgexec(self, sqlstr, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if self.PGLOG['DBGLEVEL']: self.pgdbg(100, sqlstr)
       ret = pgcnt = 0
       while True:
@@ -1468,7 +1485,8 @@ class PgDBI(PgLOG):
          return None
 
    # get the specialist info for a given dataset
-   def get_specialist(self, dsid, logact = self.PGDBI['ERRLOG']):
+   def get_specialist(self, dsid, logact = None):
+      if logact is None: logact = self.PGDBI['ERRLOG']
       if dsid in self.SPECIALIST: return self.SPECIALIST['dsid']
    
       pgrec = self.pgget("dsowner, dssgrp", "specialist, lstname, fstname",

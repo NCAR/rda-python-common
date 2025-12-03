@@ -107,7 +107,8 @@ class PgSplit(PgDBI):
          return "wfile.dsid = '{}'".format(dsid)
 
    # insert one record into wfile and/or wfile_dsid
-   def pgadd_wfile(self, dsid, wfrec, logact = self.LOGERR, getid = None):
+   def pgadd_wfile(self, dsid, wfrec, logact = None, getid = None):
+      if logact is None: logact = self.LOGERR
       record = {'wfile' : wfrec['wfile'],
                 'dsid' : (wfrec['dsid'] if 'dsid' in wfrec else dsid)}
       wret = self.pgadd('wfile', record, logact, 'wid')
@@ -120,7 +121,8 @@ class PgSplit(PgDBI):
          return 1 if wret else 0
 
    # insert multiple records into wfile and/or wfile_dsid
-   def pgmadd_wfile(self, dsid, wfrecs, logact = self.LOGERR, getid = None):
+   def pgmadd_wfile(self, dsid, wfrecs, logact = None, getid = None):
+      if logact is None: logact = self.LOGERR
       records = {'wfile' : wfrecs['wfile'],
                  'dsid' : (wfrecs['dsid'] if 'dsid' in wfrecs else [dsid]*len(wfrecs['wfile']))}
       wret = self.pgmadd('wfile', records, logact, 'wid')
@@ -135,7 +137,8 @@ class PgSplit(PgDBI):
 
    # update one or multiple rows in wfile and/or wfile_dsid
    # exclude dsid in condition
-   def pgupdt_wfile(self, dsid, wfrec, condition, logact = self.LOGERR):
+   def pgupdt_wfile(self, dsid, wfrec, condition, logact = None):
+      if logact is None: logact = self.LOGERR
       record = self.trim_wfile_fields(wfrec)
       if record:
          wret = self.pgupdt('wfile', record, self.get_dsid_condition(dsid, condition), logact)
@@ -148,7 +151,8 @@ class PgSplit(PgDBI):
 
    # update one row in wfile and/or wfile_dsid with dsid change
    # exclude dsid in condition
-   def pgupdt_wfile_dsid(self, dsid, odsid, wfrec, wid, logact = self.LOGERR):
+   def pgupdt_wfile_dsid(self, dsid, odsid, wfrec, wid, logact = None):
+      if logact is None: logact = self.LOGERR
       record = self.trim_wfile_fields(wfrec)
       cnd = 'wid = {}'.format(wid)
       if record:
@@ -174,7 +178,8 @@ class PgSplit(PgDBI):
 
    # delete one or multiple rows in wfile and/or wfile_dsid, and add the record(s) into wfile_delete
    # exclude dsid in conidtion
-   def pgdel_wfile(self, dsid, condition, logact = self.LOGERR):
+   def pgdel_wfile(self, dsid, condition, logact = None):
+      if logact is None: logact = self.LOGERR
       pgrecs = self.pgmget_wfile(dsid, '*', condition, logact|self.ADDTBL)
       wret = self.pgdel('wfile', self.get_dsid_condition(dsid, condition), logact)   
       if wret: self.pgdel("wfile_" + dsid, condition, logact)
@@ -182,7 +187,8 @@ class PgSplit(PgDBI):
       return wret
 
    # delete one or multiple rows in sfile, and add the record(s) into sfile_delete
-   def pgdel_sfile(self, condition, logact = self.LOGERR):
+   def pgdel_sfile(self, condition, logact = None):
+      if logact is None: logact = self.LOGERR
       pgrecs = self.pgmget('sfile', '*', condition, logact)
       sret = self.pgdel('sfile', condition, logact)   
       if sret and pgrecs: self.pgmadd('sfile_delete', pgrecs, logact)
@@ -190,7 +196,8 @@ class PgSplit(PgDBI):
 
    # update one or multiple rows in wfile and/or wfile_dsid for multiple dsid
    # exclude dsid in condition
-   def pgupdt_wfile_dsids(self, dsid, dsids, brec, bcnd, logact = self.LOGERR):
+   def pgupdt_wfile_dsids(self, dsid, dsids, brec, bcnd, logact = None):
+      if logact is None: logact = self.LOGERR
       record = self.trim_wfile_fields(brec)
       if record:
          wret = self.pgupdt("wfile", record, bcnd, logact)
@@ -208,7 +215,8 @@ class PgSplit(PgDBI):
 
    # get one record from wfile or wfile_dsid
    # exclude dsid in fields and condition
-   def pgget_wfile(self, dsid, fields, condition, logact = self.LOGERR):
+   def pgget_wfile(self, dsid, fields, condition, logact = None):
+      if logact is None: logact = self.LOGERR
       tname = "wfile_" + dsid
       flds = fields.replace('wfile.', tname + '.')
       cnd = condition.replace('wfile.', tname + '.')
@@ -218,7 +226,8 @@ class PgSplit(PgDBI):
 
    # get one record from wfile or wfile_dsid joing other tables
    # exclude dsid in fields and condition
-   def pgget_wfile_join(self, dsid, tjoin, fields, condition, logact = self.LOGERR):
+   def pgget_wfile_join(self, dsid, tjoin, fields, condition, logact = None):
+      if logact is None: logact = self.LOGERR
       tname = "wfile_" + dsid
       flds = fields.replace('wfile.', tname + '.')
       jname = tname + ' ' + tjoin.replace('wfile.', tname + '.')
@@ -229,7 +238,8 @@ class PgSplit(PgDBI):
 
    # get multiple records from wfile or wfile_dsid
    # exclude dsid in fields and condition
-   def pgmget_wfile(self, dsid, fields, condition, logact = self.LOGERR):
+   def pgmget_wfile(self, dsid, fields, condition, logact = None):
+      if logact is None: logact = self.LOGERR
       tname = "wfile_" + dsid
       flds = fields.replace('wfile.', tname + '.')
       cnd = condition.replace('wfile.', tname + '.')
@@ -239,7 +249,8 @@ class PgSplit(PgDBI):
 
    # get multiple records from wfile or wfile_dsid joining other tables
    # exclude dsid in fields and condition
-   def pgmget_wfile_join(self, dsid, tjoin, fields, condition, logact = self.LOGERR):
+   def pgmget_wfile_join(self, dsid, tjoin, fields, condition, logact = None):
+      if logact is None: logact = self.LOGERR
       tname = "wfile_" + dsid
       flds = fields.replace('wfile.', tname + '.')
       jname = tname + ' ' + tjoin.replace('wfile.', tname + '.')

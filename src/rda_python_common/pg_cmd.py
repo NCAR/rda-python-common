@@ -101,7 +101,7 @@ class PgCMD(PgLock):
                if mcount > 99: mcount = 99
             else:
                hosts = bval
-      if mcount == 0: mcount = get_try_limit(cmd)
+      if mcount == 0: mcount = self.get_try_limit(cmd)
       if hosts: self.set_one_boption('hostname', hosts, 1)
       return (mcount, hosts)
 
@@ -155,7 +155,7 @@ class PgCMD(PgLock):
          record['specialist'] = specialist
          record['workdir'] = workdir
          if argextra: record['argextra'] = argextra
-         record.update(get_batch_options())
+         record.update(self.get_batch_options())
          cidx = self.pgadd("dscheck", record, logact|self.AUTOID)
          if cidx:
             cmsg = "{}{}: {} Adds a new check".format(cinfo, cidx, self.get_command_info(record))
@@ -165,7 +165,7 @@ class PgCMD(PgLock):
       (chost, cpid) = self.current_process_info()
       (rhost, rpid) = self.current_process_info(1)
    
-      if not check_command_specialist_host(hosts, chost, specialist, cmd, action, self.LOGERR):
+      if not self.check_command_specialist_host(hosts, chost, specialist, cmd, action, self.LOGERR):
          self.lock_dscheck(cidx, 0, logact)
          sys.exit(1)
    

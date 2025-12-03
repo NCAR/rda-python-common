@@ -57,10 +57,10 @@ class PgPassword(PgDBI):
                self.dbopt = True
                self.DBINFO[self.DBFLDS[opt]] = arg
             else:
-               self.pglog(arg + ": Unknown option", PgLOG.LGEREX)
+               self.pglog(arg + ": Unknown option", self.LGEREX)
             dohelp = False
          else:
-            self.pglog(arg + ": Value provided without option", PgLOG.LGEREX)
+            self.pglog(arg + ": Value provided without option", self.LGEREX)
       if dohelp:
          print("Usage: pg_pass [-l OpenBaoURL] [-k TokenName] [-d DBNAME]  \\")
          print("               [-c SCHEMA] [-u USName] [-h DBHOST] [-p DBPORT]")

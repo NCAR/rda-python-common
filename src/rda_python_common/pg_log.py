@@ -227,7 +227,8 @@ class PgLOG:
       return self.PGLOG['EMLMSG']
 
    #  send a customized email with all entries included
-   def send_customized_email(self, logmsg, emlmsg, logact = self.LOGWRN):
+   def send_customized_email(self, logmsg, emlmsg, logact = None):
+      if logact is None: logact = self.LOGWRN
       entries = {
          'fr' : ["From",    1, None],
          'to' : ["To",      1, None],
@@ -264,12 +265,14 @@ class PgLOG:
       return ret
 
    #  send an email; if empty msg send email message saved in self.PGLOG['EMLMSG'] instead
-   def send_email(self, subject = None, receiver = None, msg = None, sender = None, logact = self.LOGWRN):
+   def send_email(self, subject = None, receiver = None, msg = None, sender = None, logact = None):
+      if logact is None: logact = self.LOGWRN
       return self.send_python_email(subject, receiver, msg, sender, None, logact)
 
    #  send an email via python module smtplib; if empty msg send email message saved
    #  in self.PGLOG['EMLMSG'] instead. pass cc = '' for skipping 'Cc: '
-   def send_python_email(self, subject = None, receiver = None, msg = None, sender = None, cc = None, logact = self.LOGWRN):
+   def send_python_email(self, subject = None, receiver = None, msg = None, sender = None, cc = None, logact = None):
+      if logact is None: logact = self.LOGWRN
       if not msg:
          if self.PGLOG['EMLMSG']:
             msg = self.PGLOG['EMLMSG']
@@ -328,8 +331,8 @@ class PgLOG:
    # Function: cmdlog(cmdline)
    # cmdline - program name and all arguments
    # ctime - time (in seconds) when the command starts
-   def cmdlog(self, cmdline = None, ctime = 0, logact = None):   
-      if logact is None: logact = MSGLOG|FRCLOG
+   def cmdlog(self, cmdline = None, ctime = 0, logact = None):
+      if logact is None: logact = self.MSGLOG|self.FRCLOG
       if not ctime: ctime = int(time.time())
       if not cmdline or re.match('(end|quit|exit|abort)', cmdline, re.I):
          cmdline = cmdline.capitalize() if cmdline else "Ends"
@@ -355,7 +358,8 @@ class PgLOG:
    #   msg  -- message to log
    # locact -- logging actions: MSGLOG, WARNLG, ERRLOG, EXITLG, EMLLOG, & SNDEML
    # log and display message/error and exit program according logact value
-   def pglog(self, msg, logact = self.MSGLOG):   
+   def pglog(self, msg, logact = None):
+      if logact is None: logact = self.MSGLOG  
       retmsg = None
       logact &= self.PGLOG['LOGMASK']   # filtering the log actions
       if logact&self.RCDMSG: logact |= self.MSGLOG
@@ -580,7 +584,8 @@ class PgLOG:
    #        1024 - turn on shell
    # instr   - input string passing to the command via stdin if not None
    # seconds - number of seconds to wait for a timeout process if > 0
-   def pgsystem(self, pgcmd, logact = self.LOGWRN, cmdopt = 5, instr = None, seconds = 0):   
+   def pgsystem(self, pgcmd, logact = None, cmdopt = 5, instr = None, seconds = 0):
+      if logact is None: logact = self.LOGWRN
       ret = self.SUCCESS
       if not pgcmd: return ret  # empty command
       act = logact&~self.EXITLG
@@ -736,7 +741,8 @@ class PgLOG:
 
    #  wrap function to call pgsystem() with a timeout control
    #  return self.FAILURE if error eval or time out
-   def tosystem(self, cmd, timeout = 0, logact = self.LOGWRN, cmdopt = 5, instr = None):
+   def tosystem(self, cmd, timeout = 0, logact = 0, cmdopt = 5, instr = None):
+      if lofact is None: logact = self.LOGWRN
       if not timeout: timeout = self.PGLOG['TIMEOUT']   # set default timeout if missed
       return self.pgsystem(cmd, logact, cmdopt, instr, timeout)
 
@@ -932,7 +938,8 @@ class PgLOG:
             self.PBSSTATS[host] = stat
 
    #  reset the batch host name in case was not set properly
-   def reset_batch_host(self, bhost, logact = self.LOGWRN):
+   def reset_batch_host(self, bhost, logact = None):
+      if logact is None: logact = self.LOGWRN
       bchhost = bhost.upper()
       if bchhost != self.PGLOG['PGBATCH']:
          if self.PGLOG['CURBID'] > 0:
