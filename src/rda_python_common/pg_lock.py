@@ -15,7 +15,7 @@
 #
 import re
 import time
-from pg_file import PgFile
+from .pg_file import PgFile
 
 class PgLock(PgFile):
 
