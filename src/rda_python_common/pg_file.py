@@ -262,13 +262,13 @@ class PGFile(PgUtil, PgSIG):
          if finfo != None: return self.FAILURE
          return self.lmsg(fromfile, "{} to copy to {}-{}".format(self.PGLOG['MISSFILE'], self.OHOST, tofile), logact)
       if not logact&self.OVRIDE:
-         tinfo = check_object_file(tofile, bucket, 0, logact)
+         tinfo = self.check_object_file(tofile, bucket, 0, logact)
          if tinfo and tinfo['data_size'] > 0:
             return self.pglog("{}-{}-{}: file exists already".format(self.OHOST, bucket, tofile), logact)
       cmd = "{} ul -lf {} -b {} -k {} -md '{}'".format(self.OBJCTCMD, fromfile, bucket, tofile, uinfo)
       for loop in range(2):
          buf = self.pgsystem(cmd, logact, self.CMDBTH)
-         tinfo = check_object_file(tofile, bucket, 0, logact)
+         tinfo = self.check_object_file(tofile, bucket, 0, logact)
          if tinfo:
             if tinfo['data_size'] == finfo['data_size']:
                return self.SUCCESS      
@@ -499,7 +499,7 @@ class PGFile(PgUtil, PgSIG):
    def object_copy_local(self, tofile, fromfile, bucket = None, logact = 0):
       ret = self.FAILURE
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
-      finfo = check_object_file(fromfile, bucket, 0, logact)
+      finfo = self.check_object_file(fromfile, bucket, 0, logact)
       if not finfo:
          if finfo != None: return ret
          return self.lmsg(fromfile, "{}-{} to copy to {}".format(self.OHOST, self.PGLOG['MISSFILE'], tofile), logact)
@@ -1107,13 +1107,13 @@ class PGFile(PgUtil, PgSIG):
          else:
             hstat = 1
             path = self.PGLOG['OBJCTBKT']  
-         if chkopt and check_object_file(path): return rets
+         if chkopt and self.check_object_file(path): return rets
          hostname = self.OHOST
          msg = "{}-{}: is not accessible".format(hostname, path)
          flag = "O"
       elif self.pgcmp(shost, self.PGLOG['PGBATCH'], 1):
          if path and chkopt and self.check_remote_file(path, host): return rets
-         estat = ping_remote_host(host)
+         estat = self.ping_remote_host(host)
          if estat:
             hstat = 1
             hostname = host
@@ -1209,7 +1209,7 @@ class PGFile(PgUtil, PgSIG):
             return "Cannot ping " + host
 
    # compare given two host names, return 1 if same and 0 otherwise
-   def same_hosts(host1, host2):   
+   def same_hosts(self, host1, host2):   
       host1 = self.strip_host_name(host1)
       host2 = self.strip_host_name(host2)
       return (1 if self.pgcmp(host1, host2, 1) == 0 else 0)
@@ -1235,12 +1235,13 @@ class PGFile(PgUtil, PgSIG):
    #      16 - get week day 0-Sunday, 1-Monday (week_day)
    #      32 - get checksum (checksum), work for local file only
    # Return a dict of file info, or None if file not exists
-   def check_gdex_file(self, file, host = self.LHOST, opt = 0, logact = 0):
+   def check_gdex_file(self, file, host = None, opt = 0, logact = 0):
+      if host is None: host = self.LHOST
       shost = self.strip_host_name(host)
       if self.pgcmp(shost, self.LHOST, 1) == 0:
          return self.check_local_file(file, opt, logact)
       elif self.pgcmp(shost, self.OHOST, 1) == 0:
-         return check_object_file(file, None, opt, logact)      
+         return self.check_object_file(file, None, opt, logact)      
       elif self.pgcmp(shost, self.BHOST, 1) == 0:
          return self.check_backup_file(file, self.QPOINTS['B'], opt, logact)      
       elif self.pgcmp(shost, self.DHOST, 1) == 0:
@@ -1368,7 +1369,7 @@ class PGFile(PgUtil, PgSIG):
       self.ECNTS['R'] = 0   # reset error count
       if buf:
          for line in re.split(r'\n', buf):
-            info = remote_file_stat(line, opt)
+            info = self.remote_file_stat(line, opt)
             if info: return info
       return None
 
@@ -1428,7 +1429,7 @@ class PGFile(PgUtil, PgSIG):
                if ucmd:
                   ubuf = self.pgsystem(ucmd, self.LOGWRN, self.CMDRET)
                   if ubuf and re.match(r'^\{', ubuf): uhash = json.loads(ubuf)
-               ret = object_file_stat(hash, uhash, opt)
+               ret = self.object_file_stat(hash, uhash, opt)
                break
          if opt&64: return self.FAILURE
          errmsg = "Error Execute: {}\n{}".format(cmd, self.PGLOG['SYSERR'])
@@ -1511,7 +1512,7 @@ class PGFile(PgUtil, PgSIG):
                if re.match(r'^(User|-+)\s*\|', line):
                   getstat += 1
                elif getstat > 1:
-                  ret = backup_file_stat(line, opt)
+                  ret = self.backup_file_stat(line, opt)
                   if ret: break
             if ret: break
             if loop or opt&64 == 0: return ret
@@ -1580,7 +1581,7 @@ class PGFile(PgUtil, PgSIG):
       if loop > 0: return self.FAILURE
       if buf:
          for line in re.split(r'\n', buf):
-            ret = tar_file_stat(line, opt)
+            ret = self.tar_file_stat(line, opt)
             if ret: break
       self.ECNTS['L'] = 0   # reset error count
       return ret
@@ -1640,7 +1641,7 @@ class PGFile(PgUtil, PgSIG):
       if loop > 1: return self.FAILURE
       for line in re.split(r'\n', buf):
          if not line or line.find(fname) < 0: continue
-         info = ftp_file_stat(line, opt)
+         info = self.ftp_file_stat(line, opt)
          if info: return info
       return None   
 
@@ -1831,7 +1832,7 @@ class PGFile(PgUtil, PgSIG):
          return self.FAILURE
 
    # local function to get file/directory mode for given permission string, for example, rw-rw-r--
-   @staticmetod
+   @staticmethod
    def get_file_mode(perm):
       mbits = [4, 2, 1]
       mults = [64, 8, 1]
@@ -1896,7 +1897,7 @@ class PGFile(PgUtil, PgSIG):
          logact = lact = self.LOGWRN
       if not op.isdir(todir):
          if op.isfile(todir): return self.errlog(todir + ": is file, cannot change directory", 'L', 1, logact)
-         if not make_local_directory(todir, logact): return self.FAILURE 
+         if not self.make_local_directory(todir, logact): return self.FAILURE 
       odir = self.PGLOG['CURDIR']
       if todir == odir:
          self.pglog(todir + ": in Directory", lact)
@@ -2008,7 +2009,7 @@ class PGFile(PgUtil, PgSIG):
    # return: array of file sizes size is -1 if file does not exist
    def gdex_file_sizes(self, files, host, logact = 0):
       sizes = []
-      for file in files: sizes.append(self, gdex_file_size(file, host, 2, logact))
+      for file in files: sizes.append(self.gdex_file_size(file, host, 2, logact))
       return sizes
    rda_file_sizes = gdex_file_sizes
 
@@ -2255,7 +2256,7 @@ class PGFile(PgUtil, PgSIG):
 
    #  comapre two files from given two hash references to the file information
    #  return 0 if same, 1  different, -1 if can not compare
-   @staticmethon
+   @staticmethod
    def compare_file_info(ainfo, binfo):
       if not (ainfo and binfo): return -1   # at least one is missing
       return (0 if (ainfo['data_size'] == binfo['data_size'] and
@@ -2270,7 +2271,7 @@ class PGFile(PgUtil, PgSIG):
       return dir
 
    # collect valid file names under a given directory, current directory if empty
-   @saticmethod
+   @staticmethod
    def get_directory_files(dir = None, limit = 0, level = 0):
       files = []
       if dir:
@@ -2283,7 +2284,7 @@ class PGFile(PgUtil, PgSIG):
       for file in glob.glob(dir):
          if op.isdir(file):
             if limit == 0 or (limit-level) > 0:
-               fs = self.get_directory_files(file, limit, level+1)
+               fs = PgFile.get_directory_files(file, limit, level+1)
                if fs: files.extend(fs)
          else:
             files.append(file)
@@ -2301,7 +2302,8 @@ class PGFile(PgUtil, PgSIG):
       return fstr
 
    # open a local file and return the file handler
-   def open_local_file(self, file, mode = 'r', logact = self.LOGERR):
+   def open_local_file(self, file, mode = 'r', logact = None):
+      if logact is None: logact = self.LOGERR
       try:
          fd = open(file, mode)
       except Exception as e:

@@ -864,7 +864,7 @@ class PgUtil(PgLOG):
             else:
                # sort on the whole value if no pattern given
                val = pgrec[fields[j]]
-            if nums[j]: nums[j] = pgnum(val)
+            if nums[j]: nums[j] = self.pgnum(val)
             rec.append(val)
          rec.append(i)   # add column to cache the row index
          srecs.append(rec)
@@ -1018,9 +1018,6 @@ class PgUtil(PgLOG):
          ym = "{:04}{:02}".format(yr, mn)
       return ym
 
-   #  a wrapper to adddate()
-   addNoLeapDate = adddate
-
    # set number of days in Beburary for Leap year according PGLOG['NOLEAP']
    def set_leap_mdays(self, year):
       if not self.PGLOG['NOLEAP'] and calendar.isleap(year):
@@ -1109,6 +1106,7 @@ class PgUtil(PgLOG):
          if mend: ndy = tdy
       if dy: ndy += dy
       return self.fmtdate(nyr, nmn, ndy, tofmt)
+   addNoLeapDate = adddate
 
    # add given hours to the initial date and time
    def addhour(self, sdate, stime, nhour):

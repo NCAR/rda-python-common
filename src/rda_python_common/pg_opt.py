@@ -1153,7 +1153,7 @@ class PgOPT(PgFile):
    # Return: array reference of group indices
    def get_data_subgroups(self, dcnd, pidx, cfld, pfcnt = 0):
       if not pfcnt:    # get file count for the parent group
-         pfcnt = group_file_count(dcnd, pidx, cfld)
+         pfcnt = self.group_file_count(dcnd, pidx, cfld)
          if not pfcnt: return None
       gflds = "gindex, " + cfld
       gcnd = "{} AND pindex = {} AND {} > 0".format(dcnd, pidx, cfld)
@@ -1353,7 +1353,7 @@ class PgOPT(PgFile):
          einfo['WHOME'] = self.PGLOG['RQSTURL']
       einfo['SENDER'] = pgrqst['specialist'] + "@ucar.edu"
       einfo['RECEIVER'] = pgrqst['email']
-      einfo['RTYPE'] = PgOPY.request_type(pgrqst['rqsttype'])
+      einfo['RTYPE'] = self.request_type(pgrqst['rqsttype'])
       self.add_carbon_copy() # clean carbon copy email in case not empty
       exclude = (einfo['SENDER'] if errmsg else einfo['RECEIVER'])
       if not errmsg and pgcntl and pgcntl['ccemail']:

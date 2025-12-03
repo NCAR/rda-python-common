@@ -214,7 +214,7 @@ class PgLOG:
                   if logact&self.BRKLIN: self.PGLOG['SUMMSG'] += "\n"
                   if logact&self.SEPLIN: self.PGLOG['SUMMSG'] += self.PGLOG['SEPLINE']
                self.PGLOG['SUMMSG'] += msg    # append
-            if logact&EMLLOG:
+            if logact&self.EMLLOG:
                if self.PGLOG['EMLMSG']:
                   if logact&self.BRKLIN: self.PGLOG['EMLMSG'] += "\n"
                   if logact&self.SEPLIN: self.PGLOG['EMLMSG'] += self.PGLOG['SEPLINE']
@@ -386,7 +386,7 @@ class PgLOG:
       if logact&self.EXITLG and (self.PGLOG['EMLMSG'] or self.PGLOG['SUMMSG'] or self.PGLOG['ERRMSG'] or self.PGLOG['PRGMSG']):
          if not logact&self.EMLALL: self.set_email(msg, logact)
          title = "ABORTS {}-{}".format(self.PGLOG['HOSTNAME'], self.get_command())
-         self.set_email((("ABORTS " + self.CPID['PID']) if self.CPID['PID'] else title), EMLTOP)
+         self.set_email((("ABORTS " + self.CPID['PID']) if self.CPID['PID'] else title), self.EMLTOP)
          msg = title + '\n' + msg
          self.send_email(title)   
       if logact&self.LOGERR: # make sure error is always logged

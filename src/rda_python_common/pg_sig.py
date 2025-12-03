@@ -107,10 +107,10 @@ class PgSIG(PgDBI):
       os.setsid()
       os.umask(0)
       # setup to catch signals in daemon only
-      signal.signal(signal.SIGCHLD, clean_dead_child)
-      signal.signal(signal.SIGQUIT, signal_catch)
-      signal.signal(signal.SIGUSR1, signal_catch)
-      signal.signal(signal.SIGUSR2, signal_catch)
+      signal.signal(signal.SIGCHLD, self.clean_dead_child)
+      signal.signal(signal.SIGQUIT, self.signal_catch)
+      signal.signal(signal.SIGUSR1, self.signal_catch)
+      signal.signal(signal.SIGUSR2, self.signal_catch)
       self.PGSIG['DSTR'] = dstr
       self.PGSIG['DNAME'] = aname
       self.PGSIG['STIME'] = int(time.time())
@@ -352,7 +352,7 @@ class PgSIG(PgDBI):
         if not dumpon: self.set_dump(self.SDUMP['DEF'])
         if signum == signal.SIGQUIT: self.PGSIG['QUIT'] = 1
       if self.PGSIG['PPID'] <= 1 and len(self.CPIDS) > 0:  # passing signal to child processes
-         for pid in self.CPIDS: kill_process(pid, signum)
+         for pid in self.CPIDS: self.kill_process(pid, signum)
 
    # wrapper function to call os.kill() logging caught error based on logact
    # return self.SUCCESS is success; PgLog.FAILURE if not
@@ -429,7 +429,7 @@ class PgSIG(PgDBI):
       if logact is None: logact = self.LOGWRN
       pid = self.process_fork(msg)
       if pid == 0:  # in child
-         signal.signal(signal.SIGQUIT, signal_catch)   # catch quit signal only
+         signal.signal(signal.SIGQUIT, self.signal_catch)   # catch quit signal only
          self.PGSIG['PPID'] = self.PGSIG['PID']
          self.PGSIG['PID'] = pid = os.getpid()
          self.cmdlog("Timeout child to " + msg, time.time(), 0)
@@ -556,8 +556,8 @@ class PgSIG(PgDBI):
       if uname:
          dstr +=  " By " + uname
          self.check_vuser(uname, aname)
-      signal.signal(signal.SIGQUIT, signal_catch)   # catch quit signal only
-      signal.signal(signal.SIGCHLD, clean_dead_child)
+      signal.signal(signal.SIGQUIT, self.signal_catch)   # catch quit signal only
+      signal.signal(signal.SIGCHLD, self.clean_dead_child)
       self.PGSIG['DSTR'] = dstr
       self.PGSIG['DNAME'] = aname
       self.PGSIG['PPID'] = 0

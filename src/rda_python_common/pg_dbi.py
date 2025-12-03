@@ -1791,7 +1791,7 @@ class PgDBI(PgLOG):
       return acnt
 
    # double quote a array of single or sign delimited strings
-   def pgnames(ary, sign = None, joinstr = None):
+   def pgnames(self, ary, sign = None, joinstr = None):
       pgary = []
       for a in ary:
          pgary.append(self.pgname(a, sign))
