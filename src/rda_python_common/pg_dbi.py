@@ -43,7 +43,7 @@ class PgDBI(PgLOG):
       self.TABLES = {}      # record table field information
       self.SEQUENCES = {}   # record table sequence fielnames
       self.SPECIALIST = {}  # hash array refrences to specialist info of dsids
-      self.self.SYSDOWN = {}
+      self.SYSDOWN = {}
       self.PGDBI = {}
       self.ADDTBLS = []
       self.PGSIGNS = ['!', '<', '>', '<>']

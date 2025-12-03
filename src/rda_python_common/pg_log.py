@@ -299,7 +299,7 @@ class PgLOG:
       if cc:
          emlmsg['Cc'] = cc
          logmsg += " Cc'd " + cc
-      if not subject: subject = "Message from {}-{}".format(self.PGLOG['HOSTNAME'], self.self.get_command())
+      if not subject: subject = "Message from {}-{}".format(self.PGLOG['HOSTNAME'], self.get_command())
       # if not re.search(r'!$', subject): subject += '!'
       emlmsg['Subject'] = subject
       if self.CPID['CPID']: logmsg += " in " + self.CPID['CPID']
