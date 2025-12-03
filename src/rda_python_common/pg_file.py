@@ -2271,8 +2271,7 @@ class PgFile(PgUtil, PgSIG):
       return dir
 
    # collect valid file names under a given directory, current directory if empty
-   @staticmethod
-   def get_directory_files(dir = None, limit = 0, level = 0):
+   def get_directory_files(self, dir = None, limit = 0, level = 0):
       files = []
       if dir:
          if level == 0 and op.isfile(dir):
@@ -2284,7 +2283,7 @@ class PgFile(PgUtil, PgSIG):
       for file in glob.glob(dir):
          if op.isdir(file):
             if limit == 0 or (limit-level) > 0:
-               fs = PgFile.get_directory_files(file, limit, level+1)
+               fs = self.get_directory_files(file, limit, level+1)
                if fs: files.extend(fs)
          else:
             files.append(file)
