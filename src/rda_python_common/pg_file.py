@@ -27,7 +27,7 @@ import json
 from pg_util import PgUtil
 from pg_sig import PgSIG
 
-class PGFile(PgUtil, PgSIG):
+class PgFile(PgUtil, PgSIG):
 
    CMDBTH = (0x0033)   # return both stdout and stderr, 16 + 32 + 2 + 1
    RETBTH = (0x0030)   # return both stdout and stderr, 16 + 32
