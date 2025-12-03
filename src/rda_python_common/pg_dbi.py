@@ -22,7 +22,7 @@ import psycopg2 as PgSQL
 from psycopg2.extras import execute_values
 from psycopg2.extras import execute_batch
 from os import path as op
-from pg_log import PgLOG
+from .pg_log import PgLOG
 
 class PgDBI(PgLOG):
    

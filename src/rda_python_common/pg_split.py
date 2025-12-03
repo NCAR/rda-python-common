@@ -16,8 +16,8 @@
 import os
 import re
 from os import path as op
-from pg_dbi import PgDBI
-from pg_util import PgUtil
+from .pg_dbi import PgDBI
+from .pg_util import PgUtil
 
 class PgSplit(PgDBI):
 
@@ -97,7 +97,7 @@ class PgSplit(PgDBI):
    @staticmethod
    def get_dsid_condition(dsid, condition):
       if condition:
-         if re.search('(^|.| )(wid|dsid)\s*=', condition):
+         if re.search(r'(^|.| )(wid|dsid)\s*=', condition):
             return condition
          else:
             dscnd = "wfile.dsid = '{}' ".format(dsid)

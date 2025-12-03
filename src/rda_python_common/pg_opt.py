@@ -20,13 +20,12 @@ import sys
 import re
 import time
 from os import path as op
-from pg_file import PgFile
+from .pg_file import PgFile
 
 class PgOPT(PgFile):
 
    def __init__(self):
       super().__init__()  # initialize parent class
-
       self.OUTPUT = None
       self.CMDOPTS = {}
       self.INOPTS = {}

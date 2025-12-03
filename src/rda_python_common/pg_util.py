@@ -20,13 +20,12 @@ import datetime
 import calendar
 import glob
 from os import path as op
-from pg_log import PgLOG
+from .pg_log import PgLOG
 
 class PgUtil(PgLOG):
 
    def __init__(self):
       super().__init__()  # initialize parent class
-
       self.DATEFMTS = {
          'C' : '(CC|C)',                   # century
          'Y' : '(YYYY|YY00|YYY|YY|YEAR|YR|Y)',  # YYY means decade

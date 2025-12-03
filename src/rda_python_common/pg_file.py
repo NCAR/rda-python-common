@@ -24,8 +24,8 @@ import re
 import time
 import glob
 import json
-from pg_util import PgUtil
-from pg_sig import PgSIG
+from .pg_util import PgUtil
+from .pg_sig import PgSIG
 
 class PgFile(PgUtil, PgSIG):
 
@@ -37,7 +37,6 @@ class PgFile(PgUtil, PgSIG):
 
    def __init__(self):
       super().__init__()  # initialize parent class
-
       self.PGCMPS = {
       #  extension Compress       Uncompress       ArchiveFormat
          'Z'   :  ['compress -f', 'uncompress -f', 'Z'],

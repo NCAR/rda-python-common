@@ -13,17 +13,16 @@
 #
 ###############################################################################
 #
-import os
+import osß
 import re
 import sys
 import time
-from pg_lock import PgLock
+from .pg_lock import PgLock
 
 class PgCMD(PgLock):
 
    def __init__(self):
       super().__init__()  # initialize parent class
-
       # cached dscheck info
       self.DSCHK = {}
       self.BOPTIONS = {"hostname" : None, "qoptions" : None, "modules" : None, "environments" : None}

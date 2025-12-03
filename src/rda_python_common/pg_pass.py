@@ -16,13 +16,12 @@
 import sys
 import re
 import hvac
-from pg_dbi import PgDBI
+from .pg_dbi import PgDBI
 
 class PgPassword(PgDBI):
 
    def __init__(self):
       super().__init__()  # initialize parent class
-
       self.DBFLDS = {
          'd' : 'dbname',
          'c' : 'scname',

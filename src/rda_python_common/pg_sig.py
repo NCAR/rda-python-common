@@ -21,7 +21,7 @@ import errno
 import signal
 import time
 from contextlib import contextmanager
-from pg_dbi import PgDBI
+from .pg_dbi import PgDBI
 
 class PgSIG(PgDBI):
 
@@ -158,10 +158,10 @@ class PgSIG(PgDBI):
       if uname:
          self.check_vuser(uname, aname)
          pcmd = "ps -u {} -f | grep {} | grep ' 1 '".format(uname, aname)
-         mp = "^\s*{}\s+(\d+)\s+1\s+".format(uname)
+         mp = r"^\s*{}\s+(\d+)\s+1\s+".format(uname)
       else:
          pcmd = "ps -C {} -f | grep ' 1 '".format(aname)
-         mp = "^\s*\w+\s+(\d+)\s+1\s+"
+         mp = r"^\s*\w+\s+(\d+)\s+1\s+"
       buf = self.pgsystem(pcmd, self.LOGWRN, 20+1024)
       if buf:
          cpid = os.getpid()
@@ -181,10 +181,10 @@ class PgSIG(PgDBI):
       if uname:
          self.check_vuser(uname, aname)
          pcmd = "ps -u {} -f | grep {} | grep -v ' grep '".format(uname, aname)
-         mp = "^\s*{}\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(uname, aname)
+         mp = r"^\s*{}\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(uname, aname)
       else:
          pcmd = "ps -C {} -f".format(aname)
-         mp = "^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
+         mp = r"^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
       buf = self.pgsystem(pcmd, self.LOGWRN, 20+1024)
       if not buf: return 0
       cpids = [os.getpid(), os.getppid()]
@@ -241,10 +241,10 @@ class PgSIG(PgDBI):
       if uname:
          self.check_vuser(uname, aname)
          pcmd = "ps -u {} -f | grep {} | grep -v ' grep '".format(uname, aname)
-         mp = "^\s*{}\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(uname, aname)
+         mp = r"^\s*{}\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(uname, aname)
       else:
          pcmd = "ps -C {} -f".format(aname)
-         mp = "^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
+         mp = r"^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
       buf = self.pgsystem(pcmd, self.LOGWRN, 20+1024)
       if not buf: return 0
       dpids = [os.getpid(), os.getppid()]

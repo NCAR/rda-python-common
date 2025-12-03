@@ -5,8 +5,8 @@
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 09/010/2024
 #             2025-01-10 transferred to package rda_python_common from
-#             https://github.com/NCAR/rda-shared-libraries.git
-#   Purpose : Python library module to handle query and manipulate table wfile
+#             https://github.com/NCAR/rßda-shared-libraries.git
+#   Purpose : Python library module to handle query and manß ipulate table wfile
 #
 #    Github : https://github.com/NCAR/rda-python-common.git
 #
@@ -106,7 +106,7 @@ def trim_wfile_fields(wfrecs):
 def get_dsid_condition(dsid, condition):
 
    if condition:
-      if re.search('(^|.| )(wid|dsid)\s*=', condition):
+      if re.search(r'(^|.| )(wid|dsid)\s*=', condition):
          return condition
       else:
          dscnd = "wfile.dsid = '{}' ".format(dsid)
