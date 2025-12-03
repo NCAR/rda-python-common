@@ -485,7 +485,7 @@ class PgLOG:
       else:
          dfile = self.PGLOG['DBGFILE']
       if not msg:
-         self.pglog("Append debug Info (levels {}-{}) to {}".format(levels[0], levels[1], dfile), WARNLG)
+         self.pglog("Append debug Info (levels {}-{}) to {}".format(levels[0], levels[1], dfile), self.WARNLG)
          msg = "DEBUG for " + self.CPID['PID'] + " "
          if self.CPID['CPID']: msg += self.CPID['CPID'] + " <= "
          msg += self.break_long_string(self.CPID['CMD'], 40, "...", 1)
@@ -604,7 +604,7 @@ class PgLOG:
          execmd = cmdstr if doshell else pgcmd   
       if cmdact:
          if cmdopt&8:
-            cmdlog("starts '{}'".format(cmdstr), None, cmdact)
+            self.cmdlog("starts '{}'".format(cmdstr), None, cmdact)
          else:
             self.pglog("> " + cmdstr, cmdact)
          if cmdopt&512 and (instr or seconds):
@@ -699,7 +699,7 @@ class PgLOG:
       return (retbuf if cmdopt&16 else ret)
 
    # strip carrage return '\r', but keep ending newline '\n'
-   @staticmethon
+   @staticmethod
    def strip_output_line(line):
       ms = re.search(r'\r([^\r]+)\r*$', line)
       if ms: return ms.group(1)   
@@ -742,7 +742,7 @@ class PgLOG:
    #  wrap function to call pgsystem() with a timeout control
    #  return self.FAILURE if error eval or time out
    def tosystem(self, cmd, timeout = 0, logact = 0, cmdopt = 5, instr = None):
-      if lofact is None: logact = self.LOGWRN
+      if logact is None: logact = self.LOGWRN
       if not timeout: timeout = self.PGLOG['TIMEOUT']   # set default timeout if missed
       return self.pgsystem(cmd, logact, cmdopt, instr, timeout)
 
@@ -943,7 +943,7 @@ class PgLOG:
       bchhost = bhost.upper()
       if bchhost != self.PGLOG['PGBATCH']:
          if self.PGLOG['CURBID'] > 0:
-            self.pglog("{}-{}: Batch ID is set, cannot change Batch host to {}".format(self.PGLOG['PGBATCH'], self.PGLOG['CURBID'], BCHHOST) , logact)
+            self.pglog("{}-{}: Batch ID is set, cannot change Batch host to {}".format(self.PGLOG['PGBATCH'], self.PGLOG['CURBID'], bchhost) , logact)
          else:
             ms = re.search(r'(^|:){}(:|$)'.format(bchhost), self.PGLOG['BCHHOSTS'])
             if ms:
@@ -996,7 +996,7 @@ class PgLOG:
          os.setreuid(cuid, cuid)
          self.PGLOG['SETUID'] = pwd.getpwuid(cuid).pw_name
          if not (self.PGLOG['SETUID'] == self.PGLOG['GDEXUSER'] or cuid == self.PGLOG['RUID']):
-            set_specialist_environments(self.PGLOG['SETUID'])
+            self.set_specialist_environments(self.PGLOG['SETUID'])
             self.PGLOG['CURUID'] == self.PGLOG['SETUID']      # set CURUID to a specific specialist
 
    # set comman pglog
@@ -1064,7 +1064,7 @@ class PgLOG:
       self.SETPGLOG("EMLFILE", "pgemail.log")                   # email log file name
       self.SETPGLOG("ERRFILE", '')                              # error file name
       sm = "/usr/sbin/sendmail"
-      if valid_command(sm): self.SETPGLOG("EMLSEND", f"{sm} -t")   # send email command
+      if self.valid_command(sm): self.SETPGLOG("EMLSEND", f"{sm} -t")   # send email command
       self.SETPGLOG("DBGLEVEL", '')                             # debug level
       self.SETPGLOG("BAOTOKEN", 's.lh2t2kDjrqs3V8y2BU2zOocT')   # OpenBao token
       self.SETPGLOG("DBGPATH", self.PGLOG['DSSDBHM']+"/log")         # path to debug log file

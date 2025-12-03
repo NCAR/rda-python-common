@@ -242,7 +242,7 @@ class PgOPT(PgFile):
             elif i == 2:
                self.PGLOG['DBGFILE'] = self.params['DB'][2]
          self.pgdbg(self.PGLOG['DBGLEVEL'])
-      if 'GZ' in self.params: self.PGLOG['GMTZ'] = PgUtil.diffgmthour()
+      if 'GZ' in self.params: self.PGLOG['GMTZ'] = self.diffgmthour()
       if 'BG' in self.params: self.PGLOG['BCKGRND'] = 1
 
    # check and get default value for info option, return None if not available
@@ -464,7 +464,7 @@ class PgOPT(PgFile):
                if val == '': val = None
             elif isinstance(sval, int):
                if isinstance(val, str): val = (int(val) if val else None)   # change '' to None for int
-            if PgUtil.pgcmp(sval, val, 1): record[field] = val    # record new or changed value
+            if self.pgcmp(sval, val, 1): record[field] = val    # record new or changed value
       return record
 
    # set global variable self.PGOPT['UID'] with value of user.uid, fatal if unsuccessful
@@ -558,12 +558,9 @@ class PgOPT(PgFile):
             dsid = self.params['DS']
             cnt = self.pgget("dataset", "", "dsid = '{}'".format(dsid), self.PGOPT['extlog'])
       if not cnt: self.pglog(dsid + " not exists in RDADB!", self.PGOPT['extlog'])
-   
-   #
+
    # validate given group indices or group names
-   #
-   def validate_groups(parent = 0):
-   
+   def validate_groups(self, parent = 0):
       if parent:
          gi = 'PI'
          gn = 'PN'
@@ -571,7 +568,6 @@ class PgOPT(PgFile):
          gi = 'GI'
          gn = 'GN'
       if (self.OPTS[gi][2]&8): return    # already validated
-    
       dcnd = "dsid = '{}'".format(self.params['DS'])
       if gi in self.params:
          grpcnt = len(self.params[gi])
@@ -599,21 +595,15 @@ class PgOPT(PgFile):
             grpcnt = (len(pgrec['gindex']) if pgrec else 0)
             if grpcnt == 0:
                self.pglog("No Group matches given Group Index condition for " + self.params['DS'], self.PGOPT['extlog'])
-   
             self.params[gi] = pgrec['gindex']
       elif gn in self.params:
-         self.params[gi] = group_id_to_index(self.params[gn])
-   
+         self.params[gi] = self.group_id_to_index(self.params[gn])
       self.OPTS[gi][2] |= 8  # set validated flag
-   
-   #
+
    # get group index array from given group IDs
-   #
-   def group_id_to_index(grpids):
-   
+   def group_id_to_index(self, grpids):
       count = len(grpids) if grpids else 0
       if count == 0: return None
-   
       indices = []
       dcnd = "dsid = '{}'".format(self.params['DS'])
       i = 0
@@ -638,15 +628,11 @@ class PgOPT(PgFile):
          count = (len(pgrec['gindex']) if pgrec else 0)
          if count == 0: self.pglog("No Group matches given Group ID condition for " + self.params['DS'], self.PGOPT['extlog'])
          return pgrec['gindex']
-   
-   #
+
    # get group ID array from given group indices
-   #
-   def group_index_to_id(indices):
-   
+   def group_index_to_id(self, indices):
       count = len(indices) if indices else 0
       if count == 0: return None
-   
       grpids = []
       dcnd = "dsid = '{}'".format(self.params['DS'])
       i = 0
@@ -671,13 +657,10 @@ class PgOPT(PgFile):
          count = (len(pgrec['grpid']) if pgrec else 0)
          if count == 0: self.pglog("No Group matches given Group Index condition for " + self.params['DS'], self.PGOPT['extlog'])
          return pgrec['grpid']
-   
-   #
+
    # validate order fields and
    # get an array of order fields that are not in given fields
-   #
-   def append_order_fields(oflds, flds, tname, excludes = None):
-   
+   def append_order_fields(self, oflds, flds, tname, excludes = None):
       orders = ''
       hash = self.TBLHASH[tname]
       for ofld in oflds:
@@ -685,7 +668,6 @@ class PgOPT(PgFile):
          if ufld not in hash or excludes and excludes.find(ufld) > -1: continue
          if flds and flds.find(ufld) > -1: continue
          orders += ofld
-   
       return orders
 
    # validate mutiple values for given fields
@@ -844,7 +826,7 @@ class PgOPT(PgFile):
    #       4 - mode&action key only
    def get_option_key(self, p, flag = 0, skip = 0, lidx = 0, line = None, infile = None, table = None):   
       if p is None: p = ''
-      opt = get_short_option(p)
+      opt = self.get_short_option(p)
       errmsg = None
       if opt:
          if flag == 1:
@@ -889,7 +871,7 @@ class PgOPT(PgFile):
             elif re.match(r'^\d+$', val):
                val = int(val)
          elif val and (opt == 'DS' or opt == 'OD'):
-            val = PgUtil.format_dataset_id(val)
+            val = self.format_dataset_id(val)
       errmsg = None
       if not cnl and self.OPTS[opt][0]&3:
          if opt in self.params:
@@ -927,7 +909,7 @@ class PgOPT(PgFile):
          elif self.OPTS[opt][0] == 1:          # single value option  
             if cnl and opt in self.params:
                if val: errmsg = "Multi-line value not allowed"
-            elif self.OPTS[opt][2]&2 and PgUtil.pgcmp(self.params[opt], val):
+            elif self.OPTS[opt][2]&2 and self.pgcmp(self.params[opt], val):
                errmsg = "{}: Single-Value Info Option has value '{}' already".format(val, self.params[opt])
             else:
                self.params[opt] = val
@@ -978,10 +960,10 @@ class PgOPT(PgFile):
          p = p.upper()
          if p in self.OPTS: return p
       for opt in self.OPTS:     # get main option first
-         if not PgUtil.pgcmp(self.OPTS[opt][1], p, 1): return opt
+         if not self.pgcmp(self.OPTS[opt][1], p, 1): return opt
       for opt in self.ALIAS: # then check alias option
          for key in self.ALIAS[opt]:
-            if not PgUtil.pgcmp(key, p, 1): return opt
+            if not self.pgcmp(key, p, 1): return opt
       return None
 
    # print result in column format, with multiple values each row
@@ -1260,7 +1242,7 @@ class PgOPT(PgFile):
          if not freq:
             if cstr: self.pglog("{}: {}".format(cstr, unit), logact)
             return self.FAILURE
-         dtime = PgUtil.adddatetime(pgrec['datatime'], freq[0], freq[1], freq[2], freq[3], freq[4], freq[5], freq[6])
+         dtime = self.adddatetime(pgrec['datatime'], freq[0], freq[1], freq[2], freq[3], freq[4], freq[5], freq[6])
          if self.pgget("dcupdt", "", "cindex = {} AND datatime < '{}'".format(pgrec['pindex'], dtime), self.PGOPT['extlog']):
             if cstr: self.pglog("{}: MUST be processed After Control Index {}".format(cstr, pgrec['pindex']), logact)
             return self.FAILURE

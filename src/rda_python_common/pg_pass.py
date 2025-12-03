@@ -41,7 +41,7 @@ class PgPassword(PgDBI):
       self.password = ''
 
    # read in comman line parameters
-   def read_parameters():   
+   def read_parameters(self):   
       argv = sys.argv[1:]
       opt = None
       dohelp = True
@@ -74,7 +74,7 @@ class PgPassword(PgDBI):
          sys.exit(0)
 
    # get the pgpassword
-   def read_pgpassword():
+   def read_pgpassword(self):
       if self.dbopt:
          self.default_scinfo(self.DBINFO['dbname'], self.DBINFO['scname'], self.DBINFO['dbhost'],
                              self.DBINFO['lnname'], None, self.DBINFO['dbport'])   

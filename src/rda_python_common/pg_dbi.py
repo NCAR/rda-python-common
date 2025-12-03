@@ -1051,7 +1051,7 @@ class PgDBI(PgLOG):
    # tablename: delete for one table name each call
    #   cndicts: delete condition dict for names : value lists
    # return number of records deleted upon success
-   def pgmdel(tablename, cnddicts, logact = None):
+   def pgmdel(self, tablename, cnddicts, logact = None):
       if logact is None: logact = self.PGDBI['ERRLOG']
       if not cnddicts or isinstance(cnddicts, int): self.pglog("Miss condition dict to delete from " + tablename, logact)
       sqlstr = self.prepare_delete(tablename, None, list(cnddicts))
@@ -1520,7 +1520,7 @@ class PgDBI(PgLOG):
          if self.PGLOG['EMLSEND']:
             estat = self.send_customized_email(f"{table}.{condition}", ebuf, logact)
          if estat != self.SUCCESS:
-            estat = cache_customized_email(table, field, condition, ebuf, 0)
+            estat = self.cache_customized_email(table, field, condition, ebuf, 0)
             if estat and logact:
                self.pglog("Email {} cached to '{}.{}' for {}, Subject: {}".format(receiver, table, field, condition, subject), logact)
       return estat
@@ -1599,6 +1599,7 @@ class PgDBI(PgLOG):
       return otype
 
    # join values and handle the null values
+   @staticmethod
    def join_values(vstr, vals):
       if vstr:
          vstr += "\n"
@@ -1733,7 +1734,7 @@ class PgDBI(PgLOG):
                else:
                   acnt += self.pgadd(tname, record, self.LGEREX|self.ADDTBL)
          else:
-            acnt = pgmadd(tname, records, self.LGEREX|self.ADDTBL)
+            acnt = self.pgmadd(tname, records, self.LGEREX|self.ADDTBL)
       else:
          record = records
          if not ('quarter' in record and record['quarter']):
@@ -1780,7 +1781,7 @@ class PgDBI(PgLOG):
             for i in range(cnt):
                ms = re.search(r'-(\d+)-', str(records['date_read'][i]))
                if ms: records['quarter'][i] = (int((int(ms.group(1))-1)/3)+1)
-         acnt = pgmadd(tname, records, self.LGEREX|self.ADDTBL)
+         acnt = self.pgmadd(tname, records, self.LGEREX|self.ADDTBL)
       else:
          record = records
          if 'quarter' not in record:
@@ -1790,29 +1791,27 @@ class PgDBI(PgLOG):
       return acnt
 
    # double quote a array of single or sign delimited strings
-   @staticmethod
-   def pgnames(sign = None, joinstr = None):
+   def pgnames(ary, sign = None, joinstr = None):
       pgary = []
       for a in ary:
-         pgary.append(PgDBI.pgname(a, sign))
+         pgary.append(self.pgname(a, sign))
       if joinstr == None:
          return pgary
       else:
          return joinstr.join(pgary)
 
    # double quote a single or sign delimited string
-   @staticmethod
-   def pgname(str, sign = None):
+   def pgname(self, str, sign = None):
       if sign:
          nstr = ''
          names = str.split(sign[0])
          for name in names:
             if nstr: nstr += sign[0]
-            nstr += PgDBI.pgname(name, sign[1:])
+            nstr += self.pgname(name, sign[1:])
       else:
          nstr = str.strip()
          if nstr and nstr.find('"') < 0:
-            if not re.match(r'^[a-z_][a-z0-9_]*$', nstr) or nstr in PGRES:
+            if not re.match(r'^[a-z_][a-z0-9_]*$', nstr) or nstr in self.PGRES:
              nstr = '"{}"'.format(nstr)
       return nstr
 
@@ -1834,11 +1833,11 @@ class PgDBI(PgLOG):
    # get the pg passwords from OpenBao
    def get_baopassword(self):
       dbname = self.PGDBI['DBNAME']
-      if dbname not in self.DBBAOS: read_openbao()
+      if dbname not in self.DBBAOS: self.read_openbao()
       return self.DBBAOS[dbname].get(self.PGDBI['LNNAME'])
 
    # Reads the .pgpass file and returns a dictionary of credentials.
-   def read_pgpass():
+   def read_pgpass(self):
       pgpass = self.PGLOG['DSSHOME'] + '/.pgpass'
       if not op.isfile(pgpass): pgpass = self.PGLOG['GDEXHOME'] + '/.pgpass'
       try:

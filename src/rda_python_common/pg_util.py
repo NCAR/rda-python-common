@@ -141,7 +141,7 @@ class PgUtil(PgLOG):
    # Return: current (date, hour)
    def curdatehour(self, fmt = None):
       ct = time.gmtime() if self.PGLOG['GMTZ'] else time.localtime()
-      dt =  fmtdate(ct[0], ct[1], ct[2], fmt) if fmt else time.strftime("%Y-%m-%d", ct)
+      dt =  self.fmtdate(ct[0], ct[1], ct[2], fmt) if fmt else time.strftime("%Y-%m-%d", ct)
       return [dt, ct[3]]
 
    #     tm: optional time in seconds since the Epoch
@@ -205,7 +205,7 @@ class PgUtil(PgLOG):
    # Return: new formated current date string
    def curdate(self, fmt = None):
       ct = time.gmtime() if self.PGLOG['GMTZ'] else time.localtime()
-      return fmtdate(ct[0], ct[1], ct[2], fmt) if fmt else time.strftime("%Y-%m-%d", ct)
+      return self.fmtdate(ct[0], ct[1], ct[2], fmt) if fmt else time.strftime("%Y-%m-%d", ct)
 
    # check given string to identify temporal pattern and their units
    # defined in (keys self.DATEFMTS)
@@ -408,7 +408,7 @@ class PgUtil(PgLOG):
    #  tofmt: date format, ex. "Month D, YYYY", default to "YYYY-MM-DD"
    # Return: new formated date string
    def fmtdate(self, yr, mn, dy, tofmt = None):
-      (y, m, d) = adjust_ymd(yr, mn, dy)
+      (y, m, d) = self.adjust_ymd(yr, mn, dy)
       if not tofmt or tofmt == 'YYYY-MM-DD': return "{}-{:02}-{:02}".format(y, m, d)
       if dy != None:
          md = re.search(self.DATEFMTS['D'], tofmt, re.I)
@@ -588,7 +588,9 @@ class PgUtil(PgLOG):
    #  dsid: given dataset id in form of dsNNN(.|)N, NNNN.N or [a-z]NNNNNN
    # newid: True to format a new dsid; defaults to False for now
    # returns a new or old dsid according to the newid option
-   def format_dataset_id(self, dsid, newid = self.PGLOG['NEWDSID'], logact = self.LGEREX):
+   def format_dataset_id(self, dsid, newid = None, logact = None):
+      if newid is None: newid = self.PGLOG['NEWDSID']
+      if logact is None: logact = self.LGEREX
       dsid = str(dsid)
       ms = re.match(r'^([a-z])(\d\d\d)(\d\d\d)$', dsid)
       if ms:
@@ -614,7 +616,9 @@ class PgUtil(PgLOG):
    #  dsid: given dataset id in form of dsNNN(.|)N, NNNN.N or [a-z]NNNNNN
    # newid: True to format a new dsid; defaults to False for now
    # returns a new or old metadata dsid according to the newid option
-   def metadata_dataset_id(self, dsid, newid = self.PGLOG['NEWDSID'], logact = self.LGEREX):
+   def metadata_dataset_id(self, dsid, newid = None, logact = None):
+      if newid is None: newid = self.PGLOG['NEWDSID']
+      if logact is None: logact = self.LGEREX
       ms = re.match(r'^([a-z])(\d\d\d)(\d\d\d)$', dsid)
       if ms:
          ids = list(ms.groups())
@@ -652,7 +656,8 @@ class PgUtil(PgLOG):
 
    # find and convert all found dsids according to old/new dsids
    # for newid = False/True
-   def convert_dataset_ids(self, idstr, newid = self.PGLOG['NEWDSID'], logact = 0):
+   def convert_dataset_ids(self, idstr, newid = None, logact = 0):
+      if newid is None: newid = self.PGLOG['NEWDSID']
       flag = 'O' if newid else 'N'
       cnt = 0
       if idstr:
@@ -769,7 +774,7 @@ class PgUtil(PgLOG):
             while(j < acnt):
                k = 0
                for ckey in ckeys:
-                  if pgcmp(adict[ckey][j], bdict[ckey][i]): break
+                  if PgUtil.pgcmp(adict[ckey][j], bdict[ckey][i]): break
                   k += 1
                if k >= kcnt: break
                j += 1
@@ -795,7 +800,7 @@ class PgUtil(PgLOG):
       if unique:
          for i in (cnt2):
             for j in (cnt1):
-               if pgcmp(lst1[j], lst2[i]) != 0: break
+               if PgUtil.pgcmp(lst1[j], lst2[i]) != 0: break
             if j >= cnt1:
               lst1.append(lst2[i])
       else:
@@ -883,6 +888,7 @@ class PgUtil(PgLOG):
       return round((ut1 - ut2)/86400)   # 24*60*60
 
    # Return: the number of seconds bewteen time1 and time2
+   @staticmethod
    def difftime(time1, time2):
       ut1 = ut2 = 0
       if time1: ut1 = PgUtil.unixtime(time1)
@@ -1484,7 +1490,7 @@ class PgUtil(PgLOG):
    def cmp_records(arec, brec, desc, cnt, nums):
       for i in range(cnt):
          num = nums[i] if nums else 0
-         ret = pgcmp(arec[i], brec[i], 0, num)
+         ret = PgUtil.pgcmp(arec[i], brec[i], 0, num)
          if ret != 0:
             return (ret*desc[i])   
       return 0   # identical records
@@ -1526,6 +1532,6 @@ class PgUtil(PgLOG):
                non_text_count += 1  # Count non-text characters
          # If a significant portion of the buffer consists of non-text characters,
          # it's likely a binary file.
-         return 1 if((non_text_count/len(buffer)) < threshold) else 0
+         return 1 if((non_text_count/len(buffer)) < threshhold) else 0
       except IOError:
          return -1   # Handle cases where the file cannot be opened or read
