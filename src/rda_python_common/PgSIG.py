@@ -190,10 +190,10 @@ def check_daemon(aname, uname = None):
    if uname:
       check_vuser(uname, aname)
       pcmd = "ps -u {} -f | grep {} | grep ' 1 '".format(uname, aname)
-      mp = "^\s*{}\s+(\d+)\s+1\s+".format(uname)
+      mp = r"^\s*{}\s+(\d+)\s+1\s+".format(uname)
    else:
       pcmd = "ps -C {} -f | grep ' 1 '".format(aname)
-      mp = "^\s*\w+\s+(\d+)\s+1\s+"
+      mp = r"^\s*\w+\s+(\d+)\s+1\s+"
       
    buf = PgLOG.pgsystem(pcmd, PgLOG.LOGWRN, 20+1024)
    if buf:
@@ -220,10 +220,10 @@ def check_application(aname, uname = None, sargv = None):
    if uname:
       check_vuser(uname, aname)
       pcmd = "ps -u {} -f | grep {} | grep -v ' grep '".format(uname, aname)
-      mp = "^\s*{}\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(uname, aname)
+      mp = r"^\s*{}\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(uname, aname)
    else:
       pcmd = "ps -C {} -f".format(aname)
-      mp = "^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
+      mp = r"^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
 
    buf = PgLOG.pgsystem(pcmd, PgLOG.LOGWRN, 20+1024)
    if not buf: return 0
@@ -293,10 +293,10 @@ def check_multiple_application(aname, uname = None, sargv = None):
    if uname:
       check_vuser(uname, aname)
       pcmd = "ps -u {} -f | grep {} | grep -v ' grep '".format(uname, aname)
-      mp = "^\s*{}\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(uname, aname)
+      mp = r"^\s*{}\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(uname, aname)
    else:
       pcmd = "ps -C {} -f".format(aname)
-      mp = "^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
+      mp = r"^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
 
    buf = PgLOG.pgsystem(pcmd, PgLOG.LOGWRN, 20+1024)
    if not buf: return 0

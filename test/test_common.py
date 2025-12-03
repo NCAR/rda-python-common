@@ -14,3 +14,14 @@ def test_common():
     import rda_python_common.PgSIG
     import rda_python_common.PgSplit
     import rda_python_common.PgUtil
+    import rda_python_common.pgpassword
+    import rda_python_common.pg_cmd
+    import rda_python_common.pg_dbi
+    import rda_python_common.pg_file
+    import rda_python_common.pg_lock
+    import rda_python_common.pg_log
+    import rda_python_common.pg_opt
+    import rda_python_common.pg_sig
+    import rda_python_common.pg_split
+    import rda_python_common.pg_util
+    import rda_python_common.pg_pass
