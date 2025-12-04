@@ -15,7 +15,6 @@
 
 import sys
 import re
-import hvac
 from .pg_dbi import PgDBI
 
 class PgPassword(PgDBI):
@@ -39,7 +38,7 @@ class PgPassword(PgDBI):
       self.dbopt = False
       self.password = ''
 
-   # read in comman line parameters
+   # read in command line parameters
    def read_parameters(self):   
       argv = sys.argv[1:]
       opt = None
@@ -73,7 +72,7 @@ class PgPassword(PgDBI):
          sys.exit(0)
 
    # get the pgpassword
-   def read_pgpassword(self):
+   def start_actions(self):
       if self.dbopt:
          self.default_scinfo(self.DBINFO['dbname'], self.DBINFO['scname'], self.DBINFO['dbhost'],
                              self.DBINFO['lnname'], None, self.DBINFO['dbport'])   
@@ -82,10 +81,10 @@ class PgPassword(PgDBI):
 
 # main function to excecute this script
 def main():
-   pgpass = PgPassword()
-   pgpass.read_parameters()
-   pgpass.read_pgpassword()   
-   print(pgpass.password)
+   object = PgPassword()
+   object.read_parameters()
+   object.start_actions()   
+   print(object.password)
    sys.exit(0)
 
 # call main() to start program
