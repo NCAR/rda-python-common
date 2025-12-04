@@ -2,7 +2,7 @@
 #
 ##################################################################################
 #
-#     Title: pg_pass
+#     Title: pgpassword
 #    Author: Zaihua Ji, zji@ucar.edu
 #      Date: 2025-10-27
 #            2025-12-02 convert to class PgPassword
@@ -60,8 +60,8 @@ class PgPassword(PgDBI):
          else:
             self.pglog(arg + ": Value provided without option", self.LGEREX)
       if dohelp:
-         print("Usage: pg_pass [-l OpenBaoURL] [-k TokenName] [-d DBNAME]  \\")
-         print("               [-c SCHEMA] [-u USName] [-h DBHOST] [-p DBPORT]")
+         print("Usage: pgpassword [-l OpenBaoURL] [-k TokenName] [-d DBNAME]  \\")
+         print("                  [-c SCHEMA] [-u USName] [-h DBHOST] [-p DBPORT]")
          print("  -l OpenBao URL to retrieve passwords")
          print("  -k OpenBao Token Name to retrieve passwords")
          print("  -d PostgreSQL Database Name")
