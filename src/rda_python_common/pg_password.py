@@ -42,7 +42,7 @@ DBINFO = {
 def main():
 
    permit = False
-   aname = 'pgpassword'
+   aname = 'pg_password'
    argv = sys.argv[1:]
    opt = None
    dohelp = True
