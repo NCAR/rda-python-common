@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rda_python_common"
-version = "2.0.2"
+version = "2.0.3"
 authors = [
   { name="Zaihua Ji", email="zji@ucar.edu" },
 ]
@@ -33,4 +33,3 @@ pythonpath = [
 
 [project.scripts]
 pgpassword = "rda_python_common.pgpassword:main"
-pg_pass = "rda_python_common.pg_pass:main"
