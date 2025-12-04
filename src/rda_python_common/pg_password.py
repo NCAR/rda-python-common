@@ -2,7 +2,7 @@
 #
 ##################################################################################
 #
-#     Title: pgpassword
+#     Title: pg_password
 #    Author: Zaihua Ji, zji@ucar.edu
 #      Date: 2025-10-27
 #   Purpose: python script to retrieve passwords for postgrsql login to connect a
@@ -66,8 +66,8 @@ def main():
          PgLOG.pglog(arg + ": Value provided without option", PgLOG.LGEREX)
 
    if dohelp:
-      print("Usage: pgpassword [-l OpenBaoURL] [-k TokenName] [-d DBNAME]  \\")
-      print("                  [-c SCHEMA] [-u USName] [-h DBHOST] [-p DBPORT]")
+      print("Usage: pg_password [-l OpenBaoURL] [-k TokenName] [-d DBNAME]  \\")
+      print("                   [-c SCHEMA] [-u USName] [-h DBHOST] [-p DBPORT]")
       print("  -l OpenBao URL to retrieve passwords")
       print("  -k OpenBao Token Name to retrieve passwords")
       print("  -d PostgreSQL Database Name")
