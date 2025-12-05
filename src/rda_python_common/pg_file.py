@@ -1031,7 +1031,7 @@ class PgFile(PgUtil, PgSIG):
       if not ngrp:
          ngid = self.PGLOG['GDEXGID']
       else:
-         ngid = grp.getgrnam[ngrp].gr_gid
+         ngid = grp.getgrnam(ngrp).gr_gid
       if logact and logact&self.EXITLG: logact &=~self.EXITLG
       if not (ogrp and logname):
          info = self.check_local_file(file, 10, logact)

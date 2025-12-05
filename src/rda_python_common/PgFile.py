@@ -1304,7 +1304,7 @@ def change_local_group(file, ngrp = None, ogrp = None, logname = None, logact = 
    if not ngrp:
       ngid = PgLOG.PGLOG['GDEXGID']
    else:
-      ngid = grp.getgrnam[ngrp].gr_gid
+      ngid = grp.getgrnam(ngrp).gr_gid
    if logact and logact&PgLOG.EXITLG: logact &=~PgLOG.EXITLG
    if not (ogrp and logname):
       info = check_local_file(file, 10, logact)
