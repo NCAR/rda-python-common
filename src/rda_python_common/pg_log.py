@@ -1118,9 +1118,6 @@ class PgLOG:
 
    # check and return TMPSYNC path, and add it if not exists
    def get_tmpsync_path(self):
-      if 'DSSHOME' in self.PGLOG and self.PGLOG['DSSHOME'] and not op.exists(self.PGLOG['TMPSYNC']):
-         self.pgsystem("mkdir " + self.PGLOG['TMPSYNC'], 0, self.LGWNEX, 4)
-         self.pgsystem("chmod 775 " + self.PGLOG['TMPSYNC'], self.LOGWRN, 4)
       return self.PGLOG['TMPSYNC']
 
    # append or prepend locpath to pgpath
