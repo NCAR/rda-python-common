@@ -1393,10 +1393,6 @@ def set_common_pglog():
 # check and return TMPSYNC path, and add it if not exists
 #
 def get_tmpsync_path():
-
-   if 'DSSHOME' in PGLOG and PGLOG['DSSHOME'] and not op.exists(PGLOG['TMPSYNC']):
-      pgsystem("mkdir " + PGLOG['TMPSYNC'], 0, LGWNEX, 4)
-      pgsystem("chmod 775 " + PGLOG['TMPSYNC'], LOGWRN, 4)
    return PGLOG['TMPSYNC']
 
 #
