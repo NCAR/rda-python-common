@@ -59,6 +59,7 @@ class PgFile(PgUtil, PgSIG):
          'tar.bz2' : ['tar -cvjf', 'tar -xvf', 'TAR.BZ2']
       }
       self.TARSTR = '|'.join(self.PGTARS)
+      self.DELDIRS = {}
       self.TASKIDS = {}   # cache unfinished 
       self.LHOST = "localhost"
       self.OHOST = self.PGLOG['OBJCTSTR']
@@ -67,6 +68,7 @@ class PgFile(PgUtil, PgSIG):
       self.OBJCTCMD = "isd_s3_cli"
       self.BACKCMD = "dsglobus"
       self.DIRLVLS = 0
+      self.BFILES = {}  # cache backup file names and dates for each bid
       # record how many errors happen for working with HPSS, local or remote machines
       self.ECNTS = {'D' : 0, 'H' : 0, 'L' : 0, 'R' : 0, 'O' : 0, 'B' : 0}
       # up limits for how many continuing errors allowed
@@ -105,7 +107,6 @@ class PgFile(PgUtil, PgSIG):
          'gdex-quasar' : "NCAR GDEX Quasar",
          'gdex-quasar-drdata' : "NCAR GDEX Quasar DRDATA"
       }
-      self.BFILES = {}  # cache backup file names and dates for each bid
 
    # reset the up limit for a specified error type
    def reset_error_limit(self, etype, lmt):
