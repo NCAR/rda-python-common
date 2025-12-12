@@ -248,7 +248,7 @@ class PgDBI(PgLOG):
    # record error message to dscheck record and clean the lock
    def record_dscheck_error(self, errmsg, logact = None):
       if logact is None: logact = self.PGDBI['EXITLG']
-      check = PgLOG.PGLOG['DSCHECK']
+      check = self.PGLOG['DSCHECK']
       chkcnd = check['chkcnd'] if 'chkcnd' in check else "cindex = {}".format(check['cindex'])
       dflags = check['dflags'] if 'dflags' in check else ''
       if self.PGLOG['NOQUIT']: self.PGLOG['NOQUIT'] = 0
