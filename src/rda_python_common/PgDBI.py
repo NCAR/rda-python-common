@@ -323,11 +323,12 @@ def aborttran(autocommit = True):
 #
 def record_dscheck_error(errmsg, logact = PGDBI['EXITLG']):
 
-   cnd = PgLOG.PGLOG['DSCHECK']['chkcnd']
+   check = PgLOG.PGLOG['DSCHECK']
+   chkcnd = check['chkcnd'] if 'chkcnd' in check else "cindex = {}".format(check['cindex'])
+   dflags = check['dflags'] if 'dflags' in check else ''
    if PgLOG.PGLOG['NOQUIT']: PgLOG.PGLOG['NOQUIT'] = 0
-   dflags = PgLOG.PGLOG['DSCHECK']['dflags']
 
-   pgrec = pgget("dscheck", "mcount, tcount, lockhost, pid", cnd, logact)
+   pgrec = pgget("dscheck", "mcount, tcount, lockhost, pid", chkcnd, logact)
    if not pgrec: return 0
    if not pgrec['pid'] and not pgrec['lockhost']: return 0
    (chost, cpid) = PgLOG.current_process_info()
@@ -350,7 +351,7 @@ def record_dscheck_error(errmsg, logact = PGDBI['EXITLG']):
       if pgrec['tcount'] > 1: errmsg = "Try {}: {}".format(pgrec['tcount'], errmsg)
       record['errmsg'] = errmsg
 
-   return pgupdt("dscheck", record, cnd, logact)
+   return pgupdt("dscheck", record, chkcnd, logact)
 
 #
 # local function to log query error

@@ -248,10 +248,11 @@ class PgDBI(PgLOG):
    # record error message to dscheck record and clean the lock
    def record_dscheck_error(self, errmsg, logact = None):
       if logact is None: logact = self.PGDBI['EXITLG']
-      cnd = self.PGLOG['DSCHECK']['chkcnd']
+      check = PgLOG.PGLOG['DSCHECK']
+      chkcnd = check['chkcnd'] if 'chkcnd' in check else "cindex = {}".format(check['cindex'])
+      dflags = check['dflags'] if 'dflags' in check else ''
       if self.PGLOG['NOQUIT']: self.PGLOG['NOQUIT'] = 0
-      dflags = self.PGLOG['DSCHECK']['dflags']
-      pgrec = self.pgget("dscheck", "mcount, tcount, lockhost, pid", cnd, logact)
+      pgrec = self.pgget("dscheck", "mcount, tcount, lockhost, pid", chkcnd, logact)
       if not pgrec: return 0
       if not pgrec['pid'] and not pgrec['lockhost']: return 0
       (chost, cpid) = self.current_process_info()
@@ -271,7 +272,7 @@ class PgDBI(PgLOG):
          errmsg = self.break_long_string(errmsg, 512, None, 50, None, 50, 25)
          if pgrec['tcount'] > 1: errmsg = "Try {}: {}".format(pgrec['tcount'], errmsg)
          record['errmsg'] = errmsg
-      return self.pgupdt("dscheck", record, cnd, logact)
+      return self.pgupdt("dscheck", record, chkcnd, logact)
 
    # local function to log query error
    def qelog(self, dberror, sleep, sqlstr, vals, pgcnt, logact = None):
