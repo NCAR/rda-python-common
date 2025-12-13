@@ -468,6 +468,8 @@ def check_dberror(pgerr, pgcnt, sqlstr, ary, logact = PGDBI['ERRLOG']):
 
    if logact&PgLOG.DOLOCK and pgcode and re.match(r'^55\w\w\w$', pgcode):
       logact &= ~PgLOG.EXITLG   # no exit for lock error
+   elif pgcnt > PgLOG.PGLOG['DBRETRY']:
+      logact |= PgLOG.EXITLG   # exit for error count exceeds limit
    return qelog(dberror, 0, sqlstr, ary, pgcnt, logact)
 
 #

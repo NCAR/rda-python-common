@@ -366,6 +366,8 @@ class PgDBI(PgLOG):
             return self.SUCCESS
       if logact&self.DOLOCK and pgcode and re.match(r'^55\w\w\w$', pgcode):
          logact &= ~self.EXITLG   # no exit for lock error
+      elif pgcnt > self.PGLOG['DBRETRY']:
+         logact |= self.EXITLG   # exit for error count exceeds limit
       return self.qelog(dberror, 0, sqlstr, ary, pgcnt, logact)
 
    # return hash reference to postgresql batch mode command and output file name
