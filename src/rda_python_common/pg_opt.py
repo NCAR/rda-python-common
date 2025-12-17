@@ -1435,7 +1435,7 @@ class PgOPT(PgFile):
          rf.write(ebuf)
          rf.close()
          self.set_local_mode(readyfile, 1, self.PGLOG['FILEMODE'])
-         return rstat
+      return rstat
 
    #  cache partition process error to existing email buffer
    def cache_partition_email_error(self, ridx, errmsg):
