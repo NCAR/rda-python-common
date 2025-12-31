@@ -1,8 +1,5 @@
-#
 ###############################################################################
-#
 #     Title : pg_opt.py
-#
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 08/26/2020
 #             2025-01-10 transferred to package rda_python_common from
@@ -10,11 +7,8 @@
 #             2025-12-01 convert to class PgOPT
 #   Purpose : python library module for holding global varaibles
 #             functions for processing options and other global functions
-#
 #    Github : https://github.com/NCAR/rda-pyhon-common.git
-# 
 ###############################################################################
-#
 import os
 import sys
 import re

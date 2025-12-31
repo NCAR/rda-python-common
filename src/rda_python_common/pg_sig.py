@@ -1,19 +1,13 @@
-#
 ###############################################################################
-#
 #     Title : pg_sig.py
-#
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 08/05/2020
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-11-20 convert to class PgSIG
 #   Purpose : python library module for start and control daemon process
-#
 #    Github : https://github.com/NCAR/rda-python-common.git
-# 
 ###############################################################################
-#
 import os
 import re
 import sys

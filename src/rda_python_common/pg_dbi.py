@@ -1,6 +1,4 @@
-#
 ###############################################################################
-#
 #     Title : pg_dbi.py  -- PostgreSQL DataBase Interface
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 06/07/2022
@@ -8,11 +6,8 @@
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-11-24 convert to class PgDBI
 #   Purpose : Python library module to handle query and manipulate PostgreSQL database
-#
 #    Github : https://github.com/NCAR/rda-python-common.git
-#
 ###############################################################################
-
 import os
 import re
 import time

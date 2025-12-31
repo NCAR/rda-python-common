@@ -1,6 +1,4 @@
-#
 ###############################################################################
-#
 #     Title : pg_util.py  -- module for misc utilities.
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 07/27/2020
@@ -8,11 +6,8 @@
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-11-20 convert to class PgUtil
 #   Purpose : python library module for global misc utilities
-#
 #    Github : https://github.com/NCAR/rda-python-common.git
-#
 ###############################################################################
-#
 import os
 import re
 import time

@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
-#
 ##################################################################################
-#
 #     Title: pgpassword
 #    Author: Zaihua Ji, zji@ucar.edu
 #      Date: 2025-10-27
 #            2025-12-02 convert to class PgPassword
 #   Purpose: python script to retrieve passwords for postgrsql login to connect a
 #            gdex database from inside an python application
-#
 #    Github: https://github.com/NCAR/rda-python-common.git
-#
 ##################################################################################
-
 import sys
 import re
 from .pg_dbi import PgDBI

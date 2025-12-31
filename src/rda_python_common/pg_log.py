@@ -1,6 +1,4 @@
-#
 ###############################################################################
-#
 #     Title : pg_log.py  -- Module for logging messages.
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 03/02/2016
@@ -10,11 +8,8 @@
 #   Purpose : Python library module to log message and also do other things
 #             according to the value of logact, like display the error
 #             message on screen and exit script
-#
 #    Github : https://github.com/NCAR/rda-python-common.git
-#
 ###############################################################################
-
 import sys
 import os
 import re

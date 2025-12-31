@@ -1,6 +1,4 @@
-#
 ###############################################################################
-#
 #     Title : pg_split.py  -- PostgreSQL DataBase Interface foe table wfile
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 09/010/2024
@@ -8,18 +6,14 @@
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-12-01 convert to class PgSplit
 #   Purpose : Python library module to handle query and manipulate table wfile
-#
 #    Github : https://github.com/NCAR/rda-python-common.git
-#
 ###############################################################################
-
 import os
 import re
 from os import path as op
-from .pg_dbi import PgDBI
 from .pg_util import PgUtil
 
-class PgSplit(PgDBI):
+class PgSplit(PgUtil):
 
    def __init__(self):
       super().__init__()  # initialize parent class
@@ -39,15 +33,15 @@ class PgSplit(PgDBI):
       i = j = 0
       while i < wfcnt and j < dscnt:
          if i > pi:
-            wfrec = PgUtil.onerecord(wfrecs, i)
+            wfrec = self.onerecord(wfrecs, i)
             wwid = wfrec['wid']
             pi = i
          if j > pj:
-            dsrec = PgUtil.onerecord(dsrecs, j)
+            dsrec = self.onerecord(dsrecs, j)
             dwid = dsrec['wid']
             pj = j
          if wwid == dwid:
-            mrec = PgSplit.compare_one_record(flds, wfrec, dsrec)
+            mrec = self.compare_one_record(flds, wfrec, dsrec)
             if mrec: mrecs[wwid] = mrec
             i += 1
             j += 1

@@ -1,7 +1,5 @@
-#
 ###############################################################################
-#
-#     Title : self.py
+#     Title : pg_file.py
 #    Author : Zaihua Ji,  zji@ucar.edu
 #      Date : 08/05/2020
 #             2025-01-10 transferred to package rda_python_common from
@@ -9,11 +7,8 @@
 #             2025-12-01 convert to class PgFile
 #   Purpose : python library module to copy, move and delete data files locally
 #             and remotely
-#
 #    Github : https://github.com/NCAR/rda-python-common.git
-#
 ###############################################################################
-#
 import sys
 import os
 from os import path as op
