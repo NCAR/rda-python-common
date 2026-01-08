@@ -110,16 +110,14 @@ class PgLOG:
          'BCHHOSTS' : "PBS",
          'HOSTTYPE' : 'dav',    # default HOSTTYPE
          'EMLMAX' : 256,       # up limit of email line count
-         'PGBATCH' : '',       # current batch service name, SLURM or PBS
+         'PGBATCH' : '',       # current batch service name, PBS
          'PGBINDIR' : '',
-         'SLMTIME' : 604800,   # max runtime for SLURM bath job, (7x24x60x60 seconds)
          'PBSTIME' : 86400,    # max runtime for PBS bath job, (24x60x60 seconds)
          'MSSGRP'  : None,     # set if set to different HPSS group
          'GDEXGRP'  : "decs",
          'EMLSEND' : None,     # path to sendmail, None if not exists
          'DSCHECK' : None,     # carry some cached dscheck information
          'PGDBBUF' : None,      # reference to a connected database object
-         'HPSSLMT' : 10,       # up limit of HPSS streams
          'NOQUIT'  : 0,        # do not quit if this flag is set for daemons
          'DBRETRY' : 2,        # db retry count after error
          'TIMEOUT' : 15,       # default timeout (in seconds) for tosystem()
@@ -138,6 +136,7 @@ class PgLOG:
       self.PGLOG['SUDORDA'] = self.PGLOG['SUDOGDEX']
       self.HOSTTYPES = {
          'rda' : 'dsg_mach',
+         'crlogin' : 'dav',
          'casper' : 'dav',
          'crhtc' : 'dav',
          'cron' : 'dav',
@@ -151,8 +150,6 @@ class PgLOG:
       self.BCHCMDS = {'PBS' : 'qsub'}
       # global dists to cashe information
       self.COMMANDS = {}
-      self.SLMHOSTS = []
-      self.SLMSTATS = {}
       self.PBSHOSTS = []
       self.PBSSTATS = {}
       # set additional common PGLOG values
@@ -1090,8 +1087,7 @@ class PgLOG:
       self.SETPGLOG("RQSTALTH", "")                   # alternate dsrqst path
       self.SETPGLOG("GPFSHOST", "")                   # empty if writable to glade
       self.SETPGLOG("PSQLHOST", "rda-db.ucar.edu")    # host name for postgresql server
-      self.SETPGLOG("SLMHOSTS", "cheyenne:casper")    # host names for SLURM server
-      self.SETPGLOG("PBSHOSTS", "cron:casper")        # host names for PBS server
+      self.SETPGLOG("PBSHOSTS", "cron:casper:crlogin")   # host names for PBS server
       self.SETPGLOG("CHKHOSTS", "")                   # host names for dscheck daemon
       self.SETPGLOG("PVIEWHOST", "pgdb02.k8s.ucar.edu")             # host name for view only postgresql server
       self.SETPGLOG("PMISCHOST", "pgdb03.k8s.ucar.edu")             # host name for misc postgresql server
