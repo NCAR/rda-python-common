@@ -1,12 +1,12 @@
 ###############################################################################
-#     Title : pg_cmd.py
-#    Author : Zaihua Ji,  zji@ucar.edu
-#      Date : 08/25/2020
+#     Title: pg_cmd.py
+#    Author: Zaihua Ji,  zji@ucar.edu
+#      Date: 08/25/2020
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
-#   Purpose : python library module for functions to record commands for delayed
+#   Purpose: python library module for functions to record commands for delayed
 #             mode or command recovery
-#    Github : https://github.com/NCAR/rda-python-common.git
+#    Github: https://github.com/NCAR/rda-python-common.git
 ###############################################################################
 import os
 import re
@@ -20,18 +20,18 @@ class PgCMD(PgLock):
       super().__init__()  # initialize parent class
       # cached dscheck info
       self.DSCHK = {}
-      self.BOPTIONS = {"hostname" : None, "qoptions" : None, "modules" : None, "environments" : None}
+      self.BOPTIONS = {"hostname": None, "qoptions": None, "modules": None, "environments": None}
       self.BFIELDS = ', '.join(self.BOPTIONS)
       self.TRYLMTS = {
-         'dsquasar'  : 3,
-         'dsarch'  : 2,
-         'default' : 1
+         'dsquasar': 3,
+         'dsarch': 2,
+         'default': 1
       }
       self.DLYPTN = r'(^|\s)-(d|BP|BatchProcess|DelayedMode)(\s|$)'
       self.DLYOPT = {
-         'dsarch' : ' -d',
-         'dsupdt' : ' -d',
-         'dsrqst' : ' -d'
+         'dsarch': ' -d',
+         'dsupdt': ' -d',
+         'dsrqst': ' -d'
       }
 
    #  params: dict array holding option values
@@ -376,7 +376,7 @@ class PgCMD(PgLock):
          fcnt = pgrec['fcount']
       else:
          fcnt = 0
-         pgrec = {'fcount' : 0}
+         pgrec = {'fcount': 0}
       if not fcnt: fcnt = self.pgget("wfrqst", "", cnd, logact)
       if fcnt and fcount != fcnt: fcount = fcnt
       if fcount:
@@ -397,14 +397,14 @@ class PgCMD(PgLock):
 
    # set dscheck fcount
    def set_dscheck_fcount(self, count, logact = 0):
-      record = {'fcount' : count, 'chktime' : int(time.time())}
+      record = {'fcount': count, 'chktime': int(time.time())}
       self.pgupdt("dscheck", record, self.DSCHK['chkcnd'], logact)
       self.DSCHK['fcount'] = count
       return self.DSCHK['dcount']     # return Done count
 
    # set dscheck dcount
    def set_dscheck_dcount(self, count, size, logact = 0):
-      record = {'dcount' : count, 'size' : size, 'chktime' : int(time.time())}
+      record = {'dcount': count, 'size': size, 'chktime': int(time.time())}
       self.pgupdt("dscheck", record, self.DSCHK['chkcnd'], logact)
       self.DSCHK['dcount'] = count
       self.DSCHK['size'] = size
@@ -439,7 +439,7 @@ class PgCMD(PgLock):
       if pgrec['pid'] != cpid or pgrec['lockhost'] != chost: return 0
    
       # update dscheck status only if it is still locked by the current process
-      record = {'status' : stat, 'chktime' : int(time.time()), 'pid' : 0}
+      record = {'status': stat, 'chktime': int(time.time()), 'pid': 0}
       return self.pgupdt("dscheck", record, self.DSCHK['chkcnd'], logact)
 
    # get the number of tries to execute for a given cmd under dscheck control

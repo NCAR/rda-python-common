@@ -1,14 +1,14 @@
 ###############################################################################
-#     Title : pg_log.py  -- Module for logging messages.
-#    Author : Zaihua Ji,  zji@ucar.edu
-#      Date : 03/02/2016
+#     Title: pg_log.py  -- Module for logging messages.
+#    Author: Zaihua Ji,  zji@ucar.edu
+#      Date: 03/02/2016
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-11-20 convert to class PgLOG
-#   Purpose : Python library module to log message and also do other things
+#   Purpose: Python library module to log message and also do other things
 #             according to the value of logact, like display the error
 #             message on screen and exit script
-#    Github : https://github.com/NCAR/rda-python-common.git
+#    Github: https://github.com/NCAR/rda-python-common.git
 ###############################################################################
 import sys
 import os
@@ -74,80 +74,80 @@ class PgLOG:
    def __init__(self):
       self.PGLOG = {
          # more defined in untaint_suid() with environment variables
-         'EMLADDR' : '',
-         'CCDADDR' : '',
-         'SEPLINE' : "===========================================================\n",
-         'TWOGBS'  : 2147483648,
-         'ONEGBS'  : 1073741824,
-         'MINSIZE' : 100,        # minimal file size in bytes to be valid
-         'LOGMASK' : (0xFFFFFF),  # log mask to turn off certain log action bits
-         'BCKGRND' : 0,          # background process flag -b
-         'ERRCNT'  : 0,          # record number of errors for email
-         'ERRMSG'  : '',         # record error message for email
-         'SUMMSG'  : '',         # record summary message for email
-         'EMLMSG'  : '',         # record detail message for email
-         'PRGMSG'  : '',         # record progressing message for email, replaced each time
-         'GMTZ'    : 0,          # 0 - use local time, 1 - use greenwich mean time
-         'NOLEAP'  : 0,          # 1 - skip 29 of Feburary while add days to date
-         'GMTDIFF' : 6,          # gmt is 6 hours ahead of us
-         'CURUID'  : None,       # the login name who executes the program
-         'SETUID'  : '',         # the login name for suid if it is different to the CURUID
-         'FILEMODE': 0o664,      # default 8-base file mode
-         'EXECMODE': 0o775,      # default 8-base executable file mode or directory mode
-         'GDEXUSER' : "gdexdata",  # common gdex user name
-         'GDEXEMAIL' : "zji",    # specialist to receipt email intead of common gdex user name
-         'SUDOGDEX' : 0,          # 1 to allow sudo to self.PGLOG['GDEXUSER']
-         'HOSTNAME' : '',        # current host name the process in running on
-         'OBJCTSTR' : "object",
-         'BACKUPNM' : "quasar",
-         'DRDATANM' : "drdata",
-         'GPFSNAME' : "glade",
-         'PBSNAME' : "PBS",
-         'DSIDCHRS' : "d",
-         'DOSHELL' : False,
-         'NEWDSID' : True,
-         'PUSGDIR' : None,
-         'BCHHOSTS' : "PBS",
-         'HOSTTYPE' : 'dav',    # default HOSTTYPE
-         'EMLMAX' : 256,       # up limit of email line count
-         'PGBATCH' : '',       # current batch service name, PBS
-         'PGBINDIR' : '',
-         'PBSTIME' : 86400,    # max runtime for PBS bath job, (24x60x60 seconds)
-         'MSSGRP'  : None,     # set if set to different HPSS group
-         'GDEXGRP'  : "decs",
-         'EMLSEND' : None,     # path to sendmail, None if not exists
-         'DSCHECK' : None,     # carry some cached dscheck information
-         'PGDBBUF' : None,      # reference to a connected database object
-         'NOQUIT'  : 0,        # do not quit if this flag is set for daemons
-         'DBRETRY' : 2,        # db retry count after error
-         'TIMEOUT' : 15,       # default timeout (in seconds) for tosystem()
-         'CMDTIME' : 120,      # default command time (in seconds) for pgsystem() to record end time
-         'SYSERR'  : None,     # cache the error message generated inside pgsystem()
-         'ERR2STD' : [],       # if non-empty reference to array of strings, change stderr to stdout if match
-         'STD2ERR' : [],       # if non-empty reference to array of strings, change stdout to stderr if match
+         'EMLADDR': '',
+         'CCDADDR': '',
+         'SEPLINE': "===========================================================\n",
+         'TWOGBS': 2147483648,
+         'ONEGBS': 1073741824,
+         'MINSIZE': 100,       # minimal file size in bytes to be valid
+         'LOGMASK': (0xFFFFFF),  # log mask to turn off certain log action bits
+         'BCKGRND': 0,         # background process flag -b
+         'ERRCNT': 0,          # record number of errors for email
+         'ERRMSG': '',         # record error message for email
+         'SUMMSG': '',         # record summary message for email
+         'EMLMSG': '',         # record detail message for email
+         'PRGMSG': '',         # record progressing message for email, replaced each time
+         'GMTZ': 0,            # 0 - use local time, 1 - use greenwich mean time
+         'NOLEAP': 0,          # 1 - skip 29 of Feburary while add days to date
+         'GMTDIFF': 6,         # gmt is 6 hours ahead of us
+         'CURUID': None,       # the login name who executes the program
+         'SETUID': '',         # the login name for suid if it is different to the CURUID
+         'FILEMODE': 0o664,    # default 8-base file mode
+         'EXECMODE': 0o775,    # default 8-base executable file mode or directory mode
+         'GDEXUSER': "gdexdata",  # common gdex user name
+         'GDEXEMAIL': "zji",    # specialist to receipt email intead of common gdex user name
+         'SUDOGDEX': 0,         # 1 to allow sudo to self.PGLOG['GDEXUSER']
+         'HOSTNAME': '',        # current host name the process in running on
+         'OBJCTSTR': "object",
+         'BACKUPNM': "quasar",
+         'DRDATANM': "drdata",
+         'GPFSNAME': "glade",
+         'PBSNAME': "PBS",
+         'DSIDCHRS': "d",
+         'DOSHELL': False,
+         'NEWDSID': True,
+         'PUSGDIR': None,
+         'BCHHOSTS': "PBS",
+         'HOSTTYPE': 'dav',   # default HOSTTYPE
+         'EMLMAX': 256,       # up limit of email line count
+         'PGBATCH': '',       # current batch service name, PBS
+         'PGBINDIR': '',
+         'PBSTIME': 86400,    # max runtime for PBS bath job, (24x60x60 seconds)
+         'MSSGRP': None,      # set if set to different HPSS group
+         'GDEXGRP': "decs",
+         'EMLSEND': None,     # path to sendmail, None if not exists
+         'DSCHECK': None,     # carry some cached dscheck information
+         'PGDBBUF': None,     # reference to a connected database object
+         'NOQUIT': 0,         # do not quit if this flag is set for daemons
+         'DBRETRY': 2,        # db retry count after error
+         'TIMEOUT': 15,       # default timeout (in seconds) for tosystem()
+         'CMDTIME': 120,      # default command time (in seconds) for pgsystem() to record end time
+         'SYSERR': None,      # cache the error message generated inside pgsystem()
+         'ERR2STD': [],       # if non-empty reference to array of strings, change stderr to stdout if match
+         'STD2ERR': [],       # if non-empty reference to array of strings, change stdout to stderr if match
          'MISSFILE': "No such file or directory",
-         'GITHUB' : "https://github.com" , # github server
-         'EMLSRVR' : "ndir.ucar.edu",   # UCAR email server and port
-         'EMLPORT' : 25
+         'GITHUB': "https://github.com" , # github server
+         'EMLSRVR': "ndir.ucar.edu",   # UCAR email server and port
+         'EMLPORT': 25
       }
       self.PGLOG['RDAUSER'] = self.PGLOG['GDEXUSER']
       self.PGLOG['RDAGRP'] = self.PGLOG['GDEXGRP']
       self.PGLOG['RDAEMAIL'] = self.PGLOG['GDEXEMAIL']
       self.PGLOG['SUDORDA'] = self.PGLOG['SUDOGDEX']
       self.HOSTTYPES = {
-         'rda' : 'dsg_mach',
-         'crlogin' : 'dav',
-         'casper' : 'dav',
-         'crhtc' : 'dav',
-         'cron' : 'dav',
+         'rda': 'dsg_mach',
+         'crlogin': 'dav',
+         'casper': 'dav',
+         'crhtc': 'dav',
+         'cron': 'dav',
       }
       self.CPID = {
-         'PID' : "",
-         'CTM' : int(time.time()),
-         'CMD' : "",
-         'CPID' : "",
+         'PID': "",
+         'CTM': int(time.time()),
+         'CMD': "",
+         'CPID': "",
       }
-      self.BCHCMDS = {'PBS' : 'qsub'}
+      self.BCHCMDS = {'PBS': 'qsub'}
       # global dists to cashe information
       self.COMMANDS = {}
       self.PBSHOSTS = []
@@ -222,10 +222,10 @@ class PgLOG:
    def send_customized_email(self, logmsg, emlmsg, logact = None):
       if logact is None: logact = self.LOGWRN
       entries = {
-         'fr' : ["From",    1, None],
-         'to' : ["To",      1, None],
-         'cc' : ["Cc",      0, ''],
-         'sb' : ["Subject", 1, None]
+         'fr': ["From",    1, None],
+         'to': ["To",      1, None],
+         'cc': ["Cc",      0, ''],
+         'sb': ["Subject", 1, None]
       }
       if logmsg:
          logmsg += ': '
@@ -1059,10 +1059,10 @@ class PgLOG:
       if self.valid_command(sm): self.SETPGLOG("EMLSEND", f"{sm} -t")   # send email command
       self.SETPGLOG("DBGLEVEL", '')                             # debug level
       self.SETPGLOG("BAOTOKEN", 's.lh2t2kDjrqs3V8y2BU2zOocT')   # OpenBao token
-      self.SETPGLOG("DBGPATH", self.PGLOG['DSSDBHM']+"/log")         # path to debug log file
-      self.SETPGLOG("OBJCTBKT", "gdex-data")                     # default Bucket on Object Store
-      self.SETPGLOG("BACKUPEP", "gdex-quasar")                   # default Globus Endpoint on Quasar
-      self.SETPGLOG("DRDATAEP", "gdex-quasar-drdata")            # DRDATA Globus Endpoint on Quasar
+      self.SETPGLOG("DBGPATH", self.PGLOG['DSSDBHM']+"/log")    # path to debug log file
+      self.SETPGLOG("OBJCTBKT", "gdex-data")                    # default Bucket on Object Store
+      self.SETPGLOG("BACKUPEP", "gdex-quasar")                  # default Globus Endpoint on Quasar
+      self.SETPGLOG("DRDATAEP", "gdex-quasar-drdata")           # DRDATA Globus Endpoint on Quasar
       self.SETPGLOG("DBGFILE", "pgdss.dbg")                     # debug file name
       self.SETPGLOG("CNFPATH", self.PGLOG['DSSHOME']+"/config")      # path to configuration files
       self.SETPGLOG("DSSURL",  "https://gdex.ucar.edu")          # current dss web URL
@@ -1075,23 +1075,23 @@ class PgLOG:
       self.SETPGLOG("DSSWEB",  self.PGLOG['LOCDATA']+"/web")
       self.SETPGLOG("DSWHOME", self.PGLOG['DSSWEB']+"/datasets")     # datast web root path
       self.PGLOG['HOMEROOTS'] = "{}|{}".format(self.PGLOG['DSSHOME'], self.PGLOG['DSWHOME'])
-      self.SETPGLOG("DSSDATA", "/glade/campaign/collections/gdex")  # dss data root path
+      self.SETPGLOG("DSSDATA", "/glade/campaign/collections/gdex")   # dss data root path
       self.SETPGLOG("DSDHOME", self.PGLOG['DSSDATA']+"/data")        # dataset data root path
       self.SETPGLOG("DECSHOME", self.PGLOG['DSSDATA']+"/decsdata")   # dataset decsdata root path
       self.SETPGLOG("DSHHOME", self.PGLOG['DECSHOME']+"/helpfiles")  # dataset help root path
-      self.SETPGLOG("GDEXWORK", "/lustre/desc1/gdex/work")      # gdex work path
+      self.SETPGLOG("GDEXWORK", "/lustre/desc1/gdex/work")           # gdex work path
       self.SETPGLOG("UPDTWKP", self.PGLOG['GDEXWORK'])               # dsupdt work root path
-      self.SETPGLOG("TRANSFER", "/lustre/desc1/gdex/transfer")  # gdex transfer path
+      self.SETPGLOG("TRANSFER", "/lustre/desc1/gdex/transfer")       # gdex transfer path
       self.SETPGLOG("RQSTHOME", self.PGLOG['TRANSFER']+"/dsrqst")    # dsrqst home
-      self.SETPGLOG("DSAHOME",  "")                   # dataset data alternate root path
-      self.SETPGLOG("RQSTALTH", "")                   # alternate dsrqst path
-      self.SETPGLOG("GPFSHOST", "")                   # empty if writable to glade
-      self.SETPGLOG("PSQLHOST", "rda-db.ucar.edu")    # host name for postgresql server
-      self.SETPGLOG("PBSHOSTS", "cron:casper:crlogin")   # host names for PBS server
-      self.SETPGLOG("CHKHOSTS", "")                   # host names for dscheck daemon
+      self.SETPGLOG("DSAHOME",  "")                     # dataset data alternate root path
+      self.SETPGLOG("RQSTALTH", "")                     # alternate dsrqst path
+      self.SETPGLOG("GPFSHOST", "")                     # empty if writable to glade
+      self.SETPGLOG("PSQLHOST", "rda-db.ucar.edu")      # host name for postgresql server
+      self.SETPGLOG("PBSHOSTS", "cron:casper:crlogin")  # host names for PBS server
+      self.SETPGLOG("CHKHOSTS", "")                     # host names for dscheck daemon
       self.SETPGLOG("PVIEWHOST", "pgdb02.k8s.ucar.edu")             # host name for view only postgresql server
       self.SETPGLOG("PMISCHOST", "pgdb03.k8s.ucar.edu")             # host name for misc postgresql server
-      self.SETPGLOG("FTPUPLD",  self.PGLOG['TRANSFER']+"/rossby")    # ftp upload path
+      self.SETPGLOG("FTPUPLD",  self.PGLOG['TRANSFER']+"/rossby")   # ftp upload path
       self.PGLOG['GPFSROOTS'] = "{}|{}|{}".format(self.PGLOG['DSDHOME'], self.PGLOG['UPDTWKP'], self.PGLOG['RQSTHOME'])
       if 'ECCODES_DEFINITION_PATH' not in os.environ:
          os.environ['ECCODES_DEFINITION_PATH'] = "/usr/local/share/eccodes/definitions"

@@ -17,18 +17,18 @@ class PgPassword(PgDBI):
    def __init__(self):
       super().__init__()  # initialize parent class
       self.DBFLDS = {
-         'd' : 'dbname',
-         'c' : 'scname',
-         'h' : 'dbhost',
-         'p' : 'dbport',
-         'u' : 'lnname'
+         'd': 'dbname',
+         'c': 'scname',
+         'h': 'dbhost',
+         'p': 'dbport',
+         'u': 'lnname'
       }
       self.DBINFO = {
-         'dbname' : "",
-         'scname' : "",
-         'lnname' : "",
-         'dbhost' : "",
-         'dbport' : 5432
+         'dbname': "",
+         'scname': "",
+         'lnname': "",
+         'dbhost': "",
+         'dbport': 5432
       }
       self.dbopt = False
       self.password = ''

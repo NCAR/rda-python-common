@@ -1,12 +1,12 @@
 ###############################################################################
-#     Title : pg_lock.py
-#    Author : Zaihua Ji,  zji@ucar.edu
-#      Date : 08/118/2020
+#     Title: pg_lock.py
+#    Author: Zaihua Ji,  zji@ucar.edu
+#      Date: 08/118/2020
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-12-01 convert to class PgLock
-#   Purpose : python library module for functions to lock RDADB records
-#    Github : https://github.com/NCAR/rda-python-common.git
+#   Purpose: python library module for functions to lock RDADB records
+#    Github: https://github.com/NCAR/rda-python-common.git
 ###############################################################################
 import re
 import time
@@ -16,7 +16,7 @@ class PgLock(PgFile):
 
    def __init__(self):
       super().__init__()  # initialize parent class
-      self.DOLOCKS = {-2 : 'Force Unlock', -1 : 'Unlock', 0 : 'Unlock', 1 : 'Relock', 2 : 'Force Relock'}
+      self.DOLOCKS = {-2: 'Force Unlock', -1: 'Unlock', 0: 'Unlock', 1: 'Relock', 2: 'Force Relock'}
    
    def end_db_transaction(self, idx):
       if idx > 0:

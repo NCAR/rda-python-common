@@ -1,12 +1,12 @@
 ###############################################################################
-#     Title : pg_split.py  -- PostgreSQL DataBase Interface foe table wfile
-#    Author : Zaihua Ji,  zji@ucar.edu
-#      Date : 09/010/2024
+#     Title: pg_split.py  -- PostgreSQL DataBase Interface foe table wfile
+#    Author: Zaihua Ji,  zji@ucar.edu
+#      Date: 09/010/2024
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-12-01 convert to class PgSplit
-#   Purpose : Python library module to handle query and manipulate table wfile
-#    Github : https://github.com/NCAR/rda-python-common.git
+#   Purpose: Python library module to handle query and manipulate table wfile
+#    Github: https://github.com/NCAR/rda-python-common.git
 ###############################################################################
 import os
 import re
@@ -103,8 +103,8 @@ class PgSplit(PgUtil):
    # insert one record into wfile and/or wfile_dsid
    def pgadd_wfile(self, dsid, wfrec, logact = None, getid = None):
       if logact is None: logact = self.LOGERR
-      record = {'wfile' : wfrec['wfile'],
-                'dsid' : (wfrec['dsid'] if 'dsid' in wfrec else dsid)}
+      record = {'wfile': wfrec['wfile'],
+                'dsid': (wfrec['dsid'] if 'dsid' in wfrec else dsid)}
       wret = self.pgadd('wfile', record, logact, 'wid')
       if wret:
          record = self.wfile2wdsid(wfrec, wret)
@@ -117,8 +117,8 @@ class PgSplit(PgUtil):
    # insert multiple records into wfile and/or wfile_dsid
    def pgmadd_wfile(self, dsid, wfrecs, logact = None, getid = None):
       if logact is None: logact = self.LOGERR
-      records = {'wfile' : wfrecs['wfile'],
-                 'dsid' : (wfrecs['dsid'] if 'dsid' in wfrecs else [dsid]*len(wfrecs['wfile']))}
+      records = {'wfile': wfrecs['wfile'],
+                 'dsid': (wfrecs['dsid'] if 'dsid' in wfrecs else [dsid]*len(wfrecs['wfile']))}
       wret = self.pgmadd('wfile', records, logact, 'wid')
       wcnt = wret if isinstance(wret, int) else len(wret)
       if wcnt:

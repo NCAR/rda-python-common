@@ -1,12 +1,12 @@
 ###############################################################################
-#     Title : pg_dbi.py  -- PostgreSQL DataBase Interface
-#    Author : Zaihua Ji,  zji@ucar.edu
-#      Date : 06/07/2022
+#     Title: pg_dbi.py  -- PostgreSQL DataBase Interface
+#    Author: Zaihua Ji,  zji@ucar.edu
+#      Date: 06/07/2022
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-11-24 convert to class PgDBI
-#   Purpose : Python library module to handle query and manipulate PostgreSQL database
-#    Github : https://github.com/NCAR/rda-python-common.git
+#   Purpose: Python library module to handle query and manipulate PostgreSQL database
+#    Github: https://github.com/NCAR/rda-python-common.git
 ###############################################################################
 import os
 import re
@@ -44,22 +44,22 @@ class PgDBI(PgLOG):
       self.PGSIGNS = ['!', '<', '>', '<>']
       self.CHCODE = 1042
       # hard coded db ports for dbnames
-      self.DBPORTS = {'default' : 0}
+      self.DBPORTS = {'default': 0}
       self.DBPASS = {}
       self.DBBAOS = {}
       # hard coded db names for given schema names
       self.DBNAMES = {
-         'ivaddb' : 'ivaddb',
-         'cntldb' : 'ivaddb',
-         'cdmsdb' : 'ivaddb',
-         'ispddb' : 'ispddb',
-          'obsua' : 'upadb',
-        'default' : 'rdadb',
+         'ivaddb': 'ivaddb',
+         'cntldb': 'ivaddb',
+         'cdmsdb': 'ivaddb',
+         'ispddb': 'ispddb',
+          'obsua': 'upadb',
+        'default': 'rdadb',
       }
       # hard coded socket paths for machine_dbnames
-      self.DBSOCKS = {'default' : ''}
+      self.DBSOCKS = {'default': ''}
       # home path for check db on alter host
-      self.VIEWHOMES = {'default' : self.PGLOG['DSSDBHM']}
+      self.VIEWHOMES = {'default': self.PGLOG['DSSDBHM']}
       # add more to the list if used for names
       self.PGRES = ['end', 'window']
       self.SETPGDBI('DEFDB', 'rdadb')
@@ -392,8 +392,8 @@ class PgDBI(PgLOG):
       elif reconnect:
          reconnect = 0   # initial connection
       while True:
-         config = {'database' : self.PGDBI['DBNAME'],
-                       'user' : self.PGDBI['LNNAME']}
+         config = {'database': self.PGDBI['DBNAME'],
+                       'user': self.PGDBI['LNNAME']}
          if self.PGDBI['DBSHOST'] == self.PGLOG['HOSTNAME']:
             config['host'] = 'localhost'
          else:
@@ -743,8 +743,8 @@ class PgDBI(PgLOG):
 
    # tablenames: comma deliminated string of one or more tables
    #     fields: comma deliminated string of one or more field names,
-   #    cnddict: condition dict with field names : values
-   # return a dict(field names : values) upon success
+   #    cnddict: condition dict with field names: values
+   # return a dict(field names: values) upon success
    # retrieve one records from tablenames condition dict
    def pghget(self, tablenames, fields, cnddict, logact = None):
       if logact is None: logact = self.PGDBI['ERRLOG']
@@ -789,8 +789,8 @@ class PgDBI(PgLOG):
 
    # tablenames: comma deliminated string of one or more tables
    #     fields: comma deliminated string of one or more field names,
-   #   cnddicts: condition dict with field names : value lists
-   # return a dict(field names : value lists) upon success
+   #   cnddicts: condition dict with field names: value lists
+   # return a dict(field names: value lists) upon success
    # retrieve multiple records from tablenames for condition dict
    def pgmhget(self, tablenames, fields, cnddicts, logact = None):
       if logact is None: logact = self.PGDBI['ERRLOG']
@@ -865,7 +865,7 @@ class PgDBI(PgLOG):
 
    # update one or multiple rows in tablename
    # tablename: update for one table name each call
-   #    record: dict with field names : values
+   #    record: dict with field names: values
    # condition: update conditions for where clause)
    # return number of rows undated upon success
    def pgupdt(self, tablename, record, condition, logact = None):
@@ -899,8 +899,8 @@ class PgDBI(PgLOG):
 
    # update one or multiple records in tablename
    # tablename: update for one table name each call
-   #    record: update values, dict with field names : values
-   #   cnddict: condition dict with field names : values
+   #    record: update values, dict with field names: values
+   #   cnddict: condition dict with field names: values
    # return number of records updated upon success
    def pghupdt(self, tablename, record, cnddict, logact = None):
       if logact is None: logact = self.PGDBI['ERRLOG']
@@ -934,8 +934,8 @@ class PgDBI(PgLOG):
 
    # update multiple records in tablename
    # tablename: update for one table name each call
-   #   records: update values, dict with field names : value lists
-   #   cnddicts: condition dict with field names : value lists
+   #   records: update values, dict with field names: value lists
+   #   cnddicts: condition dict with field names: value lists
    # return number of records updated upon success
    def pgmupdt(self, tablename, records, cnddicts, logact = None):
       if logact is None: logact = self.PGDBI['ERRLOG']
@@ -1016,7 +1016,7 @@ class PgDBI(PgLOG):
 
    # delete one or mutiple records in tablename according condition
    # tablename: delete for one table name each call
-   #    cndict: delete condition dict for names : values
+   #    cndict: delete condition dict for names: values
    # return number of records deleted upon success
    def pghdel(self, tablename, cnddict, logact = None):
       if logact is None: logact = self.PGDBI['ERRLOG']
@@ -1047,7 +1047,7 @@ class PgDBI(PgLOG):
 
    # delete mutiple records in tablename according condition
    # tablename: delete for one table name each call
-   #   cndicts: delete condition dict for names : value lists
+   #   cndicts: delete condition dict for names: value lists
    # return number of records deleted upon success
    def pgmdel(self, tablename, cnddicts, logact = None):
       if logact is None: logact = self.PGDBI['ERRLOG']
@@ -1152,7 +1152,7 @@ class PgDBI(PgLOG):
       pgrec = self.pgget("dssdb.user", "uid", "userno = {}".format(userno), self.PGDBI['ERRLOG'])
       if pgrec: return pgrec['uid']
       pgrec = self.ucar_user_info(userno)
-      if not pgrec: pgrec = {'userno' : userno, 'stat_flag' : 'M'}
+      if not pgrec: pgrec = {'userno': userno, 'stat_flag': 'M'}
       uid = self.pgadd("dssdb.user", pgrec, (self.PGDBI['EXITLG']|self.AUTOID))
       if uid: self.pglog("{}: Scientist ID Added as user.uid = {}".format(userno, uid), self.LGWNEM)
       return uid
@@ -1174,7 +1174,7 @@ class PgDBI(PgLOG):
       pgrec = self.pgget("dssdb.user", "uid", "logname = '{}'".format(logname), self.PGDBI['ERRLOG'])
       if pgrec: return pgrec['uid']
       pgrec = self.ucar_user_info(0, logname)
-      if not pgrec: pgrec = {'logname' : logname, 'stat_flag' : 'M'}
+      if not pgrec: pgrec = {'logname': logname, 'stat_flag': 'M'}
       uid = self.pgadd("dssdb.user", pgrec, (self.PGDBI['EXITLG']|self.AUTOID))
       if uid: self.pglog("{}: UCAR Login Name Added as user.uid = {}".format(logname, uid), self.LGWNEM)
       return uid
@@ -1182,18 +1182,18 @@ class PgDBI(PgLOG):
    # get ucar user info for given userno (scientist number) or logname (Ucar login)
    def ucar_user_info(self, userno, logname = None):
       matches = {
-         'upid' : "upid",
-         'uid'  : "userno",
-         'username' : "logname",
-         'lastName' : "lstname",
-         'firstName' : "fstname",
-         'active' : "stat_flag",
-         'internalOrg' : "division",
-         'externalOrg' : "org_name",
-         'country' : "country",
-         'forwardEmail' : "email",
-         'email' : "ucaremail",
-         'phone' : "phoneno"
+         'upid': "upid",
+         'uid': "userno",
+         'username': "logname",
+         'lastName': "lstname",
+         'firstName': "fstname",
+         'active': "stat_flag",
+         'internalOrg': "division",
+         'externalOrg': "org_name",
+         'country': "country",
+         'forwardEmail': "email",
+         'email': "ucaremail",
+         'phone': "phoneno"
       }
       buf = self.pgsystem("pgperson " + ("-uid {}".format(userno) if userno else "-username {}".format(logname)), self.LOGWRN, 20)
       if not buf: return None
@@ -1245,13 +1245,13 @@ class PgDBI(PgLOG):
    #  set country code for given coutry name or email address
    def set_country_code(self, email, country = None):
       codes = {
-         'CHINA'   : "P.R.CHINA",
-         'ENGLAND' : "UNITED.KINGDOM",
-         'FR'      : "FRANCE",
-         'KOREA'   : "SOUTH.KOREA",
-         'USSR'    : "RUSSIA",
-         'US'      : "UNITED.STATES",
-         'U.S.A.'  : "UNITED.STATES"
+         'CHINA': "P.R.CHINA",
+         'ENGLAND': "UNITED.KINGDOM",
+         'FR': "FRANCE",
+         'KOREA': "SOUTH.KOREA",
+         'USSR': "RUSSIA",
+         'US': "UNITED.STATES",
+         'U.S.A.': "UNITED.STATES"
       }
       if country:
          country = country.upper()
@@ -1279,7 +1279,7 @@ class PgDBI(PgLOG):
       pgrec = self.pgget("wuser", "wuid", emcond, self.LOGERR)
       if pgrec: return pgrec['wuid']
       # now add one in
-      record = {'email' : email}
+      record = {'email': email}
       # check again if a ruser is on file
       pgrec = self.pgget("ruser", "*", emcond + " AND end_date IS NULL", self.PGDBI['ERRLOG'])
       if not pgrec: pgrec = self.pgget("ruser", "*", emcond, self.PGDBI['ERRLOG'])
@@ -1525,11 +1525,11 @@ class PgDBI(PgLOG):
 
    # email: full user email address
    # get user real name from table ruser for a given email address
-   # opts == 1 : include email
-   # opts == 2 : include org_type
-   # opts == 4 : include country
-   # opts == 8 : include valid_email
-   # opts == 16 : include org
+   # opts == 1: include email
+   # opts == 2: include org_type
+   # opts == 4: include country
+   # opts == 8: include valid_email
+   # opts == 16: include org
    def get_ruser_names(self, email, opts = 0, date = None):
       fields = "lname lstname, fname fstname"
       if opts&1: fields += ", email"
@@ -1854,9 +1854,9 @@ class PgDBI(PgLOG):
       self.DBBAOS[dbname] = {}
       url = 'https://bao.k8s.ucar.edu/'
       baopath = {
-         'ivaddb' : 'gdex/pgdb03',
-         'ispddb' : 'gdex/pgdb03',
-         'default' : 'gdex/pgdb01'
+         'ivaddb': 'gdex/pgdb03',
+         'ispddb': 'gdex/pgdb03',
+         'default': 'gdex/pgdb01'
       }
       dbpath = baopath[dbname] if dbname in baopath else baopath['default']
       client = hvac.Client(url=self.PGDBI.get('BAOURL'))

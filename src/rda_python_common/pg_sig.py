@@ -1,12 +1,12 @@
 ###############################################################################
-#     Title : pg_sig.py
-#    Author : Zaihua Ji,  zji@ucar.edu
-#      Date : 08/05/2020
+#     Title: pg_sig.py
+#    Author: Zaihua Ji,  zji@ucar.edu
+#      Date: 08/05/2020
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-11-20 convert to class PgSIG
-#   Purpose : python library module for start and control daemon process
-#    Github : https://github.com/NCAR/rda-python-common.git
+#   Purpose: python library module for start and control daemon process
+#    Github: https://github.com/NCAR/rda-python-common.git
 ###############################################################################
 import os
 import re
@@ -25,26 +25,26 @@ class PgSIG(PgDBI):
       self.CPIDS = {}    # allow upto 'mproc' processes at one time for daemon
       self.CBIDS = {}    # allow upto 'bproc' background processes at one time for each child
       self.SDUMP = {
-        'DEF' : '/dev/null',
-        'ERR' : '',
-        'OUT' : ''
+        'DEF': '/dev/null',
+        'ERR': '',
+        'OUT': ''
       }
       self.PGSIG = {
-         'QUIT'  : 0,    # 1 if QUIT signal received, quit server if no child
-         'MPROC' : 1,    # default number of multiple processes
-         'BPROC' : 1,    # default number of multiple background processes
-         'ETIME' : 20,   # default error waiting time (in seconds)
-         'WTIME' : 120,  # default waiting time (in seconds)
-         'DTIME' : 600,  # the daemon record refresh time (in seconds)
-         'RTIME' : 2400, # the web rda config unlocking and unconfigured system down waiting time (in seconds)
-         'CTIME' : 4800, # the lock cleaning & configued system down waiting time (in seconds)
-         'PPID'  : -1,   # 1 - server, (> 1) - child, 0 - non-daemon mode
-         'PID'   : 0,    # current process ID
-         'DNAME' : '',   # daemon name
-         'DSTR'  : '',   # string for daemon with user login name
-         'MTIME' : 0,    # maximum daemon running time in seconds, 0 for unlimited
-         'STIME' : 0,    # time the daemon is started
-         'STRTM' : '',   # string format of 'STIME'
+         'QUIT': 0,    # 1 if QUIT signal received, quit server if no child
+         'MPROC': 1,    # default number of multiple processes
+         'BPROC': 1,    # default number of multiple background processes
+         'ETIME': 20,   # default error waiting time (in seconds)
+         'WTIME': 120,  # default waiting time (in seconds)
+         'DTIME': 600,  # the daemon record refresh time (in seconds)
+         'RTIME': 2400, # the web rda config unlocking and unconfigured system down waiting time (in seconds)
+         'CTIME': 4800, # the lock cleaning & configued system down waiting time (in seconds)
+         'PPID': -1,   # 1 - server, (> 1) - child, 0 - non-daemon mode
+         'PID': 0,    # current process ID
+         'DNAME': '',   # daemon name
+         'DSTR': '',   # string for daemon with user login name
+         'MTIME': 0,    # maximum daemon running time in seconds, 0 for unlimited
+         'STIME': 0,    # time the daemon is started
+         'STRTM': '',   # string format of 'STIME'
       }
 
    # add users for starting this daemon
