@@ -20,8 +20,7 @@ class PgSplit(PgUtil):
 
    # compare wfile records between tables wfile and wfile_dNNNNNN,
    # and return the records need to be added, modified and deleted 
-   @staticmethod
-   def compare_wfile(wfrecs, dsrecs):
+   def compare_wfile(self, wfrecs, dsrecs):
       flds = dsrecs.keys()
       flen = len(flds)
       arecs = dict(zip(flds, [[]]*flen))
