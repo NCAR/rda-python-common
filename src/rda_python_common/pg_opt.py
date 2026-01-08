@@ -1,20 +1,14 @@
-#
 ###############################################################################
-#
-#     Title : pg_opt.py
-#
-#    Author : Zaihua Ji,  zji@ucar.edu
-#      Date : 08/26/2020
+#     Title: pg_opt.py
+#    Author: Zaihua Ji,  zji@ucar.edu
+#      Date: 08/26/2020
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-12-01 convert to class PgOPT
-#   Purpose : python library module for holding global varaibles
+#   Purpose: python library module for holding global varaibles
 #             functions for processing options and other global functions
-#
-#    Github : https://github.com/NCAR/rda-pyhon-common.git
-# 
+#    Github: https://github.com/NCAR/rda-pyhon-common.git
 ###############################################################################
-#
 import os
 import sys
 import re
@@ -76,86 +70,86 @@ class PgOPT(PgFile):
       self.OPTS = {}
       # global initial optional values
       self.PGOPT = {
-         'ACTS'   : 0,    # carry current action bits
-         'UACTS'  : 0,    # carry dsarch skip check UD action bits
-         'CACT'   : '',   # current short action name
-         'IFCNT'  : 0,    # 1 to read a single Input File at a time
-         'ANAME'  : '',   # cache the application name if set
-         'TABLE'  : '',   # table name the action is on
-         'UID'    : 0,    # user.uid
-         'MSET'   : 'SA', # Action for multiple sets
-         'WIDTH'  : 128,  # max column width
-         'TXTBIT' : 64,   # text field bit (0x1000) allow multiple lines
-         'PEMAX'  : 12,   # max count of reuqest partition errors for auto reprocesses
-         'PTMAX'  : 24,   # max number of partitions for a single request
-         'REMAX'  : 2,    # max count of reuqest errors for auto reprocesses
-         'RSMAX'  : 100,  # max count of gatherxml with options -R -S
-         'RCNTL'  : None,  # placehold for a request control record
-         'dcm'  : "dcm",
-         'sdp'  : "sdp",
-         'rcm'  : "rcm",
-         'scm'  : "scm",
-         'wpg'  : "",
-         'gatherxml'  : "gatherxml",
-         'cosconvert' : "cosconvert",
-         'emllog' : self.LGWNEM,
-         'emlerr' : self.LOGERR|self.EMEROL,
-         'emerol' : self.LOGWRN|self.EMEROL,
-         'emlsum' : self.LOGWRN|self.EMLSUM,
-         'emlsep' : self.LGWNEM|self.SEPLIN,
-         'wrnlog' : self.LOGWRN,
-         'errlog' : self.LOGERR,
-         'extlog' : self.LGEREX,
-         'PTYPE'  : "CPRV",
-         'WDTYP'  : "ADNU",
-         'HFTYP'  : "DS",
-         'SDTYP'  : "PORWUV",
-         'GXTYP'  : "DP"
+         'ACTS': 0,    # carry current action bits
+         'UACTS': 0,    # carry dsarch skip check UD action bits
+         'CACT': '',   # current short action name
+         'IFCNT': 0,    # 1 to read a single Input File at a time
+         'ANAME': '',   # cache the application name if set
+         'TABLE': '',   # table name the action is on
+         'UID': 0,    # user.uid
+         'MSET': 'SA', # Action for multiple sets
+         'WIDTH': 128,  # max column width
+         'TXTBIT': 64,   # text field bit (0x1000) allow multiple lines
+         'PEMAX': 12,   # max count of reuqest partition errors for auto reprocesses
+         'PTMAX': 24,   # max number of partitions for a single request
+         'REMAX': 2,    # max count of reuqest errors for auto reprocesses
+         'RSMAX': 100,  # max count of gatherxml with options -R -S
+         'RCNTL': None,  # placehold for a request control record
+         'dcm': "dcm",
+         'sdp': "sdp",
+         'rcm': "rcm",
+         'scm': "scm",
+         'wpg': "",
+         'gatherxml': "gatherxml",
+         'cosconvert': "cosconvert",
+         'emllog': self.LGWNEM,
+         'emlerr': self.LOGERR|self.EMEROL,
+         'emerol': self.LOGWRN|self.EMEROL,
+         'emlsum': self.LOGWRN|self.EMLSUM,
+         'emlsep': self.LGWNEM|self.SEPLIN,
+         'wrnlog': self.LOGWRN,
+         'errlog': self.LOGERR,
+         'extlog': self.LGEREX,
+         'PTYPE': "CPRV",
+         'WDTYP': "ADNU",
+         'HFTYP': "DS",
+         'SDTYP': "PORWUV",
+         'GXTYP': "DP"
       }
       # global default parameters
       self.params = {
-         'ES' : "<=>",
-         'AO' : "<!>",
-         'DV' : "<:>"
+         'ES': "<=>",
+         'AO': "<!>",
+         'DV': "<:>"
       }
       self.WTYPE = {
-         'A' : "ARCO",
-         'D' : "DATA",
-         'N' : "NCAR",
-         'U' : "UNKNOWN",
+         'A': "ARCO",
+         'D': "DATA",
+         'N': "NCAR",
+         'U': "UNKNOWN",
       }
       self.HTYPE = {
-         'D' : "DOCUMENT",
-         'S' : "SOFTWARE",
-         'U' : "UNKNOWN"
+         'D': "DOCUMENT",
+         'S': "SOFTWARE",
+         'U': "UNKNOWN"
       }
       self.HPATH = {
-         'D' : "docs",
-         'S' : "software",
-         'U' : "help"
+         'D': "docs",
+         'S': "software",
+         'U': "help"
       }
       self.MTYPE = {
-         'P' : "PRIMARY",
-         'A' : "ARCHIVING",
-         'V' : "VERSION",
-         'W' : "WORKING",
-         'R' : "ORIGINAL",
-         'B' : "BACKUP",
-         'O' : "OFFSITE",
-         'C' : "CHRONOPOLIS",
-         'U' : "UNKNOWN"
+         'P': "PRIMARY",
+         'A': "ARCHIVING",
+         'V': "VERSION",
+         'W': "WORKING",
+         'R': "ORIGINAL",
+         'B': "BACKUP",
+         'O': "OFFSITE",
+         'C': "CHRONOPOLIS",
+         'U': "UNKNOWN"
       }
       self.STYPE = {
-         'O' : "OFFLINE",
-         'P' : "PRIMARY",
-         'R' : "ORIGINAL",
-         'V' : "VERSION",
-         'W' : "WORKING",
-         'U' : "UNKNOWN"
+         'O': "OFFLINE",
+         'P': "PRIMARY",
+         'R': "ORIGINAL",
+         'V': "VERSION",
+         'W': "WORKING",
+         'U': "UNKNOWN"
       }
       self.BTYPE = {
-         'B' : "BACKUPONLY",
-         'D' : "BACKDRDATA",
+         'B': "BACKUPONLY",
+         'D': "BACKDRDATA",
       }
 
    # process and parsing input information
@@ -1224,7 +1218,7 @@ class PgOPT(PgFile):
             val = "invalid frequency '{}', unit must be (Y,M,W,D,H)".format(frequency)
          return (None, unit)
       freq = [0]*7   # initialize the frequence list
-      uidx = {'Y' : 0, 'D' : 2, 'H' : 3, 'N' : 4, 'S' : 5}
+      uidx = {'Y': 0, 'D': 2, 'H': 3, 'N': 4, 'S': 5}
       if unit == 'M':
          freq[1] = val
          if nf: freq[6] = nf     # number of fractions in a month
@@ -1273,18 +1267,18 @@ class PgOPT(PgFile):
    @staticmethod
    def request_type(rtype, idx = 0):   
       RTYPE = {
-         'C' : ["Customized Data",                0],
-         'D' : ["CDP Link",                       0],
-         'M' : ["Delayed Mode Data",              1],
-         'N' : ["NCARDAP(THREDDS) Data Server",   0],
-         'Q' : ["Database Query",                 0],
-         'R' : ["Realtime Data",                  0],
-         'S' : ["Subset Data",                    0],
-         'T' : ["Subset/Format-Conversion Data",  0],
-         'F' : ["Format Conversion Data",         1],  # web
-         'A' : ["Archive Format Conversion",      1],  # web
-         'P' : ["Plot Chart",                     0],
-         'U' : ["Data",                           0]
+         'C': ["Customized Data",                0],
+         'D': ["CDP Link",                       0],
+         'M': ["Delayed Mode Data",              1],
+         'N': ["NCARDAP(THREDDS) Data Server",   0],
+         'Q': ["Database Query",                 0],
+         'R': ["Realtime Data",                  0],
+         'S': ["Subset Data",                    0],
+         'T': ["Subset/Format-Conversion Data",  0],
+         'F': ["Format Conversion Data",         1],  # web
+         'A': ["Archive Format Conversion",      1],  # web
+         'P': ["Plot Chart",                     0],
+         'U': ["Data",                           0]
       }
       if rtype not in RTYPE: rtype = 'U'
       return RTYPE[rtype][idx]

@@ -1,33 +1,26 @@
-#
 ###############################################################################
-#
-#     Title : pg_split.py  -- PostgreSQL DataBase Interface foe table wfile
-#    Author : Zaihua Ji,  zji@ucar.edu
-#      Date : 09/010/2024
+#     Title: pg_split.py  -- PostgreSQL DataBase Interface foe table wfile
+#    Author: Zaihua Ji,  zji@ucar.edu
+#      Date: 09/010/2024
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-12-01 convert to class PgSplit
-#   Purpose : Python library module to handle query and manipulate table wfile
-#
-#    Github : https://github.com/NCAR/rda-python-common.git
-#
+#   Purpose: Python library module to handle query and manipulate table wfile
+#    Github: https://github.com/NCAR/rda-python-common.git
 ###############################################################################
-
 import os
 import re
 from os import path as op
-from .pg_dbi import PgDBI
 from .pg_util import PgUtil
 
-class PgSplit(PgDBI):
+class PgSplit(PgUtil):
 
    def __init__(self):
       super().__init__()  # initialize parent class
 
    # compare wfile records between tables wfile and wfile_dNNNNNN,
    # and return the records need to be added, modified and deleted 
-   @staticmethod
-   def compare_wfile(wfrecs, dsrecs):
+   def compare_wfile(self, wfrecs, dsrecs):
       flds = dsrecs.keys()
       flen = len(flds)
       arecs = dict(zip(flds, [[]]*flen))
@@ -39,15 +32,15 @@ class PgSplit(PgDBI):
       i = j = 0
       while i < wfcnt and j < dscnt:
          if i > pi:
-            wfrec = PgUtil.onerecord(wfrecs, i)
+            wfrec = self.onerecord(wfrecs, i)
             wwid = wfrec['wid']
             pi = i
          if j > pj:
-            dsrec = PgUtil.onerecord(dsrecs, j)
+            dsrec = self.onerecord(dsrecs, j)
             dwid = dsrec['wid']
             pj = j
          if wwid == dwid:
-            mrec = PgSplit.compare_one_record(flds, wfrec, dsrec)
+            mrec = self.compare_one_record(flds, wfrec, dsrec)
             if mrec: mrecs[wwid] = mrec
             i += 1
             j += 1
@@ -109,8 +102,8 @@ class PgSplit(PgDBI):
    # insert one record into wfile and/or wfile_dsid
    def pgadd_wfile(self, dsid, wfrec, logact = None, getid = None):
       if logact is None: logact = self.LOGERR
-      record = {'wfile' : wfrec['wfile'],
-                'dsid' : (wfrec['dsid'] if 'dsid' in wfrec else dsid)}
+      record = {'wfile': wfrec['wfile'],
+                'dsid': (wfrec['dsid'] if 'dsid' in wfrec else dsid)}
       wret = self.pgadd('wfile', record, logact, 'wid')
       if wret:
          record = self.wfile2wdsid(wfrec, wret)
@@ -123,8 +116,8 @@ class PgSplit(PgDBI):
    # insert multiple records into wfile and/or wfile_dsid
    def pgmadd_wfile(self, dsid, wfrecs, logact = None, getid = None):
       if logact is None: logact = self.LOGERR
-      records = {'wfile' : wfrecs['wfile'],
-                 'dsid' : (wfrecs['dsid'] if 'dsid' in wfrecs else [dsid]*len(wfrecs['wfile']))}
+      records = {'wfile': wfrecs['wfile'],
+                 'dsid': (wfrecs['dsid'] if 'dsid' in wfrecs else [dsid]*len(wfrecs['wfile']))}
       wret = self.pgmadd('wfile', records, logact, 'wid')
       wcnt = wret if isinstance(wret, int) else len(wret)
       if wcnt:

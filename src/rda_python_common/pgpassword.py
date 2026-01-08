@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
-#
 ##################################################################################
-#
 #     Title: pgpassword
 #    Author: Zaihua Ji, zji@ucar.edu
 #      Date: 2025-10-27
 #            2025-12-02 convert to class PgPassword
 #   Purpose: python script to retrieve passwords for postgrsql login to connect a
 #            gdex database from inside an python application
-#
 #    Github: https://github.com/NCAR/rda-python-common.git
-#
 ##################################################################################
-
 import sys
 import re
 from .pg_dbi import PgDBI
@@ -22,18 +17,18 @@ class PgPassword(PgDBI):
    def __init__(self):
       super().__init__()  # initialize parent class
       self.DBFLDS = {
-         'd' : 'dbname',
-         'c' : 'scname',
-         'h' : 'dbhost',
-         'p' : 'dbport',
-         'u' : 'lnname'
+         'd': 'dbname',
+         'c': 'scname',
+         'h': 'dbhost',
+         'p': 'dbport',
+         'u': 'lnname'
       }
       self.DBINFO = {
-         'dbname' : "",
-         'scname' : "",
-         'lnname' : "",
-         'dbhost' : "",
-         'dbport' : 5432
+         'dbname': "",
+         'scname': "",
+         'lnname': "",
+         'dbhost': "",
+         'dbport': 5432
       }
       self.dbopt = False
       self.password = ''

@@ -1,19 +1,14 @@
-#
 ###############################################################################
-#
-#     Title : self.py
-#    Author : Zaihua Ji,  zji@ucar.edu
-#      Date : 08/05/2020
+#     Title: pg_file.py
+#    Author: Zaihua Ji,  zji@ucar.edu
+#      Date: 08/05/2020
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-12-01 convert to class PgFile
-#   Purpose : python library module to copy, move and delete data files locally
+#   Purpose: python library module to copy, move and delete data files locally
 #             and remotely
-#
-#    Github : https://github.com/NCAR/rda-python-common.git
-#
+#    Github: https://github.com/NCAR/rda-python-common.git
 ###############################################################################
-#
 import sys
 import os
 from os import path as op
@@ -39,24 +34,24 @@ class PgFile(PgUtil, PgSIG):
       super().__init__()  # initialize parent class
       self.PGCMPS = {
       #  extension Compress       Uncompress       ArchiveFormat
-         'Z'   :  ['compress -f', 'uncompress -f', 'Z'],
-         'zip' :  ['zip',         'unzip',         'ZIP'],
-         'gz'  :  ['gzip',        'gunzip',        'GZ'],
-         'xz'  :  ['xz',          'unxz',          'XZ'],
-         'bz2' :  ['bzip2',       'bunzip2',       'BZ2']
+         'Z':  ['compress -f', 'uncompress -f', 'Z'],
+         'zip':  ['zip',         'unzip',         'ZIP'],
+         'gz':  ['gzip',        'gunzip',        'GZ'],
+         'xz':  ['xz',          'unxz',          'XZ'],
+         'bz2':  ['bzip2',       'bunzip2',       'BZ2']
       }
       self.CMPSTR = '|'.join(self.PGCMPS)
       self.PGTARS = {
       #  extension   Packing      Unpacking   ArchiveFormat
-         'tar'     : ['tar -cvf',  'tar -xvf', 'TAR'],
-         'tar.Z'   : ['tar -Zcvf', 'tar -xvf', 'TAR.Z'],
-         'zip'     : ['zip -v',    'unzip -v', 'ZIP'],
-         'tgz'     : ['tar -zcvf', 'tar -xvf', 'TGZ'],
-         'tar.gz'  : ['tar -zcvf', 'tar -xvf', 'TAR.GZ'],
-         'txz'     : ['tar -cvJf', 'tar -xvf', 'TXZ'],
-         'tar.xz'  : ['tar -cvJf', 'tar -xvf', 'TAR.XZ'],
-         'tbz2'    : ['tar -cvjf', 'tar -xvf', 'TBZ2'],
-         'tar.bz2' : ['tar -cvjf', 'tar -xvf', 'TAR.BZ2']
+         'tar': ['tar -cvf',  'tar -xvf', 'TAR'],
+         'tar.Z': ['tar -Zcvf', 'tar -xvf', 'TAR.Z'],
+         'zip': ['zip -v',    'unzip -v', 'ZIP'],
+         'tgz': ['tar -zcvf', 'tar -xvf', 'TGZ'],
+         'tar.gz': ['tar -zcvf', 'tar -xvf', 'TAR.GZ'],
+         'txz': ['tar -cvJf', 'tar -xvf', 'TXZ'],
+         'tar.xz': ['tar -cvJf', 'tar -xvf', 'TAR.XZ'],
+         'tbz2': ['tar -cvjf', 'tar -xvf', 'TBZ2'],
+         'tar.bz2': ['tar -cvjf', 'tar -xvf', 'TAR.BZ2']
       }
       self.TARSTR = '|'.join(self.PGTARS)
       self.DELDIRS = {}
@@ -70,42 +65,42 @@ class PgFile(PgUtil, PgSIG):
       self.DIRLVLS = 0
       self.BFILES = {}  # cache backup file names and dates for each bid
       # record how many errors happen for working with HPSS, local or remote machines
-      self.ECNTS = {'D' : 0, 'H' : 0, 'L' : 0, 'R' : 0, 'O' : 0, 'B' : 0}
+      self.ECNTS = {'D': 0, 'H': 0, 'L': 0, 'R': 0, 'O': 0, 'B': 0}
       # up limits for how many continuing errors allowed
-      self.ELMTS = {'D' : 20, 'H' : 20, 'L' : 20, 'R' : 20, 'O' : 10, 'B' : 10}
+      self.ELMTS = {'D': 20, 'H': 20, 'L': 20, 'R': 20, 'O': 10, 'B': 10}
       # down storage hostnames & paths
       self.DHOSTS = {
-         'G' : self.PGLOG['GPFSNAME'],
-         'O' : self.OHOST,
-         'B' : self.BHOST,
-         'D' : self.DHOST
+         'G': self.PGLOG['GPFSNAME'],
+         'O': self.OHOST,
+         'B': self.BHOST,
+         'D': self.DHOST
       }
       self.DPATHS = {
-         'G' : self.PGLOG['DSSDATA'],
-         'O' : self.PGLOG['OBJCTBKT'],
-         'B' : '/' + self.PGLOG['DEFDSID'],   # backup globus endpoint
-         'D' : '/' + self.PGLOG['DEFDSID']    # disaster recovery globus endpoint
+         'G': self.PGLOG['DSSDATA'],
+         'O': self.PGLOG['OBJCTBKT'],
+         'B': '/' + self.PGLOG['DEFDSID'],   # backup globus endpoint
+         'D': '/' + self.PGLOG['DEFDSID']    # disaster recovery globus endpoint
       }
       self.QSTATS = {
-         'A' : 'ACTIVE',
-         'I' : 'INACTIVE',
-         'S' : 'SUCCEEDED',
-         'F' : 'FAILED',
+         'A': 'ACTIVE',
+         'I': 'INACTIVE',
+         'S': 'SUCCEEDED',
+         'F': 'FAILED',
       }
       self.QPOINTS = {
-         'L' : 'gdex-glade',
-         'B' : 'gdex-quasar',
-         'D' : 'gdex-quasar-drdata'
+         'L': 'gdex-glade',
+         'B': 'gdex-quasar',
+         'D': 'gdex-quasar-drdata'
       }
       self.QHOSTS = {
-         'gdex-glade' : self.LHOST,
-         'gdex-quasar' : self.BHOST,
-         'gdex-quasar-drdata' : self.DHOST
+         'gdex-glade': self.LHOST,
+         'gdex-quasar': self.BHOST,
+         'gdex-quasar-drdata': self.DHOST
       }
       self.ENDPOINTS = {
-         'gdex-glade' : "NCAR GDEX GLADE",
-         'gdex-quasar' : "NCAR GDEX Quasar",
-         'gdex-quasar-drdata' : "NCAR GDEX Quasar DRDATA"
+         'gdex-glade': "NCAR GDEX GLADE",
+         'gdex-quasar': "NCAR GDEX Quasar",
+         'gdex-quasar-drdata': "NCAR GDEX Quasar DRDATA"
       }
 
    # reset the up limit for a specified error type
@@ -339,7 +334,7 @@ class PgFile(PgUtil, PgSIG):
 
    # submit a globus task and return a task id
    def submit_globus_task(self, cmd, endpoint, logact = 0, qstr = None):
-      task = {'id' : None, 'stat' : 'U'}
+      task = {'id': None, 'stat': 'U'}
       loop = reset = 0
       while (loop-reset) < 2:
          buf = self.pgsystem(cmd, logact, self.CMDGLB, qstr)
@@ -1465,7 +1460,7 @@ class PgFile(PgUtil, PgSIG):
 
    # object store function to get file stat
    def object_file_stat(self, hash, uhash, opt):
-      info = {'isfile' : 1, 'data_size' : int(hash['Size']), 'fname' : op.basename(hash['Key'])}
+      info = {'isfile': 1, 'data_size': int(hash['Size']), 'fname': op.basename(hash['Key'])}
       if not opt: return info   
       if opt&17:
          ms = re.match(r'^(\d+-\d+-\d+)\s+(\d+:\d+:\d+)', hash['LastModified'])

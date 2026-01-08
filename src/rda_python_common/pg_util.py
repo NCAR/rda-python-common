@@ -1,18 +1,13 @@
-#
 ###############################################################################
-#
-#     Title : pg_util.py  -- module for misc utilities.
-#    Author : Zaihua Ji,  zji@ucar.edu
-#      Date : 07/27/2020
+#     Title: pg_util.py  -- module for misc utilities.
+#    Author: Zaihua Ji,  zji@ucar.edu
+#      Date: 07/27/2020
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-11-20 convert to class PgUtil
-#   Purpose : python library module for global misc utilities
-#
-#    Github : https://github.com/NCAR/rda-python-common.git
-#
+#   Purpose: python library module for global misc utilities
+#    Github: https://github.com/NCAR/rda-python-common.git
 ###############################################################################
-#
 import os
 import re
 import time
@@ -27,15 +22,15 @@ class PgUtil(PgLOG):
    def __init__(self):
       super().__init__()  # initialize parent class
       self.DATEFMTS = {
-         'C' : '(CC|C)',                   # century
-         'Y' : '(YYYY|YY00|YYY|YY|YEAR|YR|Y)',  # YYY means decade
-         'Q' : '(QQ|Q)',                   # quarter
-         'M' : '(Month|Mon|MM|M)',         # numeric or string month
-         'W' : '(Week|Www|W)',             # string or numeric weedday
-         'D' : '(DDD|DD|D)',               # days in year or month
-         'H' : '(HHH|HH|H)',               # hours in month or day
-         'N' : '(NNNN|NN|N)',              # minutes in day or hour
-         'S' : '(SSSS|SS|S)'               # seconds in hour or minute
+         'C': '(CC|C)',                   # century
+         'Y': '(YYYY|YY00|YYY|YY|YEAR|YR|Y)',  # YYY means decade
+         'Q': '(QQ|Q)',                   # quarter
+         'M': '(Month|Mon|MM|M)',         # numeric or string month
+         'W': '(Week|Www|W)',             # string or numeric weedday
+         'D': '(DDD|DD|D)',               # days in year or month
+         'H': '(HHH|HH|H)',               # hours in month or day
+         'N': '(NNNN|NN|N)',              # minutes in day or hour
+         'S': '(SSSS|SS|S)'               # seconds in hour or minute
       }
       self.MONTHS = [
          "january", "february", "march",     "april",   "may",      "june",
@@ -650,7 +645,7 @@ class PgUtil(PgLOG):
          ms = re.search(r'(^|\W)(ds\d\d\d(\.|)\d)($|\D)', idstr)
          if not ms: ms = re.search(r'(^|\W)(\d\d\d\.\d)($|\D)', idstr)
          if ms: return ms.group(2)
-      if logact: self.pglog("{} : No valid dsid found for flag {}".format(idstr, flag), logact)
+      if logact: self.pglog("{}: No valid dsid found for flag {}".format(idstr, flag), logact)
       return None
 
    # find and convert all found dsids according to old/new dsids
