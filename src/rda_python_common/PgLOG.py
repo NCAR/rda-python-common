@@ -1305,7 +1305,7 @@ def set_common_pglog():
       PGLOG['PGBATCH'] = ''
 
    pgpath = PGLOG['HOMEBIN']
-   PGLOG['LOCHOME'] = "/ncar/rda/setuid"
+   PGLOG['LOCHOME'] = "/ncar/gdex/setuid"
    if not op.isdir(PGLOG['LOCHOME']): PGLOG['LOCHOME'] = "/usr/local/decs"
    pgpath += ":{}/bin".format(PGLOG['LOCHOME'])
    locpath = "{}/bin/{}".format(PGLOG['DSSHOME'], PGLOG['HOSTTYPE'])
