@@ -1032,7 +1032,7 @@ class PgLOG:
          self.PGLOG['CURBID'] = 0
          self.PGLOG['PGBATCH'] = ''
       pgpath = self.PGLOG['HOMEBIN']
-      self.PGLOG['LOCHOME'] = "/ncar/rda/setuid"
+      self.PGLOG['LOCHOME'] = "/ncar/gdex/setuid"
       if not op.isdir(self.PGLOG['LOCHOME']): self.PGLOG['LOCHOME'] = "/usr/local/decs"
       pgpath += ":{}/bin".format(self.PGLOG['LOCHOME'])
       locpath = "{}/bin/{}".format(self.PGLOG['DSSHOME'], self.PGLOG['HOSTTYPE'])
