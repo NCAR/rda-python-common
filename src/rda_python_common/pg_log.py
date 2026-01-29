@@ -857,7 +857,7 @@ class PgLOG:
       if cmd not in self.COMMANDS:
          buf = shutil.which(cmd)
          if buf is None:
-            if logact: self.pglog(cmd + ": executable command not found", logact)
+            if logact: self.pglog("{}: executable command not found in\n{}".format(cmd, os.environ.get("PATH")), logact)
             buf = ''
          elif option:
             buf += option
