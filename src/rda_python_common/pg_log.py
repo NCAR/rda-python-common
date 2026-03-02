@@ -101,6 +101,7 @@ class PgLOG:
          'OBJCTSTR': "object",
          'BACKUPNM': "quasar",
          'DRDATANM': "drdata",
+         'TACCNAME': "tacc",
          'GPFSNAME': "glade",
          'PBSNAME': "PBS",
          'DSIDCHRS': "d",
@@ -866,7 +867,6 @@ class PgLOG:
 
    # add carbon copies to self.PGLOG['CCDADDR']
    def add_carbon_copy(self, cc = None, isstr = None, exclude = 0, specialist = None):
-
       if not cc:
          if cc is None and isstr is None: self.PGLOG['CCDADDR'] = ''
       else:
@@ -885,28 +885,24 @@ class PgLOG:
 
    # get the current host name; or batch sever name if getbatch is 1
    def get_host(self, getbatch = 0):
-
       if getbatch and self.PGLOG['CURBID'] != 0:
          host = self.PGLOG['PGBATCH']
       elif self.PGLOG['HOSTNAME']:
          return self.PGLOG['HOSTNAME']
       else:
          host = socket.gethostname()
-
       return self.get_short_host(host)
 
    #
    # strip domain names and retrun the server name itself
    #
    def get_short_host(self, host):
-
       if not host: return ''
       ms = re.match(r'^([^\.]+)\.', host)
       if ms: host = ms.group(1)
       if self.PGLOG['HOSTNAME'] and (host == 'localhost' or host == self.PGLOG['HOSTNAME']): return self.PGLOG['HOSTNAME']
       HOST = host.upper()
       if HOST in self.BCHCMDS: return HOST
-
       return host
 
    # get a live PBS host name
@@ -1063,6 +1059,7 @@ class PgLOG:
       self.SETPGLOG("OBJCTBKT", "gdex-data")                    # default Bucket on Object Store
       self.SETPGLOG("BACKUPEP", "gdex-quasar")                  # default Globus Endpoint on Quasar
       self.SETPGLOG("DRDATAEP", "gdex-quasar-drdata")           # DRDATA Globus Endpoint on Quasar
+      self.SETPGLOG("TACCEP", "gdex-tacc")                      # default Globus Endpoint on TACC
       self.SETPGLOG("DBGFILE", "pgdss.dbg")                     # debug file name
       self.SETPGLOG("CNFPATH", self.PGLOG['DSSHOME']+"/config")      # path to configuration files
       self.SETPGLOG("DSSURL",  "https://gdex.ucar.edu")          # current dss web URL

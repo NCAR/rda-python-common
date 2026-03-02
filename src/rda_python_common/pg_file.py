@@ -60,6 +60,7 @@ class PgFile(PgUtil, PgSIG):
       self.OHOST = self.PGLOG['OBJCTSTR']
       self.BHOST = self.PGLOG['BACKUPNM']
       self.DHOST = self.PGLOG['DRDATANM']
+      self.THOST = self.PGLOG['TACCNAME']
       self.OBJCTCMD = "isd_s3_cli"
       self.BACKCMD = "dsglobus"
       self.DIRLVLS = 0
@@ -73,7 +74,8 @@ class PgFile(PgUtil, PgSIG):
          'G': self.PGLOG['GPFSNAME'],
          'O': self.OHOST,
          'B': self.BHOST,
-         'D': self.DHOST
+         'D': self.DHOST,
+         
       }
       self.DPATHS = {
          'G': self.PGLOG['DSSDATA'],
@@ -88,9 +90,10 @@ class PgFile(PgUtil, PgSIG):
          'F': 'FAILED',
       }
       self.QPOINTS = {
-         'L': 'gdex-glade',
+         'L': 'gdex-glade',      # or gdex-lustre
          'B': 'gdex-quasar',
-         'D': 'gdex-quasar-drdata'
+         'D': 'gdex-quasar-drdata',
+         'T': 'tacc'
       }
       self.QHOSTS = {
          'gdex-glade': self.LHOST,
@@ -99,8 +102,10 @@ class PgFile(PgUtil, PgSIG):
       }
       self.ENDPOINTS = {
          'gdex-glade': "NCAR GDEX GLADE",
+         'gdex-lustre': "NCAR GDEX Lustre",
          'gdex-quasar': "NCAR GDEX Quasar",
-         'gdex-quasar-drdata': "NCAR GDEX Quasar DRDATA"
+         'gdex-quasar-drdata': "NCAR GDEX Quasar DRDATA",
+         'tacc' : "Texas Advanced Computer Center"
       }
 
    # reset the up limit for a specified error type
@@ -252,7 +257,7 @@ class PgFile(PgUtil, PgSIG):
       if 'user' not in meta: meta['user'] = self.PGLOG['CURUID']
       if 'group' not in meta: meta['group'] = self.PGLOG['GDEXGRP']
       uinfo = json.dumps(meta)
-      finfo = self.check_local_file(fromfile, 0, logact)
+      finfo = self.check_local_file(fromfile, 0, logact|self.PFSIZE)
       if not finfo:
          if finfo != None: return self.FAILURE
          return self.lmsg(fromfile, "{} to copy to {}-{}".format(self.PGLOG['MISSFILE'], self.OHOST, tofile), logact)
@@ -509,7 +514,7 @@ class PgFile(PgUtil, PgSIG):
       loop = reset = 0
       while (loop-reset) < 2:
          buf = self.pgsystem(cmd, logact, self.CMDBTH)
-         info = self.check_local_file(fromname, 143, logact)   # 1+2+4+8+128
+         info = self.check_local_file(fromname, 143, logact|self.PFSIZE)   # 1+2+4+8+128
          if info:
             if info['data_size'] == finfo['data_size']:
                self.set_local_mode(fromfile, info['isfile'], 0, info['mode'], info['logname'], logact)
@@ -1417,14 +1422,22 @@ class PgFile(PgUtil, PgSIG):
             if re.match(r'^\[\]', buf): break
             if re.match(r'^\[\{', buf):
                ary = json.loads(buf)
-               cnt = len(ary)
-               if cnt > 1: return self.pglog("{}-{}: {} records returned\n{}".format(bucket, file, cnt, buf), logact|self.ERRLOG)
                hash = ary[0]
-               uhash = None
                if ucmd:
                   ubuf = self.pgsystem(ucmd, self.LOGWRN, self.CMDRET)
                   if ubuf and re.match(r'^\{', ubuf): uhash = json.loads(ubuf)
                ret = self.object_file_stat(hash, uhash, opt)
+               if ret:
+                  cnt = len(ary)
+                  if cnt > 1 or hash['Key'] != file:
+                     ret['count'] = cnt
+                     ret['fname'] = file
+                     ret['isfile'] = 0
+                     size = 0
+                     for a in ary:
+                        size += int(a['Size'])
+                     ret['data_size'] = size
+               uhash = None
                break
          if opt&64: return self.FAILURE
          errmsg = "Error Execute: {}\n{}".format(cmd, self.PGLOG['SYSERR'])
@@ -1460,7 +1473,7 @@ class PgFile(PgUtil, PgSIG):
 
    # object store function to get file stat
    def object_file_stat(self, hash, uhash, opt):
-      info = {'isfile': 1, 'data_size': int(hash['Size']), 'fname': op.basename(hash['Key'])}
+      info = {'isfile': 1, 'data_size': int(hash['Size']), 'fname': hash['Key']}
       if not opt: return info   
       if opt&17:
          ms = re.match(r'^(\d+-\d+-\d+)\s+(\d+:\d+:\d+)', hash['LastModified'])
