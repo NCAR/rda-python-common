@@ -670,10 +670,11 @@ class PgLOG:
          end = time.time()
          last = end - last
          if error:
+            cmdpstr = self.command_path(cmdstr)
             if ret == self.FAILURE:
-               error = "Error Execute: {}\n{}".format(cmdstr, error)
+               error = "Error Execute: {}\n{}".format(cmdpstr, error)
             else:
-               error = "Error From: {}\n{}".format(cmdstr, error)
+               error = "Error From: {}\n{}".format(cmdpstr, error)
             if loop > 1: error = "Retry "
             if cmdopt&256: self.PGLOG['SYSERR'] += error
             if cmdopt&4:
@@ -691,7 +692,7 @@ class PgLOG:
          retbuf = ''
       return (retbuf if cmdopt&16 else ret)
 
-   # strip carrage return '\r', but keep ending newline '\n'
+   # strip carriage return '\r', but keep ending newline '\n'
    @staticmethod
    def strip_output_line(line):
       ms = re.search(r'\r([^\r]+)\r*$', line)
@@ -864,6 +865,16 @@ class PgLOG:
             buf += option
          self.COMMANDS[cmd] = buf
       return self.COMMANDS[cmd]
+
+   # get full command path if possible
+   def command_path(self, cmdstr):
+      if not cmdstr: return ''
+      ary = cmdstr.split(' ', 1)
+      cmd = ary[0]
+      if re.search(r'[\\/]', cmd): return cmdstr
+      optstr = (' ' + ary[1]) if len(ary) > 1 else ''
+      pcmd = shutil.which(cmd)
+      return (pcmd+optstr) if pcmd else cmdstr
 
    # add carbon copies to self.PGLOG['CCDADDR']
    def add_carbon_copy(self, cc = None, isstr = None, exclude = 0, specialist = None):
