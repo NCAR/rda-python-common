@@ -874,7 +874,7 @@ class PgLOG:
       if re.search(r'[\\/]', cmd): return cmdstr
       optstr = (' ' + ary[1]) if len(ary) > 1 else ''
       pcmd = shutil.which(cmd)
-      reutn (pcmd+optstr) if pcmd else cmdstr
+      return (pcmd+optstr) if pcmd else cmdstr
 
    # add carbon copies to self.PGLOG['CCDADDR']
    def add_carbon_copy(self, cc = None, isstr = None, exclude = 0, specialist = None):
