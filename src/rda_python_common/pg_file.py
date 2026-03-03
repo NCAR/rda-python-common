@@ -60,7 +60,6 @@ class PgFile(PgUtil, PgSIG):
       self.OHOST = self.PGLOG['OBJCTSTR']
       self.BHOST = self.PGLOG['BACKUPNM']
       self.DHOST = self.PGLOG['DRDATANM']
-      self.THOST = self.PGLOG['TACCNAME']
       self.OBJCTCMD = "isd_s3_cli"
       self.BACKCMD = "dsglobus"
       self.DIRLVLS = 0
@@ -101,7 +100,6 @@ class PgFile(PgUtil, PgSIG):
       }
       self.ENDPOINTS = {
          'gdex-glade': "NCAR GDEX GLADE",
-         'gdex-lustre': "NCAR GDEX Lustre",
          'gdex-quasar': "NCAR GDEX Quasar",
          'gdex-quasar-drdata': "NCAR GDEX Quasar DRDATA"
       }
@@ -1421,6 +1419,8 @@ class PgFile(PgUtil, PgSIG):
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       ret = None
       if not file: return ret
+      ms = re.match(r'^(.+)/$', file)
+      if ms: file = ms.group(1)    # remove ending '/' in case
       ocmd = self.valid_command(self.OBJCTCMD, logact)
       cmd = "{} lo {} -b {}".format(ocmd, file, bucket)
       ucmd = "{} gm -k {} -b {}".format(ocmd, file, bucket) if opt&14 else None
