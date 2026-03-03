@@ -92,8 +92,7 @@ class PgFile(PgUtil, PgSIG):
       self.QPOINTS = {
          'L': 'gdex-glade',      # or gdex-lustre
          'B': 'gdex-quasar',
-         'D': 'gdex-quasar-drdata',
-         'T': 'tacc'
+         'D': 'gdex-quasar-drdata'
       }
       self.QHOSTS = {
          'gdex-glade': self.LHOST,
@@ -104,8 +103,7 @@ class PgFile(PgUtil, PgSIG):
          'gdex-glade': "NCAR GDEX GLADE",
          'gdex-lustre': "NCAR GDEX Lustre",
          'gdex-quasar': "NCAR GDEX Quasar",
-         'gdex-quasar-drdata': "NCAR GDEX Quasar DRDATA",
-         'tacc' : "Texas Advanced Computer Center"
+         'gdex-quasar-drdata': "NCAR GDEX Quasar DRDATA"
       }
 
    # reset the up limit for a specified error type
@@ -265,7 +263,8 @@ class PgFile(PgUtil, PgSIG):
          tinfo = self.check_object_file(tofile, bucket, 0, logact)
          if tinfo and tinfo['data_size'] > 0:
             return self.pglog("{}-{}-{}: file exists already".format(self.OHOST, bucket, tofile), logact)
-      cmd = "{} ul -lf {} -b {} -k {} -md '{}'".format(self.OBJCTCMD, fromfile, bucket, tofile, uinfo)
+      ocmd = self.valid_command(self.OBJCTCMD, logact)
+      cmd = "{} ul -lf {} -b {} -k {} -md '{}'".format(ocmd, fromfile, bucket, tofile, uinfo)
       for loop in range(2):
          buf = self.pgsystem(cmd, logact, self.CMDBTH)
          tinfo = self.check_object_file(tofile, bucket, 0, logact)
@@ -298,7 +297,8 @@ class PgFile(PgUtil, PgSIG):
       destination_endpoint = topoint
       label = f"{self.ENDPOINTS[frompoint]} to {self.ENDPOINTS[topoint]} {action}"
       verify_checksum = True
-      cmd = f'{self.BACKCMD} {action} -se {source_endpoint} -de {destination_endpoint} --label "{label}"'
+      bcmd = self.valid_command(self.BACKCMD, logact)
+      cmd = f'{bcmd} {action} -se {source_endpoint} -de {destination_endpoint} --label "{label}"'
       if verify_checksum:
          cmd += ' -vc'   
       cmd += ' --batch -'
@@ -327,14 +327,14 @@ class PgFile(PgUtil, PgSIG):
          if tinfo and tinfo['data_size'] > 0:
             return self.pglog("{}-{}: file exists already".format(topoint, tofile), logact)
       action = 'transfer'
-      cmd = f'{self.BACKCMD} {action} -se {frompoint} -de {topoint} -sf {fromfile} -df {tofile} -vc'
+      bcmd = self.valid_command(self.BACKCMD, logact)
+      cmd = f'{bcmd} {action} -se {frompoint} -de {topoint} -sf {fromfile} -df {tofile} -vc'
       task = self.submit_globus_task(cmd, topoint, logact)
       if task['stat'] == 'S':
          ret = self.SUCCESS
       elif task['stat'] == 'A':
          self.TASKIDS["{}-{}".format(topoint, tofile)] = task['id']
          ret = self.FINISH
-   
       return ret
 
    # submit a globus task and return a task id
@@ -375,7 +375,8 @@ class PgFile(PgUtil, PgSIG):
       if not taskid: return ret
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
       mp = r'Status:\s+({})'.format('|'.join(self.QSTATS.values()))
-      cmd = f"{self.BACKCMD} get-task {taskid}"
+      bcmd = self.valid_command(self.BACKCMD, logact)
+      cmd = f"{bcmd} get-task {taskid}"
       astats = ['OK', 'Queued']
       for loop in range(2):
          buf = self.pgsystem(cmd, logact, self.CMDRET)
@@ -391,7 +392,7 @@ class PgFile(PgUtil, PgSIG):
                         if logact&self.NOWAIT:
                            errmsg = "{}: Cancel Task due to {}:\n{}".format(taskid, detail, buf)
                            self.errlog(errmsg, 'B', 1, logact)
-                           ccmd = f"{self.BACKCMD} cancel-task {taskid}"
+                           ccmd = f"{bcmd} cancel-task {taskid}"
                            self.pgsystem(ccmd, logact, 7)
                         else:
                            time.sleep(self.PGSIG['ETIME'])
@@ -503,7 +504,8 @@ class PgFile(PgUtil, PgSIG):
       if not finfo:
          if finfo != None: return ret
          return self.lmsg(fromfile, "{}-{} to copy to {}".format(self.OHOST, self.PGLOG['MISSFILE'], tofile), logact)
-      cmd = "{} go -k {} -b {}".format(self.OBJCTCMD, fromfile, bucket)
+      ocmd = self.valid_command(self.OBJCTCMD, logact)
+      cmd = "{} go -k {} -b {}".format(ocmd, fromfile, bucket)
       fromname = op.basename(fromfile)
       toname = op.basename(tofile)
       if toname == tofile:
@@ -608,12 +610,13 @@ class PgFile(PgUtil, PgSIG):
    # Delete a file on object store  
    def delete_object_file(self, file, bucket = None, logact = 0):
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
+      ocmd = self.valid_command(self.OBJCTCMD, logact)
       for loop in range(2):
          list = self.object_glob(file, bucket, 0, logact)
          if not list: return self.FAILURE
          errmsg = None
          for key in list:
-            cmd = "{} dl {} -b {}".format(self.OBJCTCMD, key, bucket)
+            cmd = "{} dl {} -b {}".format(ocmd, key, bucket)
             if not self.pgsystem(cmd, logact, self.CMDERR):
                errmsg = self.PGLOG['SYSERR']
                break
@@ -627,7 +630,8 @@ class PgFile(PgUtil, PgSIG):
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
       info = self.check_backup_file(file, endpoint, 0, logact)
       if not info: return self.FAILURE
-      cmd = f"{self.BACKCMD} delete -ep {endpoint} -tf {file}"
+      bcmd = self.valid_command(self.BACKCMD, logact)
+      cmd = f"{bcmd} delete -ep {endpoint} -tf {file}"
       task = self.submit_globus_task(cmd, endpoint, logact)
       if task['stat'] == 'S':
          return self.SUCCESS
@@ -780,8 +784,9 @@ class PgFile(PgUtil, PgSIG):
             return self.errlog("{}-{}: Object File exists, cannot move {}-{} to it".format(tobucket, tofile, frombucket, fromfile), 'R', 1, logact)
       elif tinfo != None:
          return self.FAILURE
-      cmd = "{} mv -b {} -db {} -k {} -dk {}".format(self.OBJCTCMD, frombucket, tobucket, fromfile, tofile)
-      ucmd = "{} gm -k {} -b {}".format(self.OBJCTCMD, fromfile, frombucket)
+      ocmd = self.valid_command(self.OBJCTCMD, logact)
+      cmd = "{} mv -b {} -db {} -k {} -dk {}".format(ocmd, frombucket, tobucket, fromfile, tofile)
+      ucmd = "{} gm -k {} -b {}".format(ocmd, fromfile, frombucket)
       ubuf = self.pgsystem(ucmd, self.LOGWRN, self.CMDRET)
       if ubuf and re.match(r'^\{', ubuf): cmd += " -md '{}'".format(ubuf)
       for loop in range(2):
@@ -813,7 +818,8 @@ class PgFile(PgUtil, PgSIG):
             return self.SUCCESS
          else:
             return self.errlog("{}-{}: {} to move".format(frombucket, frompath, self.PGLOG['MISSFILE']), 'R', 1, logact)   
-      cmd = "{} mv -b {} -db {} -k {} -dk {}".format(self.OBJCTCMD, frombucket, tobucket, frompath, topath)
+      ocmd = self.valid_command(self.OBJCTCMD, logact)
+      cmd = "{} mv -b {} -db {} -k {} -dk {}".format(ocmd, frombucket, tobucket, frompath, topath)
       for loop in range(2):
          buf = self.pgsystem(cmd, logact, self.CMDBTH)
          fcnt = self.check_object_path(frompath, frombucket, logact)
@@ -842,7 +848,8 @@ class PgFile(PgUtil, PgSIG):
             return self.errlog("{}: File exists, cannot move {} to it".format(tofile, fromfile), 'B', 1, logact)
       elif tinfo != None:
          return ret
-      cmd = f"{self.BACKCMD} rename -ep {endpoint} --old-path {fromfile} --new-path {tofile}"
+      bcmd = self.valid_command(self.BACKCMD, logact)
+      cmd = f"{bcmd} rename -ep {endpoint} --old-path {fromfile} --new-path {tofile}"
       loop = 0
       while loop < 2:
          buf = self.pgsystem(cmd, logact, self.CMDRET)
@@ -940,7 +947,8 @@ class PgFile(PgUtil, PgSIG):
          return self.FAILURE
       if not odir: odir = dir
       if not self.make_one_backup_directory(op.dirname(dir), odir, endpoint, logact): return self.FAILURE
-      cmd = f"{self.BACKCMD} mkdir -ep {endpoint} -p {dir}"
+      bcmd = self.valid_command(self.BACKCMD, logact)
+      cmd = f"{bcmd} mkdir -ep {endpoint} -p {dir}"
       for loop in range(2):
          buf = self.pgsystem(cmd, logact, self.CMDRET)
          syserr = self.PGLOG['SYSERR']
@@ -1413,8 +1421,9 @@ class PgFile(PgUtil, PgSIG):
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       ret = None
       if not file: return ret
-      cmd = "{} lo {} -b {}".format(self.OBJCTCMD, file, bucket)
-      ucmd = "{} gm -k {} -b {}".format(self.OBJCTCMD, file, bucket) if opt&14 else None
+      ocmd = self.valid_command(self.OBJCTCMD, logact)
+      cmd = "{} lo {} -b {}".format(ocmd, file, bucket)
+      ucmd = "{} gm -k {} -b {}".format(ocmd, file, bucket) if opt&14 else None
       loop = 0
       while loop < 2:
          buf = self.pgsystem(cmd, self.LOGWRN, self.CMDRET)
@@ -1423,6 +1432,7 @@ class PgFile(PgUtil, PgSIG):
             if re.match(r'^\[\{', buf):
                ary = json.loads(buf)
                hash = ary[0]
+               uhash = None
                if ucmd:
                   ubuf = self.pgsystem(ucmd, self.LOGWRN, self.CMDRET)
                   if ubuf and re.match(r'^\{', ubuf): uhash = json.loads(ubuf)
@@ -1431,7 +1441,7 @@ class PgFile(PgUtil, PgSIG):
                   cnt = len(ary)
                   if cnt > 1 or hash['Key'] != file:
                      ret['count'] = cnt
-                     ret['fname'] = file
+                     ret['fname'] = op.basename(file)
                      ret['isfile'] = 0
                      size = 0
                      for a in ary:
@@ -1456,7 +1466,8 @@ class PgFile(PgUtil, PgSIG):
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       ret = None
       if not path: return ret
-      cmd = "{} lo {} -ls -b {}".format(self.OBJCTCMD, path, bucket)
+      ocmd = self.valid_command(self.OBJCTCMD, logact)
+      cmd = "{} lo {} -ls -b {}".format(ocmd, path, bucket)
       loop = 0
       while loop < 2:
          buf = self.pgsystem(cmd, self.LOGWRN, self.CMDRET)
@@ -1473,7 +1484,7 @@ class PgFile(PgUtil, PgSIG):
 
    # object store function to get file stat
    def object_file_stat(self, hash, uhash, opt):
-      info = {'isfile': 1, 'data_size': int(hash['Size']), 'fname': hash['Key']}
+      info = {'isfile': 1, 'data_size': int(hash['Size']), 'fname': op.basename(hash['Key'])}
       if not opt: return info   
       if opt&17:
          ms = re.match(r'^(\d+-\d+-\d+)\s+(\d+:\d+:\d+)', hash['LastModified'])
@@ -1509,7 +1520,8 @@ class PgFile(PgUtil, PgSIG):
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
       bdir = op.dirname(file)
       bfile = op.basename(file)
-      cmd = f"{self.BACKCMD} ls -ep {endpoint} -p {bdir} --filter {bfile}"
+      bcmd = self.valid_command(self.BACKCMD, logact)
+      cmd = f"{bcmd} ls -ep {endpoint} -p {bdir} --filter {bfile}"
       ccnt = loop = 0
       while loop < 2:
          buf = self.pgsystem(cmd, logact, self.CMDRET)
@@ -1769,7 +1781,8 @@ class PgFile(PgUtil, PgSIG):
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       ms = re.match(r'^(.+)/$', dir)
       if ms: dir = ms.group(1)
-      cmd = "{} lo {} -b {}".format(self.OBJCTCMD, dir, bucket)
+      ocmd = self.valid_command(self.OBJCTCMD, logact)
+      cmd = "{} lo {} -b {}".format(ocmd, dir, bucket)
       ary = err = None
       buf = self.pgsystem(cmd, self.LOGWRN, self.CMDRET)
       if buf:
@@ -1788,7 +1801,7 @@ class PgFile(PgUtil, PgSIG):
       for hash in ary:
          uhash = None
          if opt&10:
-            ucmd = "{} gm -l {} -b {}".format(self.OBJCTCMD, hash['Key'], bucket)
+            ucmd = "{} gm -l {} -b {}".format(ocmd, hash['Key'], bucket)
             ubuf = self.pgsystem(ucmd, self.LOGWRN, self.CMDRET)
             if ubuf and re.match(r'^\{.+', ubuf): uhash = json.loads(ubuf)
          info = self.object_file_stat(hash, uhash, opt)
@@ -1807,7 +1820,8 @@ class PgFile(PgUtil, PgSIG):
    def backup_glob(self, dir, endpoint = None, opt = 0, logact = 0):
       if not dir: return None
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
-      cmd = f"{self.BACKCMD} ls -ep {endpoint} -p {dir}"
+      bcmd = self.valid_command(self.BACKCMD, logact)
+      cmd = f"{bcmd} ls -ep {endpoint} -p {dir}"
       flist = {}
       for loop in range(2):
          buf = self.pgsystem(cmd, logact, self.CMDRET)
