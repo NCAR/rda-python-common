@@ -670,7 +670,7 @@ class PgLOG:
          end = time.time()
          last = end - last
          if error:
-            cmdpstr = command_path(cmdstr)
+            cmdpstr = self.command_path(cmdstr)
             if ret == self.FAILURE:
                error = "Error Execute: {}\n{}".format(cmdpstr, error)
             else:
