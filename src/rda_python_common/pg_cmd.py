@@ -265,7 +265,7 @@ class PgCMD(PgLock):
       if otype: cmd +=  ' ' + otype
       ret = options = ''
       for loop in range(3):
-         ret = self.pgsystem(cmd, self.LOGWRN, 279)  # 1+2+4+16+256
+         ret = self.pgsystem(cmd, self.LOGWRN, 1299)  # 1+2+16+256+1024
          if loop < 2 and self.PGLOG['SYSERR'] and 'Connection timed out' in self.PGLOG['SYSERR']:
             time.sleep(self.PGSIG['ETIME'])
          else:
