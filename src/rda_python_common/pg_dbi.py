@@ -20,17 +20,18 @@ from os import path as op
 from .pg_log import PgLOG
 
 class PgDBI(PgLOG):
-   
-   #  PostgreSQL specified query timestamp format
-   fmtyr = lambda fn: "extract(year from {})::int".format(fn)
-   fmtqt = lambda fn: "extract(quarter from {})::int".format(fn)
-   fmtmn = lambda fn: "extract(month from {})::int".format(fn)
-   fmtdt = lambda fn: "date({})".format(fn)
-   fmtym = lambda fn: "to_char({}, 'yyyy-mm')".format(fn)
-   fmthr = lambda fn: "extract(hour from {})::int".format(fn)
 
    def __init__(self):
       super().__init__()  # initialize parent class
+
+      #  PostgreSQL specified query timestamp format
+      self.fmtyr = lambda fn=self: "extract(year from {})::int".format(fn)
+      self.fmtqt = lambda fn=self: "extract(quarter from {})::int".format(fn)
+      self.fmtmn = lambda fn=self: "extract(month from {})::int".format(fn)
+      self.fmtdt = lambda fn=self: "date({})".format(fn)
+      self.fmtym = lambda fn=self: "to_char({}, 'yyyy-mm')".format(fn)
+      self.fmthr = lambda fn=self: "extract(hour from {})::int".format(fn)
+
       self.pgdb = None    # reference to a connected database object
       self.curtran = 0    # 0 - no transaction, 1 - in transaction
       self.NMISSES = []   # array of mising userno
