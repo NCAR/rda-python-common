@@ -23,6 +23,47 @@ from .pg_util import PgUtil
 from .pg_sig import PgSIG
 
 class PgFile(PgUtil, PgSIG):
+   """File operations across local, remote, object-store, and Globus endpoints.
+
+   Provides a unified API to copy, move, delete, check, list, and manage files on:
+   - Local filesystem (LHOST)
+   - Remote hosts via rsync/ssh (remote_*)
+   - S3-compatible object store via isd_s3_cli (object_*)
+   - Quasar/Globus tape backup via dsglobus (backup_*)
+
+   Inherits date/time utilities from PgUtil and signal handling from PgSIG.
+
+   Class Constants:
+      CMDBTH (int): pgsystem flag — capture both stdout and stderr.
+      RETBTH (int): pgsystem flag — return both stdout and stderr.
+      CMDRET (int): pgsystem flag — return stdout and save stderr.
+      CMDERR (int): pgsystem flag — display command and save stderr.
+      CMDGLB (int): pgsystem flag — return stdout and save stderr for Globus calls.
+
+   Instance Attributes:
+      PGCMPS (dict): Compression tool mapping: ext → [compress_cmd, decompress_cmd, fmt_label].
+      CMPSTR (str): Regex alternation of all compression extensions.
+      PGTARS (dict): Archive tool mapping: ext → [pack_cmd, unpack_cmd, fmt_label].
+      TARSTR (str): Regex alternation of all archive extensions.
+      DELDIRS (dict): Directory → host map for deferred empty-directory cleanup.
+      TASKIDS (dict): Pending Globus task IDs keyed by 'endpoint-file'.
+      LHOST (str): Local host sentinel ('localhost').
+      OHOST (str): Object-store hostname.
+      BHOST (str): Backup (Quasar) hostname.
+      DHOST (str): Disaster-recovery hostname.
+      OBJCTCMD (str): Object-store CLI executable name.
+      BACKCMD (str): Globus CLI executable name.
+      DIRLVLS (int): Levels of parent directories to check for empty-dir cleanup (0=off).
+      BFILES (dict): Cached bfile records keyed by bid.
+      ECNTS (dict): Per-storage-type consecutive error counters.
+      ELMTS (dict): Per-storage-type maximum consecutive error limits.
+      DHOSTS (dict): Storage flag → hostname mapping.
+      DPATHS (dict): Storage flag → default path mapping.
+      QSTATS (dict): Globus status letter → human-readable label.
+      QPOINTS (dict): Storage flag → Globus endpoint name.
+      QHOSTS (dict): Globus endpoint name → hostname.
+      ENDPOINTS (dict): Globus endpoint name → display label.
+   """
 
    CMDBTH = (0x0033)   # return both stdout and stderr, 16 + 32 + 2 + 1
    RETBTH = (0x0030)   # return both stdout and stderr, 16 + 32
@@ -31,6 +72,14 @@ class PgFile(PgUtil, PgSIG):
    CMDGLB = (0x0313)   # return stdout and save error for globus, 1+2+16+256+512
 
    def __init__(self):
+      """Initialise PgFile with compression/archive tables and storage host settings.
+
+      Calls PgUtil.__init__() and PgSIG.__init__() via super(), then populates
+      compression (PGCMPS/CMPSTR) and archive (PGTARS/TARSTR) lookup tables, storage
+      host names and paths (LHOST, OHOST, BHOST, DHOST, DHOSTS, DPATHS), Globus
+      endpoint mappings (QPOINTS, QHOSTS, ENDPOINTS), and error-tracking counters
+      (ECNTS, ELMTS).
+      """
       super().__init__()  # initialize parent class
       self.PGCMPS = {
       #  extension Compress       Uncompress       ArchiveFormat
@@ -106,10 +155,31 @@ class PgFile(PgUtil, PgSIG):
 
    # reset the up limit for a specified error type
    def reset_error_limit(self, etype, lmt):
+      """Set the maximum consecutive-error limit for a storage error type.
+
+      Args:
+         etype (str): Error type key — one of 'D', 'H', 'L', 'R', 'O', 'B'.
+         lmt (int): New limit; 0 disables exit-on-error for this type.
+      """
       self.ELMTS[etype] = lmt
 
-   # wrapping self.pglog() to show error and no fatal exit at the first call for retry 
+   # wrapping self.pglog() to show error and no fatal exit at the first call for retry
    def errlog(self, msg, etype, retry = 0, logact = 0):
+      """Log an error and optionally sleep before a retry.
+
+      On the first attempt (retry=0) appends a retry notice to msg and suppresses
+      fatal exit. On subsequent attempts increments the error counter for etype and
+      triggers exit when the limit is reached.
+
+      Args:
+         msg (str): Error message to log.
+         etype (str): Storage error type key ('L', 'R', 'O', 'B', …).
+         retry (int): 0 for first attempt (sleep + suppress exit); non-zero for retries.
+         logact (int): Additional logging action flags; default 0.
+
+      Returns:
+         int: Always self.FAILURE.
+      """
       bckgrnd = self.PGLOG['BCKGRND']
       logact |= self.ERRLOG
       if not retry:
@@ -134,8 +204,23 @@ class PgFile(PgUtil, PgSIG):
    # fromfile - source file name
    #   tohost - target host name, default to self.LHOST
    # fromhost - original host name, default to self.LHOST
-   # Return 1 if successful 0 if failed with error message generated in self.pgsystem() cached in self.PGLOG['SYSERR'] 
+   # Return 1 if successful 0 if failed with error message generated in self.pgsystem() cached in self.PGLOG['SYSERR']
    def copy_gdex_file(self, tofile, fromfile, tohost = None, fromhost = None, logact = 0):
+      """Copy a file between any combination of local, remote, object, and backup hosts.
+
+      Dispatches to the appropriate low-level copy helper based on the source and
+      target host names. Background copying is not supported for remote→remote transfers.
+
+      Args:
+         tofile (str): Destination file path.
+         fromfile (str): Source file path.
+         tohost (str | None): Destination host; defaults to LHOST (local).
+         fromhost (str | None): Source host; defaults to LHOST (local).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       if tohost is None: tohost = self.LHOST
       if fromhost is None: fromhost = self.LHOST
       thost = self.strip_host_name(tohost)
@@ -168,6 +253,21 @@ class PgFile(PgUtil, PgSIG):
    #   tofile - target file name
    # fromfile - source file name
    def local_copy_local(self, tofile, fromfile, logact = 0):
+      """Copy a file or directory within the local filesystem.
+
+      Verifies the source exists, creates the target directory if needed, then
+      runs ``cp -f`` (file) or ``cp -rf`` (directory). Retries once after resetting
+      permissions if the first attempt fails. Validates size match for regular files.
+
+      Args:
+         tofile (str): Destination path; trailing '/' causes the source basename
+                       to be appended.
+         fromfile (str): Source path.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       finfo = self.check_local_file(fromfile, 0, logact)
       if not finfo:
          if finfo != None: return self.FAILURE
@@ -213,6 +313,21 @@ class PgFile(PgUtil, PgSIG):
    # fromfile - source file name
    #     host - remote host name
    def local_copy_remote(self, tofile, fromfile, host, logact = 0):
+      """Copy a local file to a remote host using the configured sync command.
+
+      Creates the remote target directory if needed, then runs the sync command.
+      Retries once on failure, validating the size of the transferred file.
+
+      Args:
+         tofile (str): Destination path on the remote host; trailing '/' appends
+                       the source basename.
+         fromfile (str): Source local file path.
+         host (str): Remote hostname.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       finfo = self.check_local_file(fromfile, 0, logact)
       if not finfo:
          if finfo != None: return self.FAILURE
@@ -248,6 +363,21 @@ class PgFile(PgUtil, PgSIG):
    #   bucket - bucket name on Object store
    #     meta - reference to metadata hash
    def local_copy_object(self, tofile, fromfile, bucket = None, meta = None, logact = 0):
+      """Upload a local file to the object store.
+
+      Skips upload when the target already exists (unless OVRIDE is set).
+      Attaches user and group metadata. Retries once on failure.
+
+      Args:
+         tofile (str): Object key (destination path in the bucket).
+         fromfile (str): Source local file path.
+         bucket (str | None): Target bucket; defaults to PGLOG['OBJCTBKT'].
+         meta (dict | None): Extra metadata key/value pairs to attach to the object.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       if meta is None: meta = {}
       if 'user' not in meta: meta['user'] = self.PGLOG['CURUID']
@@ -275,12 +405,27 @@ class PgFile(PgUtil, PgSIG):
       return self.FAILURE
 
    # Copy multiple files from a Globus endpoint to another
-   #   tofiles - target file name list, echo name leading with /dsnnn.n/ on Quasar and 
+   #   tofiles - target file name list, echo name leading with /dsnnn.n/ on Quasar and
    #             leading with /data/ or /decsdata/ on local glade disk
    # fromfiles - source file name list, the same format as the tofiles
-   #   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-dgdexta' 
+   #   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-dgdexta'
    # frompoint - source endpoint name, the same choices as the topoint
    def quasar_multiple_trasnfer(self, tofiles, fromfiles, topoint, frompoint, logact = 0):
+      """Transfer multiple files between two Globus endpoints in a single batch task.
+
+      Builds a JSON batch-transfer spec from parallel source/destination lists
+      and submits it to dsglobus. Sets self.TASKIDS when the task is still active.
+
+      Args:
+         tofiles (list[str]): Destination file paths on topoint.
+         fromfiles (list[str]): Source file paths on frompoint.
+         topoint (str): Destination Globus endpoint name.
+         frompoint (str): Source Globus endpoint name.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS, self.FAILURE, or self.FINISH (task still active).
+      """
       ret = self.FAILURE
       fcnt = len(fromfiles)
       transfer_files = {"files": []}
@@ -309,12 +454,27 @@ class PgFile(PgUtil, PgSIG):
       return ret
 
    # Copy a file from a Globus endpoint to another
-   #    tofile - target file name, leading with /dsnnn.n/ on Quasar and 
+   #    tofile - target file name, leading with /dsnnn.n/ on Quasar and
    #             leading with /data/ or /decsdata/ on local glade disk
    #  fromfile - source file, the same format as the tofile
-   #   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-dgdexta' 
+   #   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-dgdexta'
    # frompoint - source endpoint name, the same choices as the topoint
    def endpoint_copy_endpoint(self, tofile, fromfile, topoint, frompoint, logact = 0):
+      """Copy a single file between two Globus endpoints with checksum verification.
+
+      Skips copy when target already exists (unless OVRIDE is set).
+      Sets self.TASKIDS when the task is still active.
+
+      Args:
+         tofile (str): Destination file path on topoint.
+         fromfile (str): Source file path on frompoint.
+         topoint (str): Destination Globus endpoint name.
+         frompoint (str): Source Globus endpoint name.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS, self.FAILURE, or self.FINISH (task still active).
+      """
       ret = self.FAILURE
       finfo = self.check_globus_file(fromfile, frompoint, 0, logact)
       if not finfo:
@@ -337,6 +497,21 @@ class PgFile(PgUtil, PgSIG):
 
    # submit a globus task and return a task id
    def submit_globus_task(self, cmd, endpoint, logact = 0, qstr = None):
+      """Submit a dsglobus command as a Globus task and wait for it to complete.
+
+      Retries once on error. Resets ECNTS['B'] on success or active-task return.
+      Checks host down-status when syserr is present.
+
+      Args:
+         cmd (str): Complete dsglobus command string to execute.
+         endpoint (str): Target Globus endpoint name (used for host-status checks).
+         logact (int): Logging action flags; default 0.
+         qstr (str | None): Optional JSON string piped to stdin (for batch transfers).
+
+      Returns:
+         dict: Task dict with keys 'id' (task UUID or None) and 'stat'
+               ('S'=succeeded, 'A'=active, 'F'=failed, 'U'=unknown).
+      """
       task = {'id': None, 'stat': 'U'}
       loop = reset = 0
       while (loop-reset) < 2:
@@ -369,6 +544,20 @@ class PgFile(PgUtil, PgSIG):
    # check Globus transfer status for given taskid. Cancel the task
    # if self.NOWAIT presents and Details is neither OK nor Queued
    def check_globus_status(self, taskid, endpoint = None, logact = 0):
+      """Poll a Globus task for its current status.
+
+      When NOWAIT is set and the detail is not OK/Queued, cancels the task.
+      Resets ECNTS['B'] on success or active return.
+
+      Args:
+         taskid (str): Globus task UUID to query.
+         endpoint (str | None): Endpoint name for host-status checks; defaults to
+                                PGLOG['BACKUPEP'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         str: Single-letter status — 'S' succeeded, 'A' active, 'F' failed, 'U' unknown.
+      """
       ret = 'U'
       if not taskid: return ret
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
@@ -407,6 +596,20 @@ class PgFile(PgUtil, PgSIG):
 
    # return SUCCESS if Globus transfer is done; FAILURE otherwise
    def check_globus_finished(self, tofile, topoint, logact = 0):
+      """Block until a previously submitted Globus task completes.
+
+      Looks up the task ID in self.TASKIDS using 'endpoint-file' as the key.
+      When NOWAIT is set, polls up to 2 extra times before switching to blocking mode.
+      Removes the task from TASKIDS on success.
+
+      Args:
+         tofile (str): Destination file path used to look up the task key.
+         topoint (str): Destination Globus endpoint name.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on completion, self.FAILURE on error or non-success status.
+      """
       ret = self.SUCCESS
       ckey = "{}-{}".format(topoint, tofile)
       if ckey in self.TASKIDS:
@@ -443,6 +646,17 @@ class PgFile(PgUtil, PgSIG):
    # fromfile - source file name, leading with /data/ or /decsdata/
    # endpoint - endpoint name on Quasar Backup Server
    def local_copy_backup(self, tofile, fromfile, endpoint = None, logact = 0):
+      """Copy a local GLADE file to the Quasar backup endpoint via Globus.
+
+      Args:
+         tofile (str): Destination path on the backup endpoint (leading '/dsNNN.N/').
+         fromfile (str): Source local path (leading '/data/' or '/decsdata/').
+         endpoint (str | None): Globus endpoint name; defaults to PGLOG['BACKUPEP'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS, self.FAILURE, or self.FINISH.
+      """
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
       return self.endpoint_copy_endpoint(tofile, fromfile, endpoint, 'gdex-glade', logact)
 
@@ -451,6 +665,17 @@ class PgFile(PgUtil, PgSIG):
    # fromfile - source file name, leading with /dsnnn.n/
    # endpoint - endpoint name on Quasar Backup Server
    def backup_copy_local(self, tofile, fromfile, endpoint = None, logact = 0):
+      """Copy a file from the Quasar backup endpoint to a local GLADE path via Globus.
+
+      Args:
+         tofile (str): Destination local path (leading '/data/' or '/decsdata/').
+         fromfile (str): Source backup path (leading '/dsNNN.N/').
+         endpoint (str | None): Globus endpoint name; defaults to PGLOG['BACKUPEP'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS, self.FAILURE, or self.FINISH.
+      """
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
       return self.endpoint_copy_endpoint(tofile, fromfile, 'gdex-glade', endpoint, logact)
 
@@ -459,12 +684,26 @@ class PgFile(PgUtil, PgSIG):
    # fromfile - source file name
    #     host - remote host name
    def remote_copy_local(self, tofile, fromfile, host, logact = 0):
+      """Copy a file from a remote host to the local filesystem.
+
+      Creates the local target directory if needed. Retries once after resetting
+      permissions if the first attempt fails. Validates size match for regular files.
+
+      Args:
+         tofile (str): Destination local path; trailing '/' appends source basename.
+         fromfile (str): Source file path on the remote host.
+         host (str): Remote hostname.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       cmd = self.get_sync_command(host)
       finfo = self.check_remote_file(fromfile, host, 0, logact)
+      target = tofile
       if not finfo:
          if finfo != None: return self.FAILURE
          return self.errlog("{}-{}: {} to copy to {}".format(host, fromfile, self.PGLOG['MISSFILE'], tofile), 'R', 1, logact)
-         target = tofile
       ms = re.match(r'^(.+)/$', tofile)
       if ms:
          dir = ms.group(1)
@@ -496,6 +735,20 @@ class PgFile(PgUtil, PgSIG):
    # fromfile - source file name
    #   bucket - bucket name on Object store
    def object_copy_local(self, tofile, fromfile, bucket = None, logact = 0):
+      """Download a file from the object store to the local filesystem.
+
+      Changes to the target directory, downloads using isd_s3_cli, verifies size,
+      sets permissions, and renames if needed. Retries once on failure.
+
+      Args:
+         tofile (str): Destination local file path.
+         fromfile (str): Object key (source path in the bucket).
+         bucket (str | None): Source bucket; defaults to PGLOG['OBJCTBKT'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       ret = self.FAILURE
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       finfo = self.check_object_file(fromfile, bucket, 0, logact)
@@ -537,6 +790,23 @@ class PgFile(PgUtil, PgSIG):
    #   bucket - bucket name on Object store
    #     meta - reference to metadata hash
    def remote_copy_object(self, tofile, fromfile, host, bucket = None, meta = None, logact = 0):
+      """Copy a file from a remote host to the object store.
+
+      If host is local, delegates directly to local_copy_object(). Otherwise copies
+      the file locally first (to TMPPATH), uploads it to the object store, then
+      removes the temporary local copy.
+
+      Args:
+         tofile (str): Object key (destination path in bucket).
+         fromfile (str): Source file path on the remote host.
+         host (str): Remote hostname.
+         bucket (str | None): Target bucket; defaults to PGLOG['OBJCTBKT'].
+         meta (dict | None): Metadata to attach to the object.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       if self.is_local_host(host): return self.local_copy_object(tofile, fromfile, bucket, meta, logact)
       locfile = "{}/{}".format(self.PGLOG['TMPPATH'], op.basename(tofile))
       ret = self.remote_copy_local(locfile, fromfile, host, logact)
@@ -552,6 +822,21 @@ class PgFile(PgUtil, PgSIG):
    #   bucket - bucket name on Object store
    #     meta - reference to metadata hash
    def object_copy_remote(self, tofile, fromfile, host, bucket = None, logact = 0):
+      """Copy a file from the object store to a remote host.
+
+      If host is local, delegates to object_copy_local(). Otherwise downloads to
+      TMPPATH first, uploads to the remote, then removes the temporary copy.
+
+      Args:
+         tofile (str): Destination file path on the remote host.
+         fromfile (str): Object key (source path in bucket).
+         host (str): Remote hostname.
+         bucket (str | None): Source bucket; defaults to PGLOG['OBJCTBKT'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       if self.is_local_host(host): return self.object_copy_local(tofile, fromfile, bucket, logact)
       locfile = "{}/{}".format(self.PGLOG['TMPPATH'], op.basename(tofile))
       ret = self.object_copy_local(locfile, fromfile, bucket, logact)
@@ -563,8 +848,21 @@ class PgFile(PgUtil, PgSIG):
    # Delete a file/directory on a given host name (including local host) no background process for deleting
    # file - file name to be deleted
    # host - host name the file on, default to self.LHOST
-   # Return 1 if successful 0 if failed with error message generated in self.pgsystem() cached in self.PGLOG['SYSERR'] 
+   # Return 1 if successful 0 if failed with error message generated in self.pgsystem() cached in self.PGLOG['SYSERR']
    def delete_gdex_file(self, file, host, logact = 0):
+      """Delete a file or directory on any supported storage host.
+
+      Dispatches to delete_local_file(), delete_object_file(), or
+      delete_remote_file() based on the host name.
+
+      Args:
+         file (str): File or directory path to delete.
+         host (str): Storage host (local, object, or remote hostname).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       shost = self.strip_host_name(host)
       if self.pgcmp(shost, self.LHOST, 1) == 0:
          return self.delete_local_file(file, logact)
@@ -576,6 +874,18 @@ class PgFile(PgUtil, PgSIG):
 
    # Delete a local file/irectory
    def delete_local_file(self, file, logact = 0):
+      """Delete a local file or directory with retry on failure.
+
+      Uses ``rm -rf``. After deletion, records the parent directory for deferred
+      empty-directory cleanup when DIRLVLS is set.
+
+      Args:
+         file (str): Local file or directory path to delete.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       info = self.check_local_file(file, 0, logact)
       if not info: return self.FAILURE
       cmd = "rm -rf "
@@ -596,6 +906,19 @@ class PgFile(PgUtil, PgSIG):
 
    # Delete file/directory on a remote host
    def delete_remote_file(self, file, host, logact = 0):
+      """Delete a file or directory on a remote host.
+
+      Verifies existence first. Retries once on failure. Records the parent
+      directory for deferred cleanup when DIRLVLS is set.
+
+      Args:
+         file (str): Remote file or directory path to delete.
+         host (str): Remote hostname.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       if not self.check_remote_file(file, host, logact): return self.FAILURE
       cmd = self.get_sync_command(host)
       for loop in range(2):
@@ -605,8 +928,21 @@ class PgFile(PgUtil, PgSIG):
          self.errlog(self.PGLOG['SYSERR'], 'R', loop, logact)
       return self.FAILURE
 
-   # Delete a file on object store  
+   # Delete a file on object store
    def delete_object_file(self, file, bucket = None, logact = 0):
+      """Delete one or more object-store files matching a key pattern.
+
+      Lists matching keys, deletes each, then re-lists to confirm deletion.
+      Retries once on failure.
+
+      Args:
+         file (str): Object key or key prefix to match for deletion.
+         bucket (str | None): Target bucket; defaults to PGLOG['OBJCTBKT'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       ocmd = self.OBJCTCMD
       for loop in range(2):
@@ -623,8 +959,20 @@ class PgFile(PgUtil, PgSIG):
          if errmsg: self.errlog(errmsg, 'O', loop, logact)
       return self.FAILURE
 
-   # Delete a backup file on Quasar Server  
+   # Delete a backup file on Quasar Server
    def delete_backup_file(self, file, endpoint = None, logact = 0):
+      """Delete a file on the Quasar backup endpoint via a Globus delete task.
+
+      Sets self.TASKIDS when the task is still active.
+
+      Args:
+         file (str): File path on the backup endpoint.
+         endpoint (str | None): Globus endpoint name; defaults to PGLOG['BACKUPEP'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS, self.FAILURE, or self.FINISH.
+      """
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
       info = self.check_backup_file(file, endpoint, 0, logact)
       if not info: return self.FAILURE
@@ -642,6 +990,19 @@ class PgFile(PgUtil, PgSIG):
    # file - file name (mandatory)
    # info - gathered file info with option 14, None means file not exists
    def reset_local_info(self, file, info = None, logact = 0):
+      """Attempt to make a local file or its parent directory writable.
+
+      Called before retrying a failed copy or delete. Resets file mode to 0o664
+      and directory mode to 0o775, and changes the group to GDEXGRP.
+
+      Args:
+         file (str): File path whose permissions need resetting.
+         info (dict | None): Existing file-info dict (opt=14); re-fetched when None.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: 1 if any change was made, 0 otherwise.
+      """
       ret = 0
       if info:
          if info['isfile']:
@@ -658,6 +1019,16 @@ class PgFile(PgUtil, PgSIG):
 
    # reset local directory group/mode
    def reset_local_directory(self, dir, info = None, logact = 0):
+      """Reset a local directory's mode to 0o775 and group to GDEXGRP.
+
+      Args:
+         dir (str): Local directory path.
+         info (dict | None): File-info dict (opt=14); re-fetched when None or incomplete.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: 1 if any change was made, 0 otherwise.
+      """
       ret = 0
       if not (info and 'mode' in info and 'group' in info and 'logname' in info):
          info = self.check_local_file(dir, 14, logact)
@@ -670,6 +1041,16 @@ class PgFile(PgUtil, PgSIG):
 
    # reset local file group/mode
    def reset_local_file(self, file, info = None, logact = 0):
+      """Reset a local file's mode to 0o664 and group to GDEXGRP.
+
+      Args:
+         file (str): Local file path.
+         info (dict | None): File-info dict (opt=14); re-fetched when None or incomplete.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: Number of successful changes made (0 if none).
+      """
       ret = 0
       if not (info and 'mode' in info and 'group' in info and 'logname' in info):
          info = self.check_local_file(file, 14, logact)
@@ -686,6 +1067,19 @@ class PgFile(PgUtil, PgSIG):
    #     host - host name the file is moved on, default to self.LHOST
    # Return self.SUCCESS if successful self.FAILURE otherwise
    def move_gdex_file(self, tofile, fromfile, host, logact = 0):
+      """Move a file on any supported storage host (same host only).
+
+      Dispatches to move_local_file(), move_object_file(), or move_remote_file().
+
+      Args:
+         tofile (str): Destination file path.
+         fromfile (str): Source file path.
+         host (str): Storage host name.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       shost = self.strip_host_name(host)
       if self.pgcmp(shost, self.LHOST, 1) == 0:
          return self.move_local_file(tofile, fromfile, logact)
@@ -699,6 +1093,20 @@ class PgFile(PgUtil, PgSIG):
    #   tofile - target file name
    # fromfile - source file name
    def move_local_file(self, tofile, fromfile, logact = 0):
+      """Move a file or directory within the local filesystem using ``mv``.
+
+      Skips move when tofile already exists and has the right content (unless OVRIDE
+      is set). Creates the target directory if needed. Records the source parent
+      directory for deferred empty-directory cleanup when DIRLVLS is set.
+
+      Args:
+         tofile (str): Destination local path.
+         fromfile (str): Source local path.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       dir = self.get_local_dirname(tofile)
       info = self.check_local_file(fromfile, 0, logact)
       tinfo = self.check_local_file(tofile, 0, logact)
@@ -732,6 +1140,21 @@ class PgFile(PgUtil, PgSIG):
    #     host - remote host name
    #  locfile - local copy of tofile
    def move_remote_file(self, tofile, fromfile, host, logact = 0):
+      """Move a file on a remote host by copy-then-delete.
+
+      If host is local, delegates to move_local_file(). Otherwise copies the file
+      locally (to TMPPATH), uploads to the remote destination, removes the local
+      temp copy, then deletes the remote source.
+
+      Args:
+         tofile (str): Destination path on the remote host.
+         fromfile (str): Source path on the remote host.
+         host (str): Remote hostname.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       if self.is_local_host(host): return self.move_local_file(tofile, fromfile, logact)
       ret = self.FAILURE
       dir = op.dirname(tofile)
@@ -765,6 +1188,21 @@ class PgFile(PgUtil, PgSIG):
    #   tobucket - target bucket name
    # frombucket - original bucket name
    def move_object_file(self, tofile, fromfile, tobucket, frombucket, logact = 0):
+      """Move an object-store file to a new key (same or different bucket).
+
+      Retrieves existing metadata before moving. Skips move when target already
+      exists with the same size (unless OVRIDE is set).
+
+      Args:
+         tofile (str): Destination object key.
+         fromfile (str): Source object key.
+         tobucket (str | None): Destination bucket; defaults to PGLOG['OBJCTBKT'].
+         frombucket (str | None): Source bucket; defaults to tobucket.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       ret = self.FAILURE
       if not tobucket: tobucket = self.PGLOG['OBJCTBKT']
       if not frombucket: frombucket = tobucket
@@ -804,6 +1242,18 @@ class PgFile(PgUtil, PgSIG):
    #   tobucket - target bucket name
    # frombucket - original bucket name
    def move_object_path(self, topath, frompath, tobucket, frombucket, logact = 0):
+      """Move all object-store keys under a path prefix to a new prefix.
+
+      Args:
+         topath (str): Destination path prefix.
+         frompath (str): Source path prefix.
+         tobucket (str | None): Destination bucket; defaults to PGLOG['OBJCTBKT'].
+         frombucket (str | None): Source bucket; defaults to tobucket.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       ret = self.FAILURE
       if not tobucket: tobucket = self.PGLOG['OBJCTBKT']
       if not frombucket: frombucket = tobucket
@@ -830,6 +1280,20 @@ class PgFile(PgUtil, PgSIG):
    # fromfile - source file name
    # endpoint - Globus endpoint
    def move_backup_file(self, tofile, fromfile, endpoint = None, logact = 0):
+      """Rename a file on the Quasar backup endpoint via dsglobus.
+
+      Creates the target parent directory if the rename fails with 'No such file
+      or directory'. Resets ECNTS['B'] on success.
+
+      Args:
+         tofile (str): New path on the backup endpoint.
+         fromfile (str): Current path on the backup endpoint.
+         endpoint (str | None): Globus endpoint; defaults to PGLOG['BACKUPEP'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       ret = self.FAILURE
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
       finfo = self.check_backup_file(fromfile, endpoint, 0, logact)
@@ -872,6 +1336,18 @@ class PgFile(PgUtil, PgSIG):
    # host - host name the directory on, default to self.LHOST
    # Return self.SUCCESS(1) if successful or self.FAILURE(0) if failed
    def make_gdex_directory(self, dir, host, logact = 0):
+      """Create a directory on any supported host.
+
+      Dispatches to make_local_directory() or make_remote_directory().
+
+      Args:
+         dir (str): Directory path to create.
+         host (str): Target host name.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       if not dir: return self.SUCCESS
       shost = self.strip_host_name(host)
       if self.pgcmp(shost, self.LHOST, 1) == 0:
@@ -883,10 +1359,32 @@ class PgFile(PgUtil, PgSIG):
    # Make a local directory
    # dir - directory path to be made
    def make_local_directory(self, dir, logact = 0):
+      """Create a local directory, including all parent directories.
+
+      Args:
+         dir (str): Local directory path to create.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       return self.make_one_local_directory(dir, None, logact)
 
    # Make a local directory recursively
    def make_one_local_directory(self, dir, odir = None, logact = 0):
+      """Recursively create a single local directory.
+
+      Returns immediately when dir already exists or is '/'. Refuses to create
+      within restricted root paths. Resets permissions and retries once on failure.
+
+      Args:
+         dir (str): Directory to create.
+         odir (str | None): Original requested directory (for error messages).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       if not dir or op.isdir(dir): return self.SUCCESS
       if op.isfile(dir): return self.errlog(dir + ": is file, cannot make directory", 'L', 1, logact)
       if not odir: odir = dir
@@ -910,9 +1408,33 @@ class PgFile(PgUtil, PgSIG):
    #  dir - directory path to be made
    # host - host name the directory on
    def make_remote_directory(self, dir, host, logact = 0):
+      """Create a directory on a remote host.
+
+      Args:
+         dir (str): Remote directory path to create.
+         host (str): Remote hostname.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       return self.make_one_remote_directory(dir, None, host, logact)
    
    def make_one_remote_directory(self, dir, odir, host, logact = 0):
+      """Recursively create a single directory on a remote host via the sync command.
+
+      Returns immediately when the directory already exists. Refuses to create within
+      restricted root paths.
+
+      Args:
+         dir (str): Remote directory to create.
+         odir (str | None): Original requested directory (for error messages).
+         host (str): Remote hostname.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       info = self.check_remote_file(dir, host, 0, logact)
       if info:
          if info['isfile']: return self.errlog("{}-{}: is file, cannot make directory".format(host, dir), 'R', 1, logact)
@@ -931,10 +1453,35 @@ class PgFile(PgUtil, PgSIG):
    # Make a quasar directory
    # dir - directory path to be made
    def make_backup_directory(self, dir, endpoint, logact = 0):
+      """Create a directory on the Quasar backup endpoint via dsglobus.
+
+      Args:
+         dir (str): Directory path on the backup endpoint.
+         endpoint (str): Globus endpoint name.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       return self.make_one_backup_directory(dir, None, endpoint, logact)
 
    # Make a quasar directory recursively
    def make_one_backup_directory(self, dir, odir, endpoint = None, logact = 0):
+      """Recursively create a single directory on a Quasar backup endpoint.
+
+      Returns immediately for '/' or when the directory already exists. Retries
+      recursively when 'No such file or directory' is reported. Resets ECNTS['B']
+      on success.
+
+      Args:
+         dir (str): Directory path to create.
+         odir (str | None): Original requested directory (for error messages).
+         endpoint (str | None): Globus endpoint; defaults to PGLOG['BACKUPEP'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       if not dir or dir == '/': return self.SUCCESS
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
       info = self.check_backup_file(dir, endpoint, 0, logact)
@@ -947,6 +1494,7 @@ class PgFile(PgUtil, PgSIG):
       if not self.make_one_backup_directory(op.dirname(dir), odir, endpoint, logact): return self.FAILURE
       bcmd = self.BACKCMD
       cmd = f"{bcmd} mkdir -ep {endpoint} -p {dir}"
+      ret = self.FAILURE
       for loop in range(2):
          buf = self.pgsystem(cmd, logact, self.CMDRET)
          syserr = self.PGLOG['SYSERR']
@@ -970,6 +1518,22 @@ class PgFile(PgUtil, PgSIG):
 
    # check and return 1 if a root directory
    def is_root_directory(self, dir, etype, host = None, action = None, logact = 0):
+      """Return 1 if dir is a root/protected directory that must not be deleted.
+
+      Checks against GPFSROOTS, HOMEROOTS, and a depth limit based on how many
+      leading components dir contains. Logs an error with host-status context when
+      action is provided.
+
+      Args:
+         dir (str): Directory path to check.
+         etype (str): Error type key for errlog().
+         host (str | None): Associated host for host_down_status().
+         action (str | None): Action description for the error message.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: 1 if dir is a root/protected path, 0 otherwise.
+      """
       ret = cnt = 0
       if re.match(r'^{}'.format(self.PGLOG['DSSDATA']), dir):
          ms = re.match(r'^({})(.*)$'.format(self.PGLOG['GPFSROOTS']), dir)
@@ -997,6 +1561,22 @@ class PgFile(PgUtil, PgSIG):
 
    # set mode for a given direcory/file on a given host (include local host)
    def set_gdex_mode(self, file, isfile, host, nmode = None, omode = None, logname = None, logact = 0):
+      """Set the permission mode of a file/directory on any supported host.
+
+      Dispatches to set_local_mode() or set_remote_mode().
+
+      Args:
+         file (str): File or directory path.
+         isfile (int): 1 for regular file, 0 for directory.
+         host (str): Target host.
+         nmode (int | None): New octal mode; defaults to FILEMODE or EXECMODE.
+         omode (int | None): Current mode (skip re-fetch when provided).
+         logname (str | None): Current owner login (used for local mode change).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       shost = self.strip_host_name(host)
       if self.pgcmp(shost, self.LHOST, 1) == 0:
          return self.set_local_mode(file, isfile, nmode, omode, logname, logact)
@@ -1006,6 +1586,23 @@ class PgFile(PgUtil, PgSIG):
 
    # set mode for given local directory or file
    def set_local_mode(self, file, isfile = 1, nmode = 0, omode = 0, logname = None, logact = 0):
+      """Set the permission mode of a local file or directory.
+
+      No-op when nmode already equals omode. Fetches the current mode from
+      check_local_file() when omode/logname are not provided.
+
+      Args:
+         file (str): Local file or directory path.
+         isfile (int): 1 for regular file, 0 for directory.
+         nmode (int): New octal mode; 0 → FILEMODE or EXECMODE.
+         omode (int): Current mode; 0 triggers a fresh stat call.
+         logname (str | None): Current owner login (informational, used to detect
+                               whether a stat call is needed).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
       if not nmode: nmode = (self.PGLOG['FILEMODE'] if isfile else self.PGLOG['EXECMODE'])
       if not (omode and logname):
          info = self.check_local_file(file, 6)
@@ -1023,6 +1620,21 @@ class PgFile(PgUtil, PgSIG):
 
    # set mode for given directory or file on remote host
    def set_remote_mode(self, file, isfile, host, nmode = 0, omode = 0, logact = 0):
+      """Set the permission mode of a file or directory on a remote host.
+
+      No-op when nmode already equals omode.
+
+      Args:
+         file (str): Remote file or directory path.
+         isfile (int): 1 for regular file, 0 for directory.
+         host (str): Remote hostname.
+         nmode (int): New octal mode; 0 → FILEMODE or EXECMODE.
+         omode (int): Current mode; 0 triggers a remote stat call.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: Result of pgsystem() call (truthy on success).
+      """
       if not nmode: nmode = (self.PGLOG['FILEMODE'] if isfile else self.PGLOG['EXECMODE'])
       if not omode:
          info = self.check_remote_file(file, host, 6)
@@ -1035,6 +1647,21 @@ class PgFile(PgUtil, PgSIG):
 
    # change group for given local directory or file
    def change_local_group(self, file, ngrp = None, ogrp = None, logname = None, logact = 0):
+      """Change the group ownership of a local file or directory.
+
+      No-op when the file already belongs to the target group. Fetches current
+      ownership from check_local_file() when ogrp/logname are not provided.
+
+      Args:
+         file (str): Local file or directory path.
+         ngrp (str | None): New group name; None uses PGLOG['GDEXGID'] directly.
+         ogrp (str | None): Current group name (skip re-fetch when provided with logname).
+         logname (str | None): Current owner login name.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int | None: self.SUCCESS on success, self.FAILURE on error, None if already correct.
+      """
       if not ngrp:
          ngid = self.PGLOG['GDEXGID']
       else:
@@ -1059,15 +1686,30 @@ class PgFile(PgUtil, PgSIG):
    # Check if given path on a specified host or the host itself are down
    #   path: path name to be checked
    #   host: host name the file on, default to self.LHOST
-   # chkopt: 1 - do a file/path check, 0 - do not 
+   # chkopt: 1 - do a file/path check, 0 - do not
    # Return array of 2 (hstat, msg)
    #         hstat: 0 if system is up and accessible,
    #                1 - host is down,
    #                2 - if path not accessible
    #                negative values if planned system down
    #           msg: None - stat == 0
-   #                an unempty string for system down message - stat != 0 
+   #                an unempty string for system down message - stat != 0
    def host_down_status(self, path, host, chkopt = 0, logact = 0):
+      """Diagnose whether a storage host or path is currently inaccessible.
+
+      Checks the local filesystem, GPFS, object store, backup endpoints, and remote
+      hosts. Calls system_down_message() to detect planned outages.
+
+      Args:
+         path (str): Path to check; empty string skips path-level checks.
+         host (str): Host to check.
+         chkopt (int): 1 to perform an actual file/path existence check.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         tuple: (hstat, msg) where hstat is 0 (up), 1 (host down), 2 (path inaccessible),
+                or a negative value for a planned outage; msg is None when hstat == 0.
+      """
       shost = self.strip_host_name(host)
       hstat = 0
       rets = [0, None]
@@ -1156,6 +1798,16 @@ class PgFile(PgUtil, PgSIG):
    # host: host name the file on, default to self.LHOST
    # Return errmsg if not accessible and None otherwise
    def check_host_down(self, path, host, logact = 0):
+      """Return an error message if a path on a host is inaccessible, else None.
+
+      Args:
+         path (str): Path to check.
+         host (str): Host name.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         str | None: Error message string if down, None if accessible.
+      """
       (hstat, msg) = self.host_down_status(path, host, 1, logact)
       return msg if hstat else None
 
@@ -1165,6 +1817,19 @@ class PgFile(PgUtil, PgSIG):
    #  reset the service flag to A or I accordingly
    # Return 0 if accessible, dsservice.sindex if not, and -1 if can not be checked
    def check_service_accessibilty(self, sname, fhost = None, logact = 0):
+      """Check whether a named service is accessible from a specified host.
+
+      Looks up the service in dsservice table and calls host_down_status() for
+      the associated path/flag.
+
+      Args:
+         sname (str): Service name to check.
+         fhost (str | None): Host from which to check; defaults to PGLOG['HOSTNAME'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int | str | None: 0 if accessible, error message if not, -1 if undefined.
+      """
       if not fhost: fhost = self.PGLOG['HOSTNAME']
       pgrec = self.pgget("dsservice", "*", "service = '{}' AND hostname = '{}'".format(sname, fhost), logact)
       if not pgrec:
@@ -1176,12 +1841,36 @@ class PgFile(PgUtil, PgSIG):
 
    # check if this host is a local host for given host name
    def is_local_host(self, host):
+      """Return 1 if host resolves to the local host, 0 otherwise.
+
+      Considers batch nodes as local via valid_batch_host().
+
+      Args:
+         host (str): Host name to test.
+
+      Returns:
+         int: 1 if local, 0 if remote.
+      """
       host = self.strip_host_name(host)
       if host == self.LHOST or self.valid_batch_host(host): return 1
       return 0
 
    # check and return action string on a node other than local one
    def local_host_action(self, host, action, info, logact = 0):
+      """Log a 'cannot perform action on non-local host' message and return a status.
+
+      Returns 1 silently when host is local. Returns 0 when logact is 0 (no log).
+      Otherwise logs a message directing the user to the correct node/interface.
+
+      Args:
+         host (str): Target host name.
+         action (str): Action description for the error message.
+         info (str): Subject of the action (file, dataset, etc.).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int | None: 1 if local, 0 if no logact, else result of pglog().
+      """
       if self.is_local_host(host): return 1
       if not logact: return 0
       if host == "partition":
@@ -1197,6 +1886,17 @@ class PgFile(PgUtil, PgSIG):
    # ping a given remote host name
    # return None if system is up error messge if not
    def ping_remote_host(self, host):
+      """Ping a remote host and return None if reachable, an error string if not.
+
+      Appends '.ucar.edu' and retries when 'unknown host' is reported.
+      Sends 3 ICMP packets and considers the host up if at least 1 is received.
+
+      Args:
+         host (str): Hostname or IP to ping.
+
+      Returns:
+         str | None: None if reachable, error message string if unreachable.
+      """
       while True:
          buf = self.pgsystem("ping -c 3 " + host, self.LOGWRN, self.CMDRET)
          if buf:
@@ -1215,13 +1915,35 @@ class PgFile(PgUtil, PgSIG):
             return "Cannot ping " + host
 
    # compare given two host names, return 1 if same and 0 otherwise
-   def same_hosts(self, host1, host2):   
+   def same_hosts(self, host1, host2):
+      """Return 1 if two host names resolve to the same host, 0 otherwise.
+
+      Comparison is case-insensitive after stripping domain components.
+
+      Args:
+         host1 (str): First hostname.
+         host2 (str): Second hostname.
+
+      Returns:
+         int: 1 if the same host, 0 otherwise.
+      """
       host1 = self.strip_host_name(host1)
       host2 = self.strip_host_name(host2)
       return (1 if self.pgcmp(host1, host2, 1) == 0 else 0)
 
    #  strip and identify the proper host name
    def strip_host_name(self, host):
+      """Return the short hostname component, mapped to LHOST when it matches self.
+
+      Strips any domain suffix (everything after the first dot). Maps the current
+      machine's hostname to 'localhost' and returns LHOST for empty/None input.
+
+      Args:
+         host (str | None): Hostname to normalise.
+
+      Returns:
+         str: Short hostname, or self.LHOST for local/empty input.
+      """
       if not host: return self.LHOST
       ms = re.match(r'^([^\.]+)\.', host)
       if ms: host = ms.group(1)
@@ -1242,6 +1964,20 @@ class PgFile(PgUtil, PgSIG):
    #      32 - get checksum (checksum), work for local file only
    # Return a dict of file info, or None if file not exists
    def check_gdex_file(self, file, host = None, opt = 0, logact = 0):
+      """Return file status info for a file on any supported storage host.
+
+      Dispatches to check_local_file(), check_object_file(), check_backup_file(),
+      or check_remote_file() based on the host name.
+
+      Args:
+         file (str): File path.
+         host (str | None): Storage host; defaults to LHOST.
+         opt (int): Bitmask of info to retrieve (see check_local_file for values).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | None | int: File info dict, None if not found, self.FAILURE on error.
+      """
       if host is None: host = self.LHOST
       shost = self.strip_host_name(host)
       if self.pgcmp(shost, self.LHOST, 1) == 0:
@@ -1259,6 +1995,21 @@ class PgFile(PgUtil, PgSIG):
    # wrapper to self.check_local_file() and self.check_globus_file() to check info for a file
    # on local or remote Globus endpoints
    def check_globus_file(self, file, endpoint = None, opt = 0, logact = 0):
+      """Return file info for a file on a local or remote Globus endpoint.
+
+      Converts GLADE-relative paths (starting with '/data/' or '/decsdata/') to
+      absolute paths before calling check_local_file() for 'gdex-glade'. Delegates
+      to check_backup_file() for all other endpoints.
+
+      Args:
+         file (str): File path relative to the endpoint.
+         endpoint (str | None): Globus endpoint name; defaults to PGLOG['BACKUPEP'].
+         opt (int): Info bitmask.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | None | int: File info dict, None if not found, self.FAILURE on error.
+      """
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
       if endpoint == 'gdex-glade':
          if re.match(r'^/(data|decsdata)/', file): file = self.PGLOG['DSSDATA'] + file
@@ -1279,6 +2030,22 @@ class PgFile(PgUtil, PgSIG):
    #     128 - check twice for missing file
    # Return: a dict of file info, or None if not exists
    def check_local_file(self, file, opt = 0, logact = 0):
+      """Return status info for a local file or directory.
+
+      Retries after a short sleep when opt includes bit 128 (double-check).
+      Resets ECNTS['L'] on success.
+
+      Args:
+         file (str): Local file or directory path.
+         opt (int): Bitmask of info to retrieve:
+                    0=size only, 1=mtime, 2=owner, 4=mode, 8=group,
+                    16=weekday, 32=checksum, 64=delete if too small,
+                    128=retry once for missing file.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | None | int: File info dict, None if not found, self.FAILURE on error.
+      """
       ret = None
       if not file: return ret
       loop = 0
@@ -1304,6 +2071,20 @@ class PgFile(PgUtil, PgSIG):
 
    # local function to get local file stat
    def local_file_stat(self, file, fstat, opt, logact):
+      """Build a file-info dict from an os.stat result for a local file.
+
+      Handles regular files and directories. Optionally deletes files that are too
+      small (opt bit 64). Populates info fields according to the opt bitmask.
+
+      Args:
+         file (str): File path (used for deletion and MD5 calculation).
+         fstat (os.stat_result): Result of os.stat(file).
+         opt (int): Info bitmask (same as check_local_file).
+         logact (int): Logging action flags.
+
+      Returns:
+         dict | None: File info dict, or None if the file is too small/invalid.
+      """
       if not fstat:
          self.errlog(file + ": Error check file stat", 'L', 1, logact)
          return None
@@ -1341,6 +2122,14 @@ class PgFile(PgUtil, PgSIG):
    # get total size of files under a given path
    @staticmethod
    def local_path_size(pname):
+      """Return the total byte size of all files under a directory path.
+
+      Args:
+         pname (str | None): Directory path; defaults to '.' when falsy.
+
+      Returns:
+         int: Total size in bytes of all regular files found recursively.
+      """
       if not pname: pname = '.'   # To get size of current directory
       size = 0
       for path, dirs, files in os.walk(pname):
@@ -1356,8 +2145,22 @@ class PgFile(PgUtil, PgSIG):
    #       4 - get permission mode in 3 octal digits (mode)
    #       8 - get group name (group), assumed 'dss'
    #      16 - get week day 0-Sunday, 1-Monday (week_day)
-   # Return: a dict of file info, or None if not exists 
+   # Return: a dict of file info, or None if not exists
    def check_remote_file(self, file, host, opt = 0, logact = 0):
+      """Return file status info for a file on a remote host via the sync command.
+
+      Strips a trailing '/' from the file path. Retries once on transient errors.
+      Resets ECNTS['R'] on success.
+
+      Args:
+         file (str): Remote file path.
+         host (str): Remote hostname.
+         opt (int): Info bitmask (0=size, 1=mtime, 2=owner, 4=mode, 8=group, 16=weekday).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | None | int: File info dict, None if not found, self.FAILURE on error.
+      """
       if not file: return None
       ms = re.match(r'^(.+)/$', file)
       if ms: file = ms.group(1)    # remove ending '/' in case
@@ -1381,6 +2184,15 @@ class PgFile(PgUtil, PgSIG):
 
    # local function to get remote file stat
    def remote_file_stat(self, line, opt):
+      """Parse one line of sync-command directory output into a file-info dict.
+
+      Args:
+         line (str): One output line from the remote sync/ls command.
+         opt (int): Info bitmask.
+
+      Returns:
+         dict | None: File info dict, or None if the line cannot be parsed.
+      """
       info = {}
       items = re.split(r'\s+', line)
       if len(items) < 5 or items[4] == '.': return None
@@ -1416,6 +2228,21 @@ class PgFile(PgUtil, PgSIG):
    #      64 - check once, no rechecking
    # Return a dict of file info, or None if file not exists
    def check_object_file(self, file, bucket = None, opt = 0, logact = 0):
+      """Return status info for an object-store file key.
+
+      Strips trailing '/'. Uses opt bit 64 to skip the retry. Fetches metadata
+      (uhash) when opt includes bits 2, 4, or 8. Resets ECNTS['O'] on success.
+
+      Args:
+         file (str): Object key to check.
+         bucket (str | None): Bucket name; defaults to PGLOG['OBJCTBKT'].
+         opt (int): Bitmask — 0=size, 1=mtime, 2=owner, 4=meta, 8=group,
+                    16=weekday, 32=checksum, 64=no-retry.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | None | int: File info dict, None if not found, self.FAILURE on error.
+      """
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       ret = None
       if not file: return ret
@@ -1463,6 +2290,16 @@ class PgFile(PgUtil, PgSIG):
    # path: object store path name
    # Return count of object key names, 0 if not file exists; None if error checking
    def check_object_path(self, path, bucket = None, logact = 0):
+      """Return the count of object keys matching a path prefix.
+
+      Args:
+         path (str): Object key prefix to query.
+         bucket (str | None): Bucket name; defaults to PGLOG['OBJCTBKT'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int | None: Count of matching keys (0 if none), or None on error.
+      """
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       ret = None
       if not path: return ret
@@ -1484,6 +2321,16 @@ class PgFile(PgUtil, PgSIG):
 
    # object store function to get file stat
    def object_file_stat(self, hash, uhash, opt):
+      """Build a file-info dict from object-store list and metadata JSON.
+
+      Args:
+         hash (dict): One entry from the isd_s3_cli 'lo' JSON output.
+         uhash (dict | None): Metadata from isd_s3_cli 'gm' JSON output.
+         opt (int): Info bitmask (same as check_object_file).
+
+      Returns:
+         dict | None: File info dict, or None if hash is invalid.
+      """
       info = {'isfile': 1, 'data_size': int(hash['Size']), 'fname': op.basename(hash['Key'])}
       if not opt: return info   
       if opt&17:
@@ -1515,6 +2362,21 @@ class PgFile(PgUtil, PgSIG):
    #      64 - rechecking
    # Return a dict of file info, or None if file not exists
    def check_backup_file(self, file, endpoint = None, opt = 0, logact = 0):
+      """Return status info for a file on a Quasar backup endpoint.
+
+      Uses opt bit 64 to enable re-checking after a short sleep. Resets ECNTS['B']
+      on success.
+
+      Args:
+         file (str): File path on the backup endpoint.
+         endpoint (str | None): Globus endpoint name; defaults to PGLOG['BACKUPEP'].
+         opt (int): Bitmask — 0=size, 1=mtime, 2=owner, 4=mode, 8=group,
+                    16=weekday, 64=recheck.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | None | int: File info dict, None if not found, self.FAILURE on error.
+      """
       ret = None
       if not file: return ret
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
@@ -1557,6 +2419,15 @@ class PgFile(PgUtil, PgSIG):
 
    # backup store function to get file stat
    def backup_file_stat(self, line, opt):
+      """Parse one line of dsglobus ls output into a file-info dict.
+
+      Args:
+         line (str): One output line from dsglobus ls.
+         opt (int): Info bitmask.
+
+      Returns:
+         dict | None: File info dict, or None if the line cannot be parsed.
+      """
       info = {}
       items = re.split(r'[\s\|]+', line)
       if len(items) < 8: return None
@@ -1590,6 +2461,17 @@ class PgFile(PgUtil, PgSIG):
    #      16 - get week day 0-Sunday, 1-Monday (week_day)
    # Return a dict of file info, or None if file not exists
    def check_tar_file(self, file, tfile, opt = 0, logact = 0):
+      """Return status info for a member file inside a tar archive.
+
+      Args:
+         file (str): Member file name to search for.
+         tfile (str): Path to the tar archive.
+         opt (int): Info bitmask (0=size, 1=mtime, 2=owner, 4=mode, 8=group, 16=weekday).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | None | int: File info dict, None if not in archive, self.FAILURE on error.
+      """
       ret = None 
       if not (file and tfile): return ret
       for loop in range(2):
@@ -1608,6 +2490,15 @@ class PgFile(PgUtil, PgSIG):
 
    # local function to get file stat in a tar file
    def tar_file_stat(self, line, opt):
+      """Parse one line of ``tar -tvf`` output into a file-info dict.
+
+      Args:
+         line (str): One output line from tar listing.
+         opt (int): Info bitmask.
+
+      Returns:
+         dict | None: File info dict, or None if the line cannot be parsed.
+      """
       items = re.split(r'\s+', line)
       if len(items) < 6: return None
       ms = re.match(r'^([d\-])([\w\-]{9})$', items[0])
@@ -1645,6 +2536,20 @@ class PgFile(PgUtil, PgSIG):
    #      16 - get week day 0-Sunday, 1-Monday (week_day)
    # Return a dict of file info, or None if file not exists
    def check_ftp_file(self, file, opt = 0, name = None, pswd = None, logact = 0):
+      """Return status info for a file on an FTP server via ncftpls.
+
+      Retries with the parent directory listing if the direct file listing fails.
+
+      Args:
+         file (str): FTP file path to check.
+         opt (int): Info bitmask (0=size, 1=mtime, 2=owner, 4=mode, 8=group, 16=weekday).
+         name (str | None): FTP login name.
+         pswd (str | None): FTP password.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | None | int: File info dict, None if not found, self.FAILURE on error.
+      """
       if not file: return None
       ms = re.match(r'^(.+)/$', file)
       if ms: file = ms.group(1)     # remove ending '/' in case
@@ -1667,6 +2572,17 @@ class PgFile(PgUtil, PgSIG):
 
    # local function to get stat of a file on ftp server
    def ftp_file_stat(self, line, opt):
+      """Parse one line of ncftpls -l output into a file-info dict.
+
+      Handles both year-based and time-based ls date formats.
+
+      Args:
+         line (str): One output line from ncftpls -l.
+         opt (int): Info bitmask.
+
+      Returns:
+         dict | None: File info dict, or None if the line cannot be parsed.
+      """
       items = re.split(r'\s+', line)
       if len(items) < 9: return None
       ms = re.match(r'^([d\-])([\w\-]{9})$', items[0])
@@ -1711,6 +2627,19 @@ class PgFile(PgUtil, PgSIG):
    #       32 - get checksum (checksum), work for local file only
    # Return: a dict with filenames as keys None if empty directory
    def gdex_glob(self, dir, host, opt = 0, logact = 0):
+      """List files/directories on any supported storage host.
+
+      Dispatches to local_glob(), object_glob(), backup_glob(), or remote_glob().
+
+      Args:
+         dir (str): Directory or path prefix to list.
+         host (str): Storage host name.
+         opt (int): Info bitmask for each entry's file-info dict.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict: Mapping of file path → file-info dict (empty when directory is empty).
+      """
       shost = self.strip_host_name(host)
       if self.pgcmp(shost, self.LHOST, 1) == 0:
          return self.local_glob(dir, opt, logact)
@@ -1734,6 +2663,20 @@ class PgFile(PgUtil, PgSIG):
    #     256 - get files only and ignore directories
    # Return: dict with filenames as keys or None if empty directory
    def local_glob(self, dir, opt = 0, logact = 0):
+      """List files/directories under a local directory path using glob patterns.
+
+      Appends '/*' when dir has no glob characters and exists as a directory.
+      Appends '*' when dir does not exist (allows prefix-style patterns).
+      Bit 256 in opt filters out directories.
+
+      Args:
+         dir (str): Local directory path or glob pattern.
+         opt (int): Info bitmask; bit 256 = files only.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict: Mapping of file path → file-info dict.
+      """
       flist = {}
       if not re.search(r'[*?]', dir):
          if op.exists(dir):
@@ -1756,6 +2699,17 @@ class PgFile(PgUtil, PgSIG):
    #      16 - get week day 0-Sunday, 1-Monday (week_day)
    # Return: dict with filenames as keys or None if empty directory
    def remote_glob(self, dir, host, opt = 0, logact = 0):
+      """List files/directories in a remote directory via the sync command.
+
+      Args:
+         dir (str): Remote directory path.
+         host (str): Remote hostname.
+         opt (int): Info bitmask.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict: Mapping of file path → file-info dict (empty on error).
+      """
       flist = {}
       if not re.search(r'/$', dir): dir += '/'
       buf = self.pgsystem(self.get_sync_command(host) + " dir", self.LOGWRN, self.CMDRET)
@@ -1777,6 +2731,17 @@ class PgFile(PgUtil, PgSIG):
    #      16 - get week day 0-Sunday, 1-Monday (week_day)
    # Return: a dict with filenames as keys, or None if not exists
    def object_glob(self, dir, bucket = None, opt = 0, logact = 0):
+      """List object-store files matching a key prefix.
+
+      Args:
+         dir (str): Object key prefix to list (trailing '/' stripped).
+         bucket (str | None): Bucket name; defaults to PGLOG['OBJCTBKT'].
+         opt (int): Info bitmask (bits 2 and 8 trigger metadata fetch).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | int: Mapping of key → file-info dict, or self.FAILURE on error.
+      """
       flist = {}
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       ms = re.match(r'^(.+)/$', dir)
@@ -1818,6 +2783,21 @@ class PgFile(PgUtil, PgSIG):
    #      64 - rechecking
    # Return: a dict with filenames as keys, or None if not exists
    def backup_glob(self, dir, endpoint = None, opt = 0, logact = 0):
+      """List files/directories on a Quasar backup endpoint.
+
+      Bit 64 in opt enables re-checking after a sleep when the directory is not
+      found or empty.
+
+      Args:
+         dir (str): Directory path on the backup endpoint.
+         endpoint (str | None): Globus endpoint; defaults to PGLOG['BACKUPEP'].
+         opt (int): Info bitmask; bit 64 = recheck.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | int | None: Mapping of fname → file-info dict, self.FAILURE on error,
+                            or None when directory does not exist.
+      """
       if not dir: return None
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
       bcmd = self.BACKCMD
@@ -1856,6 +2836,14 @@ class PgFile(PgUtil, PgSIG):
    # local function to get file/directory mode for given permission string, for example, rw-rw-r--
    @staticmethod
    def get_file_mode(perm):
+      """Convert a 9 or 10-character permission string to an octal mode integer.
+
+      Args:
+         perm (str): Permission string like 'rwxr-xr--' (9 chars) or 'drwxr-xr--' (10 chars).
+
+      Returns:
+         int: Octal mode value (e.g. 0o755).
+      """
       mbits = [4, 2, 1]
       mults = [64, 8, 1]
       plen = len(perm)
@@ -1871,9 +2859,21 @@ class PgFile(PgUtil, PgSIG):
 
    # Evaluate md5 checksum
    #  file: file name for MD5 checksum
-   # count: defined if filename is a array 
+   # count: defined if filename is a array
    # Return: one or a array of 128-bits md5 'fingerprint' None if failed
    def get_md5sum(self, file, count = 0, logact = 0):
+      """Compute MD5 checksum(s) for one or more local files.
+
+      Args:
+         file (str | list): A single file path, or a list of file paths when count > 0.
+         count (int): Number of files in the list; 0 = single file mode.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         str | list | None: Hex MD5 string for a single file, a list of hex strings
+                            (with None for missing files) for multiple files, or None
+                            on failure.
+      """
       cmd = 'md5sum '
       if count > 0:
          checksum = [None]*count
@@ -1896,6 +2896,18 @@ class PgFile(PgUtil, PgSIG):
    #  file1, file2: file names
    # Return: 0 if same and 1 if not
    def compare_md5sum(self, file1, file2, logact = 0):
+      """Compare MD5 checksums of two files or directories.
+
+      For directories, lists files in each and compares the concatenated checksums.
+
+      Args:
+         file1 (str): First file or directory path.
+         file2 (str): Second file or directory path.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: 0 if checksums match, 1 if they differ.
+      """
       if op.isdir(file1) or op.isdir(file2):
          files1 = self.get_directory_files(file1)
          fcnt1 = len(files1) if files1 else 0
@@ -1904,7 +2916,7 @@ class PgFile(PgUtil, PgSIG):
          if fcnt1 != fcnt2: return 1
          chksm1 = self.get_md5sum(files1, fcnt1, logact)
          chksm1 = ''.join(chksm1)
-         chksm2 = self.get_md5sum(files1, fcnt2, logact)
+         chksm2 = self.get_md5sum(files2, fcnt2, logact)
          chksm2 = ''.join(chksm2)
       else:
          chksm1 = self.get_md5sum(file1, 0, logact)
@@ -1913,6 +2925,17 @@ class PgFile(PgUtil, PgSIG):
 
    #  change local directory to todir, and return odir upon success
    def change_local_directory(self, todir, logact = 0):
+      """Change the current working directory, creating it if necessary.
+
+      Updates PGLOG['CURDIR'] on success. Returns the previous directory.
+
+      Args:
+         todir (str): Target directory to change to.
+         logact (int): Logging action flags; defaults to LOGWRN when 0.
+
+      Returns:
+         str | int: Previous working directory on success, self.FAILURE on error.
+      """
       if logact:
          lact = logact&~(self.EXITLG|self.ERRLOG)
       else:
@@ -1937,16 +2960,33 @@ class PgFile(PgUtil, PgSIG):
    # record the directory for the deleted file
    # pass in empty dir to turn the recording delete directory on
    def record_delete_directory(self, dir, val):
+      """Record a directory for deferred empty-directory cleanup, or set the level count.
+
+      When dir is None and val is an integer (or numeric string), sets DIRLVLS.
+      Otherwise records dir → val (host) in DELDIRS for later cleanup.
+
+      Args:
+         dir (str | None): Directory path to record, or None to configure DIRLVLS.
+         val (int | str): Host name when dir is set; level count when dir is None.
+      """
       if dir is None:
          if isinstance(val, int):
             self.DIRLVLS = val
-         elif re.match(r'^\d+$'):
+         elif re.match(r'^\d+$', val):
             self.DIRLVLS = int(val)
       elif dir and not re.match(r'^(\.|\./|/)$', dir) and dir not in self.DELDIRS:
          self.DELDIRS[dir] = val
 
    # remove the recorded delete directory if it is empty
    def clean_delete_directory(self, logact = 0):
+      """Remove recorded empty directories up to DIRLVLS parent levels.
+
+      Iterates from leaf to parent, deleting directories that are confirmed empty
+      via gdex_empty_directory(). Clears DELDIRS after completion.
+
+      Args:
+         logact (int): Logging action flags; defaults to LOGWRN when 0.
+      """
       if not self.DIRLVLS: return
       if logact:
          lact = logact&~(self.EXITLG)
@@ -1975,6 +3015,16 @@ class PgFile(PgUtil, PgSIG):
    # remove the empty given directory and its all subdirectories
    # return 1 if empty dirctory removed 0 otherwise
    def clean_empty_directory(self, dir, host, logact = 0):
+      """Recursively remove empty subdirectories under a given directory.
+
+      Args:
+         dir (str): Root directory to clean.
+         host (str): Storage host name.
+         logact (int): Logging action flags; defaults to LOGWRN when 0.
+
+      Returns:
+         int: 1 if dir itself was removed (was empty), 0 otherwise.
+      """
       if not dir: return 0
       dirs = self.gdex_glob(dir, host)
       cnt = 0
@@ -2000,6 +3050,15 @@ class PgFile(PgUtil, PgSIG):
    # check if given directory is empty
    # Return: 0 if empty directory, 1 if not empty and -1 if invalid directory
    def gdex_empty_directory(self, dir, host):
+      """Check whether a directory on any supported host is empty.
+
+      Args:
+         dir (str): Directory path.
+         host (str): Storage host name.
+
+      Returns:
+         int: 0 if empty, 1 if not empty, 2 if a root/protected directory, -1 if invalid.
+      """
       shost = self.strip_host_name(host)
       if self.pgcmp(shost, self.LHOST, 1) == 0:
          return self.local_empty_directory(dir)
@@ -2009,6 +3068,14 @@ class PgFile(PgUtil, PgSIG):
 
    # return 0 if empty local directory, 1 if not; -1 if cannot remove
    def local_empty_directory(self, dir):
+      """Check whether a local directory is empty.
+
+      Args:
+         dir (str): Local directory path.
+
+      Returns:
+         int: 0 if empty, 1 if not empty, 2 if a root directory, -1 if not a directory.
+      """
       if not op.isdir(dir): return -1
       if self.is_root_directory(dir, 'L'): return 2
       if not re.search(r'/$', dir): dir += '/'
@@ -2017,6 +3084,15 @@ class PgFile(PgUtil, PgSIG):
 
    # return 0 if empty remote directory, 1 if not; -1 if cannot remove
    def remote_empty_directory(self, dir, host):
+      """Check whether a remote directory is empty via the sync command.
+
+      Args:
+         dir (str): Remote directory path.
+         host (str): Remote hostname.
+
+      Returns:
+         int: 0 if empty, 1 if not empty, 2 if a root directory, -1 on error.
+      """
       if self.is_root_directory(dir, 'R', host): return 2
       if not re.search(r'/$', dir): dir += '/'
       buf = self.pgsystem("{} {}".format(self.get_sync_command(host), dir), self.LOGWRN, self.CMDRET)
@@ -2030,6 +3106,16 @@ class PgFile(PgUtil, PgSIG):
    # host: host name the file on, default to self.LHOST
    # return: array of file sizes size is -1 if file does not exist
    def gdex_file_sizes(self, files, host, logact = 0):
+      """Return the sizes of multiple files on any supported storage host.
+
+      Args:
+         files (list[str]): File paths to measure.
+         host (str): Storage host name.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         list[int]: Size in bytes per file; -1 if not found, -2 on error.
+      """
       sizes = []
       for file in files: sizes.append(self.gdex_file_size(file, host, 2, logact))
       return sizes
@@ -2039,6 +3125,15 @@ class PgFile(PgUtil, PgSIG):
    # files: file names to get sizes
    # return: array of file sizes size is -1 if file does not exist
    def local_file_sizes(self, files, logact = 0):
+      """Return the sizes of multiple local files.
+
+      Args:
+         files (list[str]): Local file paths to measure.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         list[int]: Size in bytes per file; -1 if not found, -2 on error.
+      """
       sizes = []
       for file in files: sizes.append(self.local_file_size(file, 6, logact))
       return sizes
@@ -2054,6 +3149,18 @@ class PgFile(PgUtil, PgSIG):
    #        -1 - file not exists
    #        -2 - error check file
    def gdex_file_size(self, file, host, opt = 0, logact = 0):
+      """Return the size of a single file on any supported storage host.
+
+      Args:
+         file (str): File path.
+         host (str): Storage host name.
+         opt (int): Bitmask — 1=delete if too small, 2=log if too small,
+                    4=log if missing.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: Size in bytes; 0 if too small/empty; -1 if not found; -2 on error.
+      """
       info = self.check_gdex_file(file, host, 0, logact)
       if info:
          if info['isfile'] and info['data_size'] < self.PGLOG['MINSIZE']:
@@ -2081,6 +3188,17 @@ class PgFile(PgUtil, PgSIG):
    #        -1 - file not exists
    #        -2 - error check file
    def local_file_size(self, file, opt = 0, logact = 0):
+      """Return the size of a single local file.
+
+      Args:
+         file (str): Local file path.
+         opt (int): Bitmask — 1=delete if too small, 2=log if too small,
+                    4=log if missing.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: Size in bytes; 0 if too small/empty; -1 if not found; -2 on error.
+      """
       if not op.exists(file):
          if opt&4: self.lmsg(file, self.PGLOG['MISSFILE'], logact)
          return -1   # file not eixsts
@@ -2105,6 +3223,18 @@ class PgFile(PgUtil, PgSIG):
    #        3 - get compress file name
    # return: array of new file name and archive format if changed otherwise original one
    def compress_local_file(self, ifile, fmt = None, act = 0, logact = 0):
+      """Compress or uncompress a local file, or compute the resulting file name.
+
+      Args:
+         ifile (str): Input file name (may already have a compression extension).
+         fmt (str | None): Archive format hint (e.g. 'GZ', 'BZ2').
+         act (int): 0=uncompress, 1=compress, 2=get uncompressed name,
+                    3=get compressed name.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         tuple: (output_filename, updated_fmt) after the operation.
+      """
       ms = re.match(r'^(.+)\.({})'.format(self.CMPSTR), ifile)
       if ms:
          ofile = ms.group(1)
@@ -2124,6 +3254,16 @@ class PgFile(PgUtil, PgSIG):
 
    # get file archive format from a givn file name; None if not found
    def get_file_format(self, fname):
+      """Return the archive format label for a file based on its extension.
+
+      Checks tar formats first, then compression-only formats.
+
+      Args:
+         fname (str): File name to inspect.
+
+      Returns:
+         str | None: Format label (e.g. 'TAR.GZ', 'GZ'), or None if unrecognised.
+      """
       ms = re.search(r'\.({})$'.format(self.TARSTR), fname, re.I)
       if ms: return self.PGTARS[ms.group(1)][2]
       ms = re.search(r'\.({})$'.format(self.CMPSTR), fname, re.I)
@@ -2138,6 +3278,18 @@ class PgFile(PgUtil, PgSIG):
    #        1 - tar
    # return: self.SUCCESS upon successful self.FAILURE otherwise
    def tar_local_file(self, tfile, files, fmt, act, logact = 0):
+      """Create or extract a tar/tar.gz/tgz/zip archive.
+
+      Args:
+         tfile (str): Archive file path.
+         files (list[str] | None): Member files (required for act=1; optional for act=0).
+         fmt (str | None): Archive format key; auto-detected from tfile extension when None.
+         act (int): 0=extract, 1=create.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: Result of pgsystem() call (truthy on success), or self.FAILURE on bad args.
+      """
       if not fmt:
          ms = re.search(r'\.({})$'.format(self.TARSTR), tfile, re.I)
          if ms: fmt = ms.group(1)
@@ -2155,7 +3307,15 @@ class PgFile(PgUtil, PgSIG):
 
    # get local file archive format by checking extension of given local file name
    # file: local file name
-   def local_archive_format(self,file):
+   def local_archive_format(self, file):
+      """Return the archive format string for a local file based on its extension.
+
+      Args:
+         file (str): Local file name.
+
+      Returns:
+         str: Format string like 'TAR.GZ', 'GZ', 'TAR', or '' if unrecognised.
+      """
       ms = re.search(r'\.({})$'.format(self.CMPSTR), file)
       if ms:
          fmt = ms.group(1)
@@ -2169,13 +3329,35 @@ class PgFile(PgUtil, PgSIG):
 
    # local function to show message with full local file path
    def lmsg(self, file, msg, logact = 0):
+      """Log an error with the full absolute path of a local file.
+
+      Converts relative paths to absolute using the current working directory.
+
+      Args:
+         file (str): Local file path (relative or absolute).
+         msg (str): Error message to append.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: Always self.FAILURE.
+      """
       if not op.isabs(file): file = self.join_paths(os.getcwd(), file)
       return self.errlog("{}: {}".format(file, msg), 'L', 1, logact)
 
    # check if given path is executable locally
    # return self.SUCCESS if yes self.FAILURE if not
    def check_local_executable(self, path, actstr = '', logact = 0):
-      if os.access(path, os.W_OK): return self.SUCCESS
+      """Check whether a local path is executable by the current process.
+
+      Args:
+         path (str): Local path to test.
+         actstr (str): Optional action prefix for the error message.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS if executable, self.FAILURE otherwise.
+      """
+      if os.access(path, os.X_OK): return self.SUCCESS
       if self.check_local_accessible(path, actstr, logact):
          if actstr: actstr += '-'
          self.errlog("{}{}: Accessible, but Unexecutable on'{}'".format(actstr, path, self.PGLOG['HOSTNAME']), 'L', 1, logact)
@@ -2184,6 +3366,16 @@ class PgFile(PgUtil, PgSIG):
    # check if given path is writable locally
    # return self.SUCCESS if yes self.FAILURE if not
    def check_local_writable(self, path, actstr = '', logact = 0):
+      """Check whether a local path is writable by the current process.
+
+      Args:
+         path (str): Local path to test.
+         actstr (str): Optional action prefix for the error message.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS if writable, self.FAILURE otherwise.
+      """
       if os.access(path, os.W_OK): return self.SUCCESS
       if self.check_local_accessible(path, actstr, logact):
          if actstr: actstr += '-'
@@ -2193,6 +3385,16 @@ class PgFile(PgUtil, PgSIG):
    # check if given path is accessible locally
    # return self.SUCCESS if yes, self.FAILURE if not
    def check_local_accessible(self, path, actstr = '', logact = 0):
+      """Check whether a local path exists and is accessible by the current process.
+
+      Args:
+         path (str): Local path to test.
+         actstr (str): Optional action prefix for the error message.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS if accessible, self.FAILURE otherwise.
+      """
       if os.access(path, os.F_OK): return self.SUCCESS
       if actstr: actstr += '-'
       self.errlog("{}{}: Unaccessible on '{}'".format(actstr, path, self.PGLOG['HOSTNAME']), 'L', 1, logact)
@@ -2201,6 +3403,18 @@ class PgFile(PgUtil, PgSIG):
    # check if given webfile under self.PGLOG['DSSDATA'] is writable
    # return self.SUCCESS if yes self.FAILURE if not
    def check_webfile_writable(self, action, wfile, logact = 0):
+      """Check whether a web file path under DSSDATA is locally writable.
+
+      Returns SUCCESS immediately for paths outside DSSDATA (no check needed).
+
+      Args:
+         action (str): Action description for the error message.
+         wfile (str): Web file absolute path.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS if writable or outside DSSDATA, self.FAILURE otherwise.
+      """
       ms = re.match(r'^({}/\w+)'.format(self.PGLOG['DSSDATA']), wfile)
       if ms:
          return self.check_local_writable(ms.group(1), "{} {}".format(action, wfile), logact)
@@ -2209,6 +3423,21 @@ class PgFile(PgUtil, PgSIG):
 
    # convert the one file to another via uncompress, move/copy, and/or compress
    def convert_files(self, ofile, ifile, keep = 0, logact = 0):
+      """Convert a file between compression formats via decompress → move → compress.
+
+      Handles the full pipeline: decompresses ifile (if compressed), moves/copies
+      to the target name, and re-compresses (if ofile has a compression extension).
+      The keep flag preserves a backup of the input file.
+
+      Args:
+         ofile (str): Output (destination) file name.
+         ifile (str): Input (source) file name.
+         keep (int): 1 to preserve a '.keep' copy of the input.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS if ofile exists after conversion, self.FAILURE otherwise.
+      """
       if ofile == ifile: return self.SUCCESS
       oname = ofile
       iname = ifile
@@ -2267,7 +3496,7 @@ class PgFile(PgUtil, PgSIG):
          else:
             self.pgsystem("{} {}".format(self.PGCMPS[oext][0], oname), logact, 5)
       if keep and op.exists(kfile) and kfile != ifile:
-         if op.exist(ifile):
+         if op.exists(ifile):
             self.delete_local_file(kfile, logact)
          else:
             self.move_local_file(ifile, kfile, logact)
@@ -2280,6 +3509,15 @@ class PgFile(PgUtil, PgSIG):
    #  return 0 if same, 1  different, -1 if can not compare
    @staticmethod
    def compare_file_info(ainfo, binfo):
+      """Compare two file-info dicts by size, modified date, and modified time.
+
+      Args:
+         ainfo (dict | None): First file-info dict.
+         binfo (dict | None): Second file-info dict.
+
+      Returns:
+         int: 0 if identical, 1 if different, -1 if either dict is missing.
+      """
       if not (ainfo and binfo): return -1   # at least one is missing
       return (0 if (ainfo['data_size'] == binfo['data_size'] and
                     ainfo['date_modified'] == binfo['date_modified'] and
@@ -2288,12 +3526,32 @@ class PgFile(PgUtil, PgSIG):
    # get local_dirname
    @staticmethod
    def get_local_dirname(file):
+      """Return the directory part of a local file path.
+
+      Returns the current working directory when dirname() would return '.'.
+
+      Args:
+         file (str): Local file path.
+
+      Returns:
+         str: Absolute directory path.
+      """
       dir = op.dirname(file)
       if dir == '.': dir = os.getcwd()
       return dir
 
    # collect valid file names under a given directory, current directory if empty
    def get_directory_files(self, dir = None, limit = 0, level = 0):
+      """Collect all regular file paths under a directory, recursively.
+
+      Args:
+         dir (str | None): Root directory to search; searches '*' in cwd when None.
+         limit (int): Maximum recursion depth; 0 = unlimited.
+         level (int): Current recursion depth (internal; start at 0).
+
+      Returns:
+         list[str] | None: Sorted list of file paths, or None when no files found.
+      """
       files = []
       if dir:
          if level == 0 and op.isfile(dir):
@@ -2313,6 +3571,15 @@ class PgFile(PgUtil, PgSIG):
 
    # reads a local file into a string and returns it
    def read_local_file(self, file, logact = 0):
+      """Read and return the entire contents of a local text file.
+
+      Args:
+         file (str): Local file path to read.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         str | int: File contents string on success, self.FAILURE on error.
+      """
       try:
          fd = open(file, 'r')
       except Exception as e:
@@ -2324,6 +3591,16 @@ class PgFile(PgUtil, PgSIG):
 
    # open a local file and return the file handler
    def open_local_file(self, file, mode = 'r', logact = None):
+      """Open a local file and return the file object.
+
+      Args:
+         file (str): Local file path.
+         mode (str): Open mode string (e.g. 'r', 'w', 'a', 'rb'); default 'r'.
+         logact (int | None): Logging action flags; defaults to LOGERR.
+
+      Returns:
+         file | int: Opened file object on success, self.FAILURE on error.
+      """
       if logact is None: logact = self.LOGERR
       try:
          fd = open(file, mode)
@@ -2333,6 +3610,16 @@ class PgFile(PgUtil, PgSIG):
 
    # change absolute paths to relative paths
    def get_relative_paths(self, files, cdir, logact = 0):
+      """Convert absolute file paths to paths relative to a working directory.
+
+      Args:
+         files (list[str]): List of file paths to convert.
+         cdir (str | None): Base directory; defaults to os.getcwd() when None.
+         logact (int): Logging action flags for paths outside cdir; default 0.
+
+      Returns:
+         list[str]: File paths made relative to cdir.
+      """
       cnt = len(files)
       if cnt == 0: return files
       if not cdir: cdir = os.getcwd()
@@ -2346,6 +3633,19 @@ class PgFile(PgUtil, PgSIG):
 
    # check if the action to path is blocked
    def check_block_path(self, path, act = '', logact = 0):
+      """Return 1 if path is not blocked, or log an error and return 0 if it is.
+
+      Blocks operations targeting PGLOG['USRHOME'] to prevent accidental writes
+      to user home directories.
+
+      Args:
+         path (str): Target path to check.
+         act (str): Action name for the error message; defaults to 'Copy'.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: 1 if allowed, result of pglog() (falsy) if blocked.
+      """
       blockpath = self.PGLOG['USRHOME']
       if not act: act = 'Copy'
       if re.match(r'^{}'.format(blockpath), path):
@@ -2356,6 +3656,21 @@ class PgFile(PgUtil, PgSIG):
    # join two filenames by uing the common prefix/suffix and keeping the different main bodies,
    # the bodies are seprated by sep replace fext with text if provided
    def join_filenames(self, name1, name2, sep = '-', fext = None, text = None):
+      """Merge two filenames into one by keeping their common prefix/suffix.
+
+      The differing middle bodies are joined with sep. Optionally removes a
+      compression extension and appends a text suffix.
+
+      Args:
+         name1 (str): First file name.
+         name2 (str): Second file name.
+         sep (str): Separator between the two differing bodies; default '-'.
+         fext (str | None): File extension to strip from both names before merging.
+         text (str | None): Extension to append to the merged name.
+
+      Returns:
+         str: Merged file name.
+      """
       if fext:
          name1 = self.remove_file_extention(name1, fext)   
          name2 = self.remove_file_extention(name2, fext)   
@@ -2390,9 +3705,19 @@ class PgFile(PgUtil, PgSIG):
       if text: fname += "." + text
       return fname
 
-   # remove given file extention if provided 
+   # remove given file extention if provided
    # otherwise try to remove predfined compression extention in self.PGCMPS
    def remove_file_extention(self, fname, fext):
+      """Remove a specific or the first matching compression extension from a filename.
+
+      Args:
+         fname (str): File name to process.
+         fext (str | None): Extension to remove (without dot); when None, tries all
+                            compression extensions in PGCMPS.
+
+      Returns:
+         str: File name with the extension removed, or '' when fname is falsy.
+      """
       if not fname: return ''
       if fext:
          fname = re.sub(r'\.{}$'.format(fext), '', fname, 1, re.I)
@@ -2407,6 +3732,20 @@ class PgFile(PgUtil, PgSIG):
    # check if a previous down storage system is up now for given dflag
    # return error message if failed checking, and None otherwise
    def check_storage_down(self, dflag, dpath, dscheck, logact = 0):
+      """Check whether a previously-down storage system is now accessible.
+
+      Updates dscheck['dflags'] to reflect the current storage status. Retries
+      up to 2 times, stopping early for planned outages.
+
+      Args:
+         dflag (str): Storage flag key (e.g. 'G', 'O', 'B', 'D').
+         dpath (str | None): Path to test; uses DPATHS[dflag] when None.
+         dscheck (dict | None): dscheck record to update; uses PGLOG['DSCHECK'] when None.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         str | None: Error message string if still down, None if accessible.
+      """
       if dflag not in self.DHOSTS:
          if logact: self.pglog(dflag + ": Unknown Down Flag for Storage Systems", logact)
          return None
@@ -2430,6 +3769,19 @@ class PgFile(PgUtil, PgSIG):
    # return an array of strings for storage systems that are still down,
    #        and empty array if all up
    def check_storage_dflags(self, dflags, dscheck = None, logact = 0):
+      """Check all storage systems recorded as down in a dflags string or dict.
+
+      Clears dscheck.dflags in the database when all systems are back up.
+
+      Args:
+         dflags (str | dict | None): Storage flags to check; str for a set of flag
+                                     characters, dict for flag → path mapping.
+         dscheck (dict | None): dscheck record; uses PGLOG['DSCHECK'] when None.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         list[str]: Error messages for each storage system still down; empty if all up.
+      """
       if not dflags: return 0
       isdict = isinstance(dflags, dict)
       msgary = []
@@ -2447,6 +3799,21 @@ class PgFile(PgUtil, PgSIG):
    # clear the cached bfile records if frec is None.
    # return 0 if not yet, 1 if backed up, or -1 if backed up but modified
    def file_backup_status(self, frec, chgdays = 1, logact = 0):
+      """Return the backup status of a data file record.
+
+      Caches bfile records by bid. When frec is None, clears the cache.
+
+      Args:
+         frec (dict | None): File record dict with keys 'bid', 'date_modified',
+                             'type', 'checksum'/'data_size', and 'sfile'/'wfile'.
+                             Pass None to clear the BFILES cache.
+         chgdays (int): Number of days of modification allowed before marking as
+                        changed (−1 = accept any age); default 1.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: 1 if backed up, -1 if backed up but file changed since backup, 0 if not.
+      """
       if frec is None:
          self.BFILES.clear()
          return 0
