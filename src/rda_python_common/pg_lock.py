@@ -13,20 +13,56 @@ import time
 from .pg_file import PgFile
 
 class PgLock(PgFile):
+   """Provides locking and unlocking of RDADB records to prevent concurrent modification.
+
+   Supports locking for the following tables: dscheck (cindex), dsrqst (rindex),
+   dlupdt (lindex), dcupdt (cindex), ptrqst (pindex), and dataset (dsid).
+
+   Attributes:
+      DOLOCKS (dict): Maps lock integer codes to human-readable action strings.
+         Keys and their meanings:
+            -2: 'Force Unlock'
+            -1: 'Unlock'
+             0: 'Unlock'
+             1: 'Relock'
+             2: 'Force Relock'
+   """
 
    def __init__(self):
+      """Initializes PgLock and sets up the DOLOCKS action-code mapping."""
       super().__init__()  # initialize parent class
       self.DOLOCKS = {-2: 'Force Unlock', -1: 'Unlock', 0: 'Unlock', 1: 'Relock', 2: 'Force Relock'}
-   
+
    def end_db_transaction(self, idx):
+      """Commits or aborts the current database transaction based on the result index.
+
+      Args:
+         idx (int): Transaction result index. Positive commits; non-positive aborts.
+
+      Returns:
+         int: The same ``idx`` value passed in.
+      """
       if idx > 0:
          self.endtran()
       else:
          self.aborttran()
       return idx
 
-   # check and return running process status: 1-running/uncheckable,0-stopped
    def check_process_running_status(self, host, pid, dolock, lmsg, logact):
+      """Checks whether a locking process is still running on its host.
+
+      Args:
+         host (str): Hostname where the locking process is running.
+         pid (int): Process ID of the locking process.
+         dolock (int): Lock action code (see class docstring for values).
+         lmsg (str): Log message prefix describing the current lock context.
+         logact (int): Logging action flags; 0 suppresses logging.
+
+      Returns:
+         int: 1 if the process is running or the status cannot be determined
+            (i.e., the caller should treat the record as still locked); 0 if
+            the process is confirmed stopped and the lock may be taken.
+      """
       if not self.local_host_action(host, self.DOLOCKS[dolock], lmsg, logact): return 1
       stat = self.check_host_pid(host, pid)
       if stat > 0:
@@ -37,10 +73,22 @@ class PgLock(PgFile):
          return 1
       return 0
 
-   # lock/unlock dscheck record
-   # lock if dolock > 0, unlock if <= 0, skip for locked on different host if 0 or 1
-   # force unlock if < -1 or force lock if 2
-   def lock_dscheck(self, cidx, dolock, logact = 0):
+   def lock_dscheck(self, cidx, dolock, logact=0):
+      """Locks or unlocks a dscheck record identified by ``cidx``.
+
+      Args:
+         cidx (int): The ``cindex`` value identifying the dscheck record.
+         dolock (int): Lock action code:
+            - ``dolock > 0``: lock the record.
+            - ``dolock <= 0``: unlock the record.
+            - ``dolock < -1`` or ``dolock == 2``: force unlock or force lock,
+              overriding a dead process's lock.
+         logact (int): Logging action flags; 0 uses default warning-level logging.
+
+      Returns:
+         int: Positive ``cidx`` on success, negative ``cidx`` if blocked or an
+            error occurs, 0 if the record is gone or a database error occurred.
+      """
       if not cidx: return 0
       if logact:
          logerr = logact|self.ERRLOG
@@ -75,7 +123,7 @@ class PgLock(PgFile):
       if not record: return cidx
       lkrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not lkrec: return self.end_db_transaction(0)   # dscheck is gone or db error
-      if (not lkrec['pid'] or 
+      if (not lkrec['pid'] or
           lkrec['pid'] == pid and self.pgcmp(lkrec['lockhost'], host, 1) == 0 or
           lkrec['pid'] == cpid and self.pgcmp(lkrec['lockhost'], chost, 1) == 0):
          if not self.pgupdt(table, record, cnd, logerr):
@@ -86,8 +134,20 @@ class PgLock(PgFile):
          cidx = -cidx
       return self.end_db_transaction(cidx)
 
-   # lock dscheck record for given cidx, pid and host 
-   def lock_host_dscheck(self, cidx, pid, host, logact = 0):
+   def lock_host_dscheck(self, cidx, pid, host, logact=0):
+      """Locks a dscheck record on behalf of a specific process and host.
+
+      Args:
+         cidx (int): The ``cindex`` value identifying the dscheck record.
+         pid (int): Process ID of the process that should own the lock.
+         host (str): Hostname of the process that should own the lock.
+         logact (int): Logging action flags; 0 suppresses non-error logging.
+
+      Returns:
+         int: Positive ``cidx`` on success, negative ``cidx`` if already locked
+            by the same process or blocked by another, 0 if the record is gone
+            or a database error occurred.
+      """
       if not (cidx and pid): return 0
       if logact:
          logerr = logact|self.ERRLOG
@@ -127,10 +187,22 @@ class PgLock(PgFile):
          cidx = -cidx
       return self.end_db_transaction(cidx)
 
-   # lock/unlock data request record
-   # lock if dolock > 0, unlock if <= 0, skip for locked on different host if 0 or 1
-   # force unlock if < -1 or 2 
-   def lock_request(self, ridx, dolock, logact = 0):
+   def lock_request(self, ridx, dolock, logact=0):
+      """Locks or unlocks a dsrqst (data request) record identified by ``ridx``.
+
+      Args:
+         ridx (int): The ``rindex`` value identifying the dsrqst record.
+         dolock (int): Lock action code:
+            - ``dolock > 0``: lock the record.
+            - ``dolock <= 0``: unlock the record.
+            - ``dolock < -1`` or ``dolock == 2``: force unlock or force lock,
+              overriding a dead process's lock.
+         logact (int): Logging action flags; 0 uses default warning-level logging.
+
+      Returns:
+         int: Positive ``ridx`` on success, negative ``ridx`` if blocked or an
+            error occurs, 0 if the record is gone or a database error occurred.
+      """
       if not ridx: return 0
       if logact:
          logerr = logact|self.ERRLOG
@@ -175,8 +247,23 @@ class PgLock(PgFile):
          ridx = -ridx
       return self.end_db_transaction(ridx)
 
-   # lock dsrqst record for given cidx, pid and host 
-   def lock_host_request(self, ridx, pid, host, logact = 0):
+   def lock_host_request(self, ridx, pid, host, logact=0):
+      """Locks a dsrqst record on behalf of a specific process and host.
+
+      When the record is already locked by the same ``pid`` and ``host``,
+      the function returns positive ``ridx`` (success / idempotent lock).
+
+      Args:
+         ridx (int): The ``rindex`` value identifying the dsrqst record.
+         pid (int): Process ID of the process that should own the lock.
+         host (str): Hostname of the process that should own the lock.
+         logact (int): Logging action flags; 0 suppresses non-error logging.
+
+      Returns:
+         int: Positive ``ridx`` on success (including already-locked-by-same-process),
+            negative ``ridx`` if blocked by another process or an error occurs,
+            0 if the record is gone or a database error occurred.
+      """
       if not (ridx and pid): return 0
       if logact:
          logerr = logact|self.ERRLOG
@@ -188,7 +275,7 @@ class PgLock(PgFile):
       cnd = "rindex = {}".format(ridx)
       fields = "pid, lockhost"
       pgrec = self.pgget(table, fields, cnd, logerr)
-      if not pgrec: return 0   # dscheck is gone or db error
+      if not pgrec: return 0   # dsrqst record is gone or db error
       rinfo = "{}-{}-Rqst{}".format(self.PGLOG['HOSTNAME'], self.current_datetime(), ridx)
       if pgrec['pid']:
          if pid == pgrec['pid'] and self.pgcmp(pgrec['lockhost'], host, 1) == 0: return ridx
@@ -211,10 +298,23 @@ class PgLock(PgFile):
          ridx = -ridx
       return self.end_db_transaction(ridx)
 
-   # lock/unlock dataset update record
-   # lock if dolock > 0, unlock if <= 0, skip for locked on different host if 0 or 1
-   # force unlock if < -1 or 2 
-   def lock_update(self, lidx, linfo, dolock, logact = 0):
+   def lock_update(self, lidx, linfo, dolock, logact=0):
+      """Locks or unlocks a dlupdt (dataset update) record identified by ``lidx``.
+
+      Args:
+         lidx (int): The ``lindex`` value identifying the dlupdt record.
+         linfo (str): Optional log message prefix; auto-generated if empty or None.
+         dolock (int): Lock action code:
+            - ``dolock > 0``: lock the record.
+            - ``dolock <= 0``: unlock the record.
+            - ``dolock < -1`` or ``dolock == 2``: force unlock or force lock,
+              overriding a dead process's lock.
+         logact (int): Logging action flags; 0 uses default warning-level logging.
+
+      Returns:
+         int: Positive ``lidx`` on success, negative ``lidx`` if blocked or an
+            error occurs, 0 if the record is gone or a database error occurred.
+      """
       if not lidx: return 0
       if logact:
          logerr = logact|self.ERRLOG
@@ -257,10 +357,22 @@ class PgLock(PgFile):
          lidx = -lidx
       return self.end_db_transaction(lidx)
 
-   # lock/unlock dataset update control record
-   # lock if dolock > 0, unlock if <= 0, skip for locked on different host if 0 or 1,
-   #  unlock dead process if < -1 or 2, force unlock if -2
-   def lock_update_control(self, cidx, dolock, logact = 0):
+   def lock_update_control(self, cidx, dolock, logact=0):
+      """Locks or unlocks a dcupdt (dataset update control) record identified by ``cidx``.
+
+      Args:
+         cidx (int): The ``cindex`` value identifying the dcupdt record.
+         dolock (int): Lock action code:
+            - ``dolock > 0``: lock the record.
+            - ``dolock <= 0``: unlock the record.
+            - ``dolock < -1`` or ``dolock == 2``: force unlock or force lock,
+              overriding a dead process's lock.
+         logact (int): Logging action flags; 0 uses default warning-level logging.
+
+      Returns:
+         int: Positive ``cidx`` on success, negative ``cidx`` if blocked or an
+            error occurs, 0 if the record is gone or a database error occurred.
+      """
       if not cidx: return 0
       if logact:
          logerr = logact|self.ERRLOG
@@ -305,8 +417,20 @@ class PgLock(PgFile):
          cidx = -cidx
       return self.end_db_transaction(cidx)
 
-   # lock dscheck record for given cidx, pid and host 
-   def lock_host_update_control(self, cidx, pid, host, logact = 0):
+   def lock_host_update_control(self, cidx, pid, host, logact=0):
+      """Locks a dcupdt record on behalf of a specific process and host.
+
+      Args:
+         cidx (int): The ``cindex`` value identifying the dcupdt record.
+         pid (int): Process ID of the process that should own the lock.
+         host (str): Hostname of the process that should own the lock.
+         logact (int): Logging action flags; 0 suppresses non-error logging.
+
+      Returns:
+         int: Positive ``cidx`` on success, negative ``cidx`` if already locked
+            by the same process or blocked by another, 0 if the record is gone
+            or a database error occurred.
+      """
       if not (cidx and pid): return 0
       if logact:
          logerr = logact|self.ERRLOG
@@ -318,7 +442,7 @@ class PgLock(PgFile):
       cnd = "cindex = {}".format(cidx)
       fields = "pid, lockhost"
       pgrec = self.pgget(table, fields, cnd, logerr)
-      if not pgrec: return 0   # dscheck is gone or db error
+      if not pgrec: return 0   # dcupdt record is gone or db error
       cinfo = "{}-{}-UC{}".format(self.PGLOG['HOSTNAME'], self.current_datetime(), cidx)
       if pgrec['pid']:
          if pid == pgrec['pid'] and self.pgcmp(pgrec['lockhost'], host, 1) == 0: return cidx
@@ -340,20 +464,44 @@ class PgLock(PgFile):
          if logout: self.pglog("{}: Relocked {}/{}".format(cinfo, pgrec['pid'], pgrec['lockhost']), logout)
          cidx = -cidx
       return self.end_db_transaction(cidx)
-   
-   # return lock information of a locked process
+
    @staticmethod
-   def lock_process_info(pid, lockhost, runhost = None, pcnt = 0):
+   def lock_process_info(pid, lockhost, runhost=None, pcnt=0):
+      """Formats a human-readable string describing a locking process.
+
+      Args:
+         pid (int): Process ID of the locking process.
+         lockhost (str): Hostname recorded in the lock field.
+         runhost (str, optional): Actual host the process is running on, if
+            different from ``lockhost``. Defaults to None.
+         pcnt (int, optional): Partition count to include in the string.
+            Defaults to 0 (omitted).
+
+      Returns:
+         str: Formatted lock info string, e.g. `` host<pid/pcnt>/runhost``.
+      """
       retstr = " {}<{}".format(lockhost, pid)
       if pcnt: retstr += "/{}".format(pcnt)
       retstr += ">"
-      if runhost and runhost != lockhost: retstr += '/' + runhost
+      if runhost is not None and runhost != lockhost: retstr += '/' + runhost
       return retstr
 
-   # lock/unlock data request partition record
-   # lock if dolock > 0, unlock if <= 0, skip for locked on different host if 0 or 1
-   # force unlock if < -1 or 2
-   def lock_partition(self, pidx, dolock, logact = 0):
+   def lock_partition(self, pidx, dolock, logact=0):
+      """Locks or unlocks a ptrqst (request partition) record identified by ``pidx``.
+
+      Args:
+         pidx (int): The ``pindex`` value identifying the ptrqst record.
+         dolock (int): Lock action code:
+            - ``dolock > 0``: lock the record.
+            - ``dolock <= 0``: unlock the record.
+            - ``dolock < -1`` or ``dolock == 2``: force unlock or force lock,
+              overriding a dead process's lock.
+         logact (int): Logging action flags; 0 uses default warning-level logging.
+
+      Returns:
+         int: Positive ``pidx`` on success, negative ``pidx`` if blocked or an
+            error occurs, 0 if the record is gone or a database error occurred.
+      """
       if not pidx: return 0
       if logact:
          logerr = logact|self.ERRLOG
@@ -403,8 +551,20 @@ class PgLock(PgFile):
          pidx = -pidx
       return self.end_db_transaction(pidx)
 
-   # lock dsrqst partition record for given cidx, pid and host 
-   def lock_host_partition(self, pidx, pid, host, logact = 0):
+   def lock_host_partition(self, pidx, pid, host, logact=0):
+      """Locks a ptrqst partition record on behalf of a specific process and host.
+
+      Args:
+         pidx (int): The ``pindex`` value identifying the ptrqst record.
+         pid (int): Process ID of the process that should own the lock.
+         host (str): Hostname of the process that should own the lock.
+         logact (int): Logging action flags; 0 suppresses non-error logging.
+
+      Returns:
+         int: Positive ``pidx`` on success, negative ``pidx`` if already locked
+            by the same process or blocked by another, 0 if the record is gone
+            or a database error occurred.
+      """
       if not (pidx and pid): return 0
       if logact:
          logerr = logact|self.ERRLOG
@@ -416,7 +576,7 @@ class PgLock(PgFile):
       cnd = "pindex = {}".format(pidx)
       fields = "pid, lockhost"
       pgrec = self.pgget(table, "rindex, ptorder, " + fields, cnd, logerr)
-      if not pgrec: return 0   # dscheck is gone or db error
+      if not pgrec: return 0   # ptrqst record is gone or db error
       ridx = pgrec['rindex']
       pinfo = "{}-{}-RPT{}(Rqst{}/PTO{})".format(self.PGLOG['HOSTNAME'], self.current_datetime(), pidx, ridx, pgrec['ptorder'])
       if pgrec['pid']:
@@ -431,7 +591,7 @@ class PgLock(PgFile):
       record['locktime'] = int(time.time())
       pgrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
       if not pgrec: return self.end_db_transaction(0)
-      if not pgrec['pid']  or pid == pgrec['pid'] and self.pgcmp(pgrec['lockhost'], host, 1) == 0:
+      if not pgrec['pid'] or pid == pgrec['pid'] and self.pgcmp(pgrec['lockhost'], host, 1) == 0:
          lmsg = self.update_partition_lock(ridx, record, logout)
          if lmsg:
             if logout: self.pglog("{}: {}".format(pinfo, lmsg), logout)
@@ -444,10 +604,28 @@ class PgLock(PgFile):
          pidx = -pidx
       return self.end_db_transaction(pidx)
 
-   # update dsrqst lock info for given partition lock status
-   # Return None if all is fine; error message otherwise
-   def update_partition_lock(self, ridx, ptrec, logact = 0):
-      if not ridx: return 0
+   def update_partition_lock(self, ridx, ptrec, logact=0):
+      """Updates the dsrqst lock counters when a partition lock is acquired or released.
+
+      When a partition is locked, the dsrqst ``pid`` counter is incremented and
+      ``lockhost`` is set to ``'partition'``. When a partition is unlocked, the
+      counter is decremented (never below 0); if it reaches 0, ``lockhost`` is
+      cleared.
+
+      The ``ptrec`` dict is expected to contain ``'pid'`` (int) and, when locking,
+      ``'locktime'`` (int). If ``'pid'`` is absent it is treated as 0 (unlock).
+
+      Args:
+         ridx (int): The ``rindex`` of the parent dsrqst record to update.
+         ptrec (dict): Partition record fields being applied; must contain at
+            least ``'pid'`` for locking operations and ``'locktime'`` when locking.
+         logact (int): Logging action flags; 0 uses default warning-level logging.
+
+      Returns:
+         str or None: ``None`` if the update succeeded; an error message string
+            if the dsrqst record could not be read or updated.
+      """
+      if not ridx: return None
       if logact:
          logerr = logact|self.ERRLOG
          logout = logact&(~self.EXITLG)
@@ -460,17 +638,19 @@ class PgLock(PgFile):
       pgrec = self.pgget(table, "pid, lockhost", cnd, logact|self.DOLOCK)
       if not pgrec: return "Error get Rqst{} record".format(ridx)   # should not happen
       if pgrec['pid'] > 0 and pgrec['lockhost'] != lockhost:
-         return "Rqst{} locked by non-lockhost process ({}/{})".format(ridx, pgrec['pid'], pgrec['lockhost'])      
+         return "Rqst{} locked by non-lockhost process ({}/{})".format(ridx, pgrec['pid'], pgrec['lockhost'])
       record = {}
-      if ptrec['pid'] > 0:
+      if ptrec.get('pid', 0) > 0:
+         # Locking a partition: increment the dsrqst pid counter.
          record['pid'] = pgrec['pid'] + 1
          record['lockhost'] = lockhost
          record['locktime'] = ptrec['locktime']
       else:
+         # Unlocking a partition: decrement the counter, but never below 0.
          if pgrec['pid'] > 1:
             pcnt = self.pgget('ptrqst', '', cnd + " AND pid > 0")
             if pgrec['pid'] > pcnt: pgrec['pid'] = pcnt
-            record['pid'] = pgrec['pid'] - 1
+            record['pid'] = max(0, pgrec['pid'] - 1)
             record['lockhost'] = lockhost
          else:
             record['pid'] = 0
@@ -479,10 +659,22 @@ class PgLock(PgFile):
          return "Error update Rqst{} lock".format(ridx)
       return None
 
-   # lock/unlock dataset record for Quasar Backup
-   # lock if dolock > 0, unlock if <= 0, skip for locked on different host if 0 or 1,
-   #  unlock dead process if < -1 or 2, force unlock if -2
-   def lock_dataset(self, dsid, dolock, logact = 0):
+   def lock_dataset(self, dsid, dolock, logact=0):
+      """Locks or unlocks a dataset record identified by ``dsid``.
+
+      Args:
+         dsid (str): The dataset identifier (``dsid``) of the dataset record.
+         dolock (int): Lock action code:
+            - ``dolock > 0``: lock the record.
+            - ``dolock <= 0``: unlock the record.
+            - ``dolock < -1`` or ``dolock == 2``: force unlock or force lock,
+              overriding a dead process's lock.
+         logact (int): Logging action flags; 0 uses default warning-level logging.
+
+      Returns:
+         int: 1 on success, -1 if blocked or an error occurs, 0 if the dataset
+            record does not exist or a database error occurred.
+      """
       if not dsid: return 0
       if logact:
          logerr = logact|self.ERRLOG
@@ -513,9 +705,9 @@ class PgLock(PgFile):
          if pid: record['pid'] = 0
       if not record: return 1
       lkrec = self.pgget(table, fields, cnd, logerr|self.DOLOCK)
-      if not lkrec: return self.end_db_transaction(0)   # dscheck is gone or db error
+      if not lkrec: return self.end_db_transaction(0)   # dataset record is gone or db error
       lstat = 1
-      if (not lkrec['pid'] or 
+      if (not lkrec['pid'] or
           lkrec['pid'] == pid and self.pgcmp(lkrec['lockhost'], host, 1) == 0 or
           lkrec['pid'] == cpid and self.pgcmp(lkrec['lockhost'], chost, 1) == 0):
          if not self.pgupdt(table, record, cnd, logerr):

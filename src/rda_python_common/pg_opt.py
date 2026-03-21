@@ -17,8 +17,35 @@ from os import path as op
 from .pg_file import PgFile
 
 class PgOPT(PgFile):
+   """Command-line option parsing and application configuration framework for RDA tools.
+
+   Provides option parsing, parameter management, dataset validation, and output
+   formatting for RDA tools such as dsarch, dsupdt, and dsrqst.  Manages option
+   definitions (``OPTS``), parsed parameter values (``params``), command-line vs.
+   input-file option tracking, and structured output.
+
+   Attributes:
+      OUTPUT: File handle for result output (stdout or a file).
+      CMDOPTS (dict): Options set on the command line, keyed by short option name.
+      INOPTS (dict): Options read from input files, keyed by short option name.
+      ALIAS (dict): Alias mappings for option names.
+      TBLHASH (dict): Table-field hash definitions used for record building/querying.
+      OPTS (dict): Valid option definitions; each entry is a list whose first
+         element encodes the option type (0=mode, 1=single-value, 2=multi-value,
+         >=4=action).
+      PGOPT (dict): Global operational settings (current action bits, limits,
+         program names, log-action masks, etc.).
+      params (dict): Parsed parameter values keyed by short option name.
+      WTYPE (dict): Web-type code-to-name mapping.
+      HTYPE (dict): Help-type code-to-name mapping.
+      HPATH (dict): Help-type code-to-path mapping.
+      MTYPE (dict): Media-type code-to-name mapping.
+      STYPE (dict): Storage-type code-to-name mapping.
+      BTYPE (dict): Backup-type code-to-name mapping.
+   """
 
    def __init__(self):
+      """Initialize PgOPT and its parent PgFile, setting up all class attributes."""
       super().__init__()  # initialize parent class
       self.OUTPUT = None
       self.CMDOPTS = {}
@@ -152,9 +179,15 @@ class PgOPT(PgFile):
          'D': "BACKDRDATA",
       }
 
-   # process and parsing input information
-   # aname - application name such as 'dsarch', 'dsupdt', and 'dsrqst'
    def parsing_input(self, aname):
+      """Process and parse command-line and input-file options for the application.
+
+      Reads ``sys.argv``, resolves option keys, fills ``self.params``, processes
+      any input files listed via ``-IF``, and validates the final state.
+
+      Args:
+         aname (str): Application name (e.g. ``'dsarch'``, ``'dsupdt'``).
+      """
       self.PGLOG['LOGFILE'] = aname + ".log"
       self.PGOPT['ANAME'] = aname
       self.dssdb_dbname()
@@ -238,8 +271,16 @@ class PgOPT(PgFile):
       if 'GZ' in self.params: self.PGLOG['GMTZ'] = self.diffgmthour()
       if 'BG' in self.params: self.PGLOG['BCKGRND'] = 1
 
-   # check and get default value for info option, return None if not available
    def get_default_info(self, opt):
+      """Check and retrieve the default value for an info option.
+
+      Args:
+         opt (str): Short option key to look up in ``self.OPTS``.
+
+      Returns:
+         The default value (int, str, or ``None``) if one is defined for the
+         option; ``None`` otherwise.
+      """
       olist = self.OPTS[opt]
       if olist[0]&3 and len(olist) > 3:
          odval = olist[3]
@@ -248,9 +289,14 @@ class PgOPT(PgFile):
          else:
             return odval[0]   # return the first char of a default string
       return None
-   
-   # set output file name handler now
-   def open_output(self, outfile = None):
+
+   def open_output(self, outfile=None):
+      """Open the result output destination.
+
+      Args:
+         outfile (str, optional): Path to a file to write results to.  If
+            ``None`` or omitted, output is directed to ``sys.stdout``.
+      """
       if outfile:  # result output file
          try:
             self.OUTPUT = open(outfile, 'w')
@@ -259,8 +305,16 @@ class PgOPT(PgFile):
       else:                               # result to STDOUT
          self.OUTPUT = sys.stdout
 
-   # return 1 if valid infile names; sys.exit(1) otherwise
    def validate_infile_names(self, dsid):
+      """Validate all input file names against the expected dataset ID.
+
+      Args:
+         dsid (str): Expected dataset ID that every input file name must encode.
+
+      Returns:
+         int: Count of validated files on success, or ``self.FAILURE`` on the
+         first validation error.
+      """
       i = 0
       for infile in self.params['IF']:
          if not self.validate_one_infile(infile, dsid): return self.FAILURE
@@ -268,18 +322,36 @@ class PgOPT(PgFile):
          if self.PGOPT['IFCNT'] and i >= self.PGOPT['IFCNT']: break
       return i
 
-   # validate an input filename against dsid
    def validate_one_infile(self, infile, dsid):
+      """Validate a single input file name against the expected dataset ID.
+
+      Args:
+         infile (str): Path to the input file whose name is validated.
+         dsid (str): Expected dataset ID to match against the file name.
+
+      Returns:
+         int: ``self.SUCCESS`` if the file encodes the correct dataset ID;
+         logs a fatal error and does not return otherwise.
+      """
       ndsid = self.find_dataset_id(infile)
-      if ndsid == None:
+      if ndsid is None:
          return self.pglog("{}: No dsid identified in Input file name {}!".format(dsid, infile), self.PGOPT['extlog'])
       fdsid = self.format_dataset_id(ndsid)
       if fdsid != dsid:
          return self.pglog("{}: Different dsid {} found in Input file name {}!".format(dsid, fdsid, infile), self.PGOPT['extlog'])
       return self.SUCCESS
 
-   # gather input information from input files
-   def get_input_info(self, infiles, table = None):
+   def get_input_info(self, infiles, table=None):
+      """Gather input option values from a list of input files.
+
+      Args:
+         infiles (list[str]): Paths to input files to process.
+         table (str, optional): Table name to scope option gathering; ``None``
+            to gather all options.
+
+      Returns:
+         int: Total count of options read across all processed files.
+      """
       i = 0
       for file in infiles:
          i += self.process_infile(file, table)
@@ -287,8 +359,18 @@ class PgOPT(PgFile):
          if self.PGOPT['IFCNT']: break
       return i
 
-   # validate and get info from a single input file
    def read_one_infile(self, infile):
+      """Validate and read option values from a single input file.
+
+      Clears existing input-file option values, processes the file, and
+      validates that its embedded dataset ID matches the current ``params['DS']``.
+
+      Args:
+         infile (str): Path to the input file to read.
+
+      Returns:
+         str: The resolved dataset ID after processing the file.
+      """
       dsid = self.params['DS']
       del self.params['DS']
       if self.OPTS['DS'][2]&2: self.OPTS['DS'][2] &= ~2
@@ -299,14 +381,26 @@ class PgOPT(PgFile):
       if dsid: self.validate_one_infile(infile, dsid)
       return dsid
 
-   # gather input option values from one input file
-   # return 0 if nothing retireved if table is not null
-   def process_infile(self, infile, table = None):
+   def process_infile(self, infile, table=None):
+      """Gather input option values from one input file.
+
+      Parses single-value assignments, action/mode options, and multi-value
+      column blocks from the file.  Logs progress for large files.
+
+      Args:
+         infile (str): Path to the input file.
+         table (str, optional): Table name to look for inside the file.  When
+            given, only the section delimited by ``[table]`` is read.
+
+      Returns:
+         int: ``1`` if at least one option was set, ``0`` if nothing was read
+         (only possible when *table* is specified).
+      """
       if not op.exists(infile): self.pglog(infile + ": Input file not exists", self.PGOPT['extlog'])
       if table:
          self.pglog("Gather '{}' information from input file '{}'..." .format(table, infile), self.PGOPT['wrnlog'])
       else:
-         self.pglog("Gather information from input file '{}'...".format(infile), self.PGOPT['wrnlog'])   
+         self.pglog("Gather information from input file '{}'...".format(infile), self.PGOPT['wrnlog'])
       try:
          fd = open(infile, 'r')
       except Exception as e:
@@ -353,7 +447,7 @@ class PgOPT(PgFile):
                self.set_option_value(opt, val, 0, linidx, line, infile)
                if not self.OPTS[opt][2]&self.PGOPT['TXTBIT']: opt = None
                setcnt += 1
-               continue   
+               continue
             ms = re.match(mpao, line)
             if ms:    # set mode or action option
                key = self.get_option_key(ms.group(1).strip(), 4, 0, linidx, line, infile, table)
@@ -428,17 +522,32 @@ class PgOPT(PgFile):
          if table: self.pglog("No option information found for '{}'".format(table), self.WARNLG)
          return 0  # read nothing
 
-   # clean self.params for input option values when set mutiple tables 
    def clean_input_values(self):
+      """Remove all input-file option values from ``self.params``.
+
+      Iterates over ``self.INOPTS`` and deletes the corresponding keys from
+      ``self.params``, then clears ``self.INOPTS``.
+      """
       # clean previously saved input values if any
       for opt in self.INOPTS:
          del self.params[opt]
       self.INOPTS = {}
 
-   # build a hash record for add or update of a table record
-   def build_record(self, flds, pgrec, tname, idx = 0):
+   def build_record(self, flds, pgrec, tname, idx=0):
+      """Build a database record dict for adding or updating a table row.
+
+      Args:
+         flds (list[str]): Field keys to include in the record.
+         pgrec (dict | None): Existing database record to compare against; used
+            to skip unchanged or auto-set fields.
+         tname (str): Table name whose ``TBLHASH`` entry maps fields to options.
+         idx (int, optional): Row index for multi-value options.  Defaults to 0.
+
+      Returns:
+         dict: Mapping of database field names to new (or changed) values.
+      """
       record = {}
-      if not flds: return record   
+      if not flds: return record
       hash = self.TBLHASH[tname]
       for key in flds:
          if key not in hash: continue
@@ -460,8 +569,15 @@ class PgOPT(PgFile):
             if self.pgcmp(sval, val, 1): record[field] = val    # record new or changed value
       return record
 
-   # set global variable self.PGOPT['UID'] with value of user.uid, fatal if unsuccessful
    def set_uid(self, aname):
+      """Set ``self.PGOPT['UID']`` from the database for the current login user.
+
+      Also configures email addresses, validates the dataset and its owner, and
+      opens the output destination.
+
+      Args:
+         aname (str): Application name used in log messages.
+      """
       self.set_email_logact()
       if 'LN' not in self.params:
          self.params['LN'] = self.PGLOG['CURUID']
@@ -482,40 +598,72 @@ class PgOPT(PgFile):
       self.PGOPT['UID'] = pgrec['uid']
       self.open_output(self.params['OF'] if 'OF' in self.params else None)
 
-   # set global variable self.PGOPT['UID'] as 0 for a sudo user
    def set_sudo_uid(self, aname, uid):
+      """Set ``self.PGOPT['UID']`` to 0 for a sudo-capable user.
+
+      Logs a warning when the current user differs from the required *uid*,
+      then records ``uid`` 0 and the current login name.
+
+      Args:
+         aname (str): Application name used in log messages.
+         uid (str): Expected user ID that the application must run as.
+      """
       self.set_email_logact()
       if self.PGLOG['CURUID'] != uid:
          if 'DM' in self.params and re.match(r'^(start|begin)$', self.params['DM'], re.I):
-            msg = "'{}': must start Daemon '{} -{} as '{}'".format(self.PGLOG['CURUID'], aname, self.params['CACT'], uid)
+            msg = "'{}': must start Daemon '{} -{}' as '{}'".format(self.PGLOG['CURUID'], aname, self.PGOPT['CACT'], uid)
          else:
-            msg = "'{}': must run '{} -{}' as '{}'".format(self.PGLOG['CURUID'], aname, self.params['CACT'], uid) 
+            msg = "'{}': must run '{} -{}' as '{}'".format(self.PGLOG['CURUID'], aname, self.PGOPT['CACT'], uid)
          self.pglog(msg, self.PGOPT['extlog'])
       self.PGOPT['UID'] = 0
       self.params['LN'] = self.PGLOG['CURUID']
 
-   # set global variable self.PGOPT['UID'] as 0 for root user
    def set_root_uid(self, aname):
+      """Set ``self.PGOPT['UID']`` to 0, requiring the caller to be ``root``.
+
+      Logs a fatal error if the current user is not ``root``.
+
+      Args:
+         aname (str): Application name used in log messages.
+      """
       self.set_email_logact()
       if self.PGLOG['CURUID'] != "root":
          if 'DM' in self.params and re.match(r'^(start|begin)$', self.params['DM'], re.I):
-            msg = "'{}': you must start Daemon '{} -{} as 'root'".format(self.PGLOG['CURUID'], aname, self.params['CACT'])
+            msg = "'{}': you must start Daemon '{} -{}' as 'root'".format(self.PGLOG['CURUID'], aname, self.PGOPT['CACT'])
          else:
-            msg = "'{}': you must run '{} -{}' as 'root'".format(self.PGLOG['CURUID'], aname, self.params['CACT']) 
+            msg = "'{}': you must run '{} -{}' as 'root'".format(self.PGLOG['CURUID'], aname, self.PGOPT['CACT'])
          self.pglog(msg, self.PGOPT['extlog'])
       self.PGOPT['UID'] = 0
       self.params['LN'] = self.PGLOG['CURUID']
 
-   # set email logging bits
    def set_email_logact(self):
+      """Configure email logging bits based on ``-NE`` and ``-SE`` options.
+
+      Strips all email bits from ``self.PGLOG['LOGMASK']`` when ``-NE`` is set,
+      or removes the normal-email bit when ``-SE`` is set.
+      """
       if 'NE' in self.params:
          self.PGLOG['LOGMASK'] &= ~self.EMLALL   # remove all email bits
       elif 'SE' in self.params:
          self.PGLOG['LOGMASK'] &= ~self.EMLLOG    # no normal email
 
-   # validate dataset owner
-   # return: 0 or fatal if not valid, 1 if valid, -1 if can not be validated
-   def validate_dsowner(self, aname, dsid = None, logname = None, pgds = 0, logact = 0):
+   def validate_dsowner(self, aname, dsid=None, logname=None, pgds=0, logact=0):
+      """Validate that the current user is an authorised dataset specialist.
+
+      Args:
+         aname (str): Application name used in log messages.
+         dsid (str, optional): Specific dataset ID to validate against.  When
+            ``None``, uses ``self.params['DS']``.
+         logname (str, optional): Login name to check.  Defaults to the current
+            user.
+         pgds (int, optional): Non-zero to allow a DSS group member to proceed
+            even without explicit dataset ownership.  Defaults to 0.
+         logact (int, optional): Log action bits; defaults to ``self.PGOPT['extlog']``.
+
+      Returns:
+         int: ``1`` if valid, ``-1`` if validation could not be performed (no
+         dataset in params), or logs a fatal error and exits.
+      """
       if not logname: logname = (self.params['LN'] if 'LN' in self.params else self.PGLOG['CURUID'])
       if logname == self.PGLOG['GDEXUSER']: return 1
       dsids = {}
@@ -539,8 +687,11 @@ class PgOPT(PgFile):
                return self.pglog("'{}' not listed as Specialist of '{}'\nRun '{}' with Option -MD!".format(logname, dsid, aname), logact)
       return 1
 
-   # validate dataset
    def validate_dataset(self):
+      """Validate that the dataset(s) in ``self.params['DS']`` exist in RDADB.
+
+      Logs a fatal error for any dataset ID not found in the ``dataset`` table.
+      """
       cnt = 1
       if 'DS' in self.params:
          if self.OPTS['DS'][0] == 2:
@@ -552,8 +703,16 @@ class PgOPT(PgFile):
             cnt = self.pgget("dataset", "", "dsid = '{}'".format(dsid), self.PGOPT['extlog'])
       if not cnt: self.pglog(dsid + " not exists in RDADB!", self.PGOPT['extlog'])
 
-   # validate given group indices or group names
-   def validate_groups(self, parent = 0):
+   def validate_groups(self, parent=0):
+      """Validate given group indices or group names against RDADB.
+
+      Resolves group names (``-GN`` / ``-PN``) to indices and validates numeric
+      indices.  Sets the validated bit on ``self.OPTS[gi][2]`` when done.
+
+      Args:
+         parent (int, optional): ``1`` to validate parent-group options (``PI``/``PN``);
+            ``0`` for regular group options (``GI``/``GN``).  Defaults to 0.
+      """
       if parent:
          gi = 'PI'
          gn = 'PN'
@@ -593,8 +752,16 @@ class PgOPT(PgFile):
          self.params[gi] = self.group_id_to_index(self.params[gn])
       self.OPTS[gi][2] |= 8  # set validated flag
 
-   # get group index array from given group IDs
    def group_id_to_index(self, grpids):
+      """Convert an array of group IDs to their corresponding group indices.
+
+      Args:
+         grpids (list[str]): Group IDs (or condition strings) to resolve.
+
+      Returns:
+         list[int] | None: Resolved group indices, or ``None`` if *grpids* is
+         empty.
+      """
       count = len(grpids) if grpids else 0
       if count == 0: return None
       indices = []
@@ -622,8 +789,16 @@ class PgOPT(PgFile):
          if count == 0: self.pglog("No Group matches given Group ID condition for " + self.params['DS'], self.PGOPT['extlog'])
          return pgrec['gindex']
 
-   # get group ID array from given group indices
    def group_index_to_id(self, indices):
+      """Convert an array of group indices to their corresponding group IDs.
+
+      Args:
+         indices (list[int]): Group indices (or condition strings) to resolve.
+
+      Returns:
+         list[str] | None: Resolved group IDs, or ``None`` if *indices* is
+         empty.
+      """
       count = len(indices) if indices else 0
       if count == 0: return None
       grpids = []
@@ -651,9 +826,19 @@ class PgOPT(PgFile):
          if count == 0: self.pglog("No Group matches given Group Index condition for " + self.params['DS'], self.PGOPT['extlog'])
          return pgrec['grpid']
 
-   # validate order fields and
-   # get an array of order fields that are not in given fields
-   def append_order_fields(self, oflds, flds, tname, excludes = None):
+   def append_order_fields(self, oflds, flds, tname, excludes=None):
+      """Validate order fields and collect those not already in the field list.
+
+      Args:
+         oflds (str): String of field keys to check as order fields.
+         flds (str | None): String of field keys already selected; used to skip
+            duplicates.
+         tname (str): Table name whose ``TBLHASH`` defines valid fields.
+         excludes (str, optional): String of field keys to exclude.
+
+      Returns:
+         str: Concatenated order field keys that are valid and not duplicated.
+      """
       orders = ''
       hash = self.TBLHASH[tname]
       for ofld in oflds:
@@ -663,8 +848,18 @@ class PgOPT(PgFile):
          orders += ofld
       return orders
 
-   # validate mutiple values for given fields
-   def validate_multiple_values(self, tname, count, flds = None):
+   def validate_multiple_values(self, tname, count, flds=None):
+      """Validate multi-value option counts for given table fields.
+
+      Delegates to ``validate_multiple_options`` with a remove flag set
+      appropriately for the ``htarfile`` table.
+
+      Args:
+         tname (str): Table name to look up in ``self.TBLHASH``.
+         count (int): Expected number of values for each multi-value option.
+         flds (list[str], optional): Specific field keys to validate; ``None``
+            validates all fields in the table hash.
+      """
       opts = []
       hash = self.TBLHASH[tname]
       if flds:
@@ -675,8 +870,19 @@ class PgOPT(PgFile):
             opts.append(hash[fld][0])
       self.validate_multiple_options(count, opts, (1 if tname == 'htarfile' else 0))
 
-   # validate multiple values for given options
-   def validate_multiple_options(self, count, opts, remove = 0):
+   def validate_multiple_options(self, count, opts, remove=0):
+      """Validate and normalise value counts for a list of multi-value options.
+
+      Expands single-element options to *count* values when the ``one-for-many``
+      flag is set, joins text fields when a single record is expected, and logs
+      errors for mismatched counts.
+
+      Args:
+         count (int): Required number of values.
+         opts (list[str]): Short option keys to validate.
+         remove (int, optional): ``1`` to silently remove options with one value
+            when *count* > 1 (used for ``htarfile``).  Defaults to 0.
+      """
       for opt in opts:
          if opt not in self.params or self.OPTS[opt][0] != 2: continue # no value given or not multiple value option
          cnt = len(self.params[opt])
@@ -693,8 +899,19 @@ class PgOPT(PgFile):
             elif cnt < count:
                self.pglog("Multi-value Option {}({}): {} Given and {} needed".format(opt, self.OPTS[opt][1], cnt, count), self.PGOPT['extlog'])
 
-   # get field keys for a RDADB table, include all if !include
-   def get_field_keys(self, tname, include = None, exclude = None):
+   def get_field_keys(self, tname, include=None, exclude=None):
+      """Get field keys for a RDADB table that have values set in ``self.params``.
+
+      Args:
+         tname (str): Table name to look up in ``self.TBLHASH``.
+         include (str, optional): Only include fields whose key appears in this
+            string.
+         exclude (str, optional): Skip fields whose key appears in this string.
+
+      Returns:
+         str | None: Concatenated field keys that have param values, or ``None``
+         if none found.
+      """
       fields = ''
       hash = self.TBLHASH[tname]
       for fld in hash:
@@ -704,8 +921,18 @@ class PgOPT(PgFile):
          if opt in self.params: fields += fld
       return fields if fields else None
 
-   # get a string for fields of a RDADB table
-   def get_string_fields(self, flds, tname, include = None, exclude = None):
+   def get_string_fields(self, flds, tname, include=None, exclude=None):
+      """Build a comma-separated SQL field string for a RDADB table.
+
+      Args:
+         flds (list[str]): Field keys whose SQL expressions are included.
+         tname (str): Table name to look up in ``self.TBLHASH``.
+         include (str, optional): Only include fields found in this string.
+         exclude (str, optional): Skip fields found in this string.
+
+      Returns:
+         str: Comma-separated SQL field expressions (e.g. ``"table.col AS alias"``).
+      """
       fields = []
       hash = self.TBLHASH[tname]
       for fld in flds:
@@ -721,10 +948,18 @@ class PgOPT(PgFile):
          else:
             fname = hash[ufld][1]
          fields.append(fname)
-      return ', '.join(fields) 
+      return ', '.join(fields)
 
-   # get max count for given options
    def get_max_count(self, opts):
+      """Return the maximum value count across a set of multi-value options.
+
+      Args:
+         opts (list[str]): Short option keys to inspect.
+
+      Returns:
+         int: The largest ``len(self.params[opt])`` among options that are set,
+         or ``0`` if none are set.
+      """
       count = 0
       for opt in opts:
          if opt not in self.params: continue
@@ -732,8 +967,19 @@ class PgOPT(PgFile):
          if cnt > count: count = cnt
       return count
 
-   # get a string of fields of a RDADB table for sorting
-   def get_order_string(self, flds, tname, exclude = None):
+   def get_order_string(self, flds, tname, exclude=None):
+      """Build an ``ORDER BY`` clause string for a RDADB query.
+
+      Lowercase field letters signal descending order.
+
+      Args:
+         flds (str): Field key characters; lowercase means ``DESC``.
+         tname (str): Table name to look up in ``self.TBLHASH``.
+         exclude (str, optional): Field keys to skip.
+
+      Returns:
+         str: ``" ORDER BY ..."`` clause, or ``''`` if no valid fields remain.
+      """
       orders = []
       hash = self.TBLHASH[tname]
       for fld in flds:
@@ -746,8 +992,18 @@ class PgOPT(PgFile):
          orders.append(hash[fld][1] + desc)
       return (" ORDER BY " + ', '.join(orders)) if orders else ''
 
-   # get a string for column titles of a given table
    def get_string_titles(self, flds, hash, lens):
+      """Build a delimiter-separated column title row.
+
+      Args:
+         flds (list[str]): Field keys whose titles are included.
+         hash (dict): Table hash mapping field keys to option info.
+         lens (list[int] | None): Column widths for padding; ``None`` to skip
+            padding.
+
+      Returns:
+         str: Title row string ending with the delimiter.
+      """
       titles = []
       colcnt = len(flds)
       for i in range(colcnt):
@@ -762,8 +1018,20 @@ class PgOPT(PgFile):
          titles.append(title)
       return self.params['DV'].join(titles) + self.params['DV']
 
-   # display error message and exit
-   def parameter_error(self, p, opt = None, lidx = 0, line = 0, infile = None):
+   def parameter_error(self, p, opt=None, lidx=0, line=0, infile=None):
+      """Display a parameter error message and exit.
+
+      Args:
+         p (str): The parameter or option short name that caused the error.
+         opt (str, optional): Error type keyword or the option short name that
+            provides context (``'missval'``, ``'missact'``, ``'duplicate'``,
+            ``'specified'``, ``'mixed'``, ``'delayed'``, ``'continue'``, or
+            ``None``).
+         lidx (int, optional): Line index in the input file (0 if not in a
+            file).
+         line (str | int, optional): The raw input line text.
+         infile (str, optional): Path to the input file.
+      """
       if not opt:
          errmsg = "value passed in without leading info option"
       elif opt == "continue":
@@ -787,19 +1055,32 @@ class PgOPT(PgFile):
       elif self.OPTS[opt][0] >= 4:
          errmsg = "value follows Action Option -{}/-{}".format(opt, self.OPTS[opt][1])
       else:
-         errmsg = None        
+         errmsg = None
       if errmsg:
          if lidx:
             self.input_error(lidx, line, infile, "{} - {}".format(p, errmsg))
          else:
             self.pglog("ERROR: {} - {}".format(p, errmsg), self.PGOPT['extlog'])
 
-   # wrap function to self.pglog() for error in input files
    def input_error(self, lidx, line, infile, errmsg):
+      """Log a fatal error for a problem encountered in an input file.
+
+      Args:
+         lidx (int): Line number within the input file where the error occurred.
+         line (str): The raw line text that caused the error.
+         infile (str): Path to the input file.
+         errmsg (str): Human-readable description of the error.
+      """
       self.pglog("ERROR at {}({}): {}\n  {}".format(infile, lidx, line, errmsg), self.PGOPT['extlog'])
 
-   # wrap function to self.pglog() for error for action
-   def action_error(self, errmsg, cact = None):
+   def action_error(self, errmsg, cact=None):
+      """Log a fatal error associated with the current action and dataset.
+
+      Args:
+         errmsg (str): Human-readable description of the error.
+         cact (str, optional): Short action option name; defaults to
+            ``self.PGOPT['CACT']``.
+      """
       msg = "ERROR"
       if self.PGOPT['ANAME']: msg += " " + self.PGOPT['ANAME']
       if not cact: cact = self.PGOPT['CACT']
@@ -813,11 +1094,30 @@ class PgOPT(PgFile):
       if self.PGLOG['DSCHECK']: self.record_dscheck_error(msg, self.PGOPT['extlog'])
       self.pglog(msg, self.PGOPT['extlog'])
 
-   # get the valid option for given parameter by checking if the given option
-   # name matches either an valid option key (short name) or its long name
-   # flag: 1 - value key only, 2 - multi-value key only, 3 - action key only,
-   #       4 - mode&action key only
-   def get_option_key(self, p, flag = 0, skip = 0, lidx = 0, line = None, infile = None, table = None):   
+   def get_option_key(self, p, flag=0, skip=0, lidx=0, line=None, infile=None, table=None):
+      """Resolve a parameter string to a valid short option key.
+
+      Checks both short (two-character) and long option names, as well as
+      aliases.  Logs an error for unknown or mismatched option types unless
+      *skip* is set.
+
+      Args:
+         p (str): Option name to look up (with or without leading ``-``).
+         flag (int, optional): Constrains the allowed option type:
+            ``0`` any, ``1`` value options only, ``2`` multi-value only,
+            ``3`` action options only, ``4`` mode/action only.
+         skip (int, optional): ``1`` to silently return ``None`` for unknown
+            options instead of logging an error.
+         lidx (int, optional): Line index for input-file error reporting.
+         line (str, optional): Raw line text for input-file error reporting.
+         infile (str, optional): Path to the input file.
+         table (str, optional): When set, marks matched options in
+            ``self.INOPTS``.
+
+      Returns:
+         str | None: The short option key, or ``None`` if not found and *skip*
+         is ``1``.
+      """
       if p is None: p = ''
       opt = self.get_short_option(p)
       errmsg = None
@@ -847,15 +1147,28 @@ class PgOPT(PgFile):
          else:
             self.pglog("ERROR: " + errmsg, self.PGOPT['extlog'])
       elif opt and (table or self.PGOPT['IFCNT'] and self.OPTS[opt][0] == 2):
-         self.INOPTS[opt] = 1   
+         self.INOPTS[opt] = 1
       return opt
 
-   # set values to given options, ignore options set in input files if the options
-   # already set on command line
-   def set_option_value(self, opt, val = None, cnl = 0, lidx = 0, line = None, infile = None):   
+   def set_option_value(self, opt, val=None, cnl=0, lidx=0, line=None, infile=None):
+      """Set a value for an option, enforcing type constraints and restrictions.
+
+      Handles mode/action, single-value, and multi-value options.  Options
+      already set on the command line are not overridden by input-file values.
+
+      Args:
+         opt (str): Short option key.
+         val (str | int | None, optional): Value to set.  ``None`` is treated
+            as ``''``.
+         cnl (int, optional): ``1`` when the value is a continuation line
+            (multi-line text field).
+         lidx (int, optional): Line index for input-file error reporting.
+         line (str, optional): Raw line text for input-file error reporting.
+         infile (str, optional): Path to the input file.
+      """
       if opt in self.CMDOPTS and lidx:   # in input file, but given on command line already
          if opt not in self.params: self.params[opt] = self.CMDOPTS[opt]
-         return   
+         return
       if val is None: val = ''
       if self.OPTS[opt][0]&3:
          if self.OPTS[opt][2]&16:
@@ -879,7 +1192,8 @@ class PgOPT(PgFile):
                ms = re.match(r'^!(\w*)', dstr)
                if ms:
                   dstr = ms.group(1)
-                  if vlen == 1 and dstr.find(val) > -1: errmsg = "{}: character must not be one of '{}'".format(val, str)
+                  # Bug fix #3: was `str` (Python built-in), should be `dstr`
+                  if vlen == 1 and dstr.find(val) > -1: errmsg = "{}: character must not be one of '{}'".format(val, dstr)
                elif vlen > 1 or (vlen == 0 and not self.OPTS[opt][2]&128) or (vlen == 1 and dstr.find(val) < 0):
                   errmsg = "{} single-letter value must be one of '{}'".format(val, dstr)
       if not errmsg:
@@ -899,7 +1213,7 @@ class PgOPT(PgFile):
                      self.params[opt][rowidx] = val
                else:
                   self.params[opt].append(val)     # add next value
-         elif self.OPTS[opt][0] == 1:          # single value option  
+         elif self.OPTS[opt][0] == 1:          # single value option
             if cnl and opt in self.params:
                if val: errmsg = "Multi-line value not allowed"
             elif self.OPTS[opt][2]&2 and self.pgcmp(self.params[opt], val):
@@ -926,9 +1240,16 @@ class PgOPT(PgFile):
            self.pglog("ERROR: {}({}) - {}".format(opt, self.OPTS[opt][1], errmsg), self.PGOPT['extlog'])
       if not lidx: self.CMDOPTS[opt] = self.params[opt]    # record options set on command lines
 
-   # get width for a single row if in column format
    def get_row_width(self, pgrec):
-      slen = len(self.params['DV'])   
+      """Calculate the display width of a single data row.
+
+      Args:
+         pgrec (dict): Record dict mapping field names to lists of values.
+
+      Returns:
+         int: Total row width in characters, including delimiter separators.
+      """
+      slen = len(self.params['DV'])
       width = 0
       for key in pgrec:
          wd = 0
@@ -946,9 +1267,19 @@ class PgOPT(PgFile):
          width += wd
       return width
 
-   # get a short option name by searching dict self.OPTS and self.ALIAS
    def get_short_option(self, p):
-      plen = len(p)   
+      """Look up the short (two-character) option key for a given parameter string.
+
+      Searches ``self.OPTS`` first (by exact two-letter match and by long name),
+      then ``self.ALIAS``.
+
+      Args:
+         p (str): Option name to look up (may be short or long).
+
+      Returns:
+         str | None: The matching short option key, or ``None`` if not found.
+      """
+      plen = len(p)
       if plen == 2:
          p = p.upper()
          if p in self.OPTS: return p
@@ -959,8 +1290,23 @@ class PgOPT(PgFile):
             if not self.pgcmp(key, p, 1): return opt
       return None
 
-   # print result in column format, with multiple values each row
-   def print_column_format(self, pgrec, flds, hash, lens, retbuf = 0):
+   def print_column_format(self, pgrec, flds, hash, lens, retbuf=0):
+      """Print (or return) query results in column format.
+
+      Each row of the result set is written as a delimiter-separated line.
+
+      Args:
+         pgrec (dict): Result record dict mapping field names to value lists.
+         flds (list[str]): Ordered field keys to include as columns.
+         hash (dict): Table hash mapping field keys to option/column info.
+         lens (list[int] | None): Per-column widths for fixed-width formatting.
+         retbuf (int, optional): ``1`` to return the output as a string instead
+            of writing to ``self.OUTPUT``.  Defaults to 0.
+
+      Returns:
+         str | int: Accumulated output string when *retbuf* is ``1``, otherwise
+         the number of rows written.
+      """
       rowcnt = -1
       colcnt = len(flds)
       buf = ''
@@ -1010,8 +1356,16 @@ class PgOPT(PgFile):
             self.OUTPUT.write(line)
       return buf if retbuf else rowcnt
 
-   # print result in row format, with single value on each row
    def print_row_format(self, pgrec, flds, hash):
+      """Print query results in row format (one field per line).
+
+      Each field is written as ``"LongName<ES>value\n"``.
+
+      Args:
+         pgrec (dict): A single database record dict.
+         flds (list[str]): Ordered field keys to print.
+         hash (dict): Table hash mapping field keys to option/column info.
+      """
       for fld in flds:
          if fld not in hash: continue
          line = "{}{}".format(self.OPTS[hash[fld][0]][1], self.params['ES'])
@@ -1023,8 +1377,20 @@ class PgOPT(PgFile):
             if value is not None: line += str(value)
          self.OUTPUT.write(line + "\n")
 
-   # compress/uncompress given files and change the formats accordingly
    def compress_files(self, files, formats, count):
+      """Compress or uncompress a list of files, updating format strings.
+
+      Behaviour is controlled by the presence of ``-UZ`` in ``self.params``
+      (uncompress) or its absence (compress).
+
+      Args:
+         files (list[str]): Paths to local files to process (modified in place).
+         formats (list[str]): Corresponding format strings for each file.
+         count (int): Number of files to process.
+
+      Returns:
+         list[str]: The (possibly updated) *files* list.
+      """
       if 'UZ' in self.params:
          strcmp = 'Uncompress'
          actcmp = 0
@@ -1041,16 +1407,25 @@ class PgOPT(PgFile):
          (ofile, fmt) = self.compress_local_file(files[i], fmt, actcmp, self.PGOPT['extlog'])
          if ofile != files[i]:
             files[i] = ofile
-            cmpcnt += 1      
+            cmpcnt += 1
       self.pglog("{}/{} Files {}ed for {}".format(cmpcnt, count, strcmp, self.params['DS']) , self.PGOPT['emllog'])
       if 'ZD' in self.params: del self.params['ZD']
       if 'UZ' in self.params: del self.params['UZ']
       return files
 
-   # get hash condition
-   # tname - table name to identify a table hash
-   # noand - 1 for not add leading 'AND'
-   def get_hash_condition(self, tname, include = None, exclude = None, noand = 0):
+   def get_hash_condition(self, tname, include=None, exclude=None, noand=0):
+      """Build a SQL ``WHERE`` condition string from table hash and current params.
+
+      Args:
+         tname (str): Table name to look up in ``self.TBLHASH``.
+         include (str, optional): Only include fields whose key appears here.
+         exclude (str, optional): Skip fields whose key appears here.
+         noand (int, optional): ``1`` to omit a leading ``AND`` on the first
+            condition fragment.  Defaults to 0.
+
+      Returns:
+         str: Concatenated SQL condition fragments (e.g. ``" AND col = 'val'"``).
+      """
       condition = ''
       hash = self.TBLHASH[tname]
       for key in hash:
@@ -1067,8 +1442,17 @@ class PgOPT(PgFile):
          noand = 0
       return condition
 
-   # set default self.params value for given opt empty the value if 'all' is given
-   def set_default_value(self, opt, dval = None):
+   def set_default_value(self, opt, dval=None):
+      """Set a default parameter value for an option if none is currently set.
+
+      Removes the option from ``self.params`` if the current value is ``'all'``
+      (case-insensitive).
+
+      Args:
+         opt (str): Short option key.
+         dval (str | None, optional): Default value to apply when the option
+            has no value yet.  ``None`` means no default is applied.
+      """
       flag = self.OPTS[opt][0]
       if flag&3 == 0: return    # skip if not single&multiple value options
       oval = 0
@@ -1086,15 +1470,25 @@ class PgOPT(PgFile):
             del self.params[opt]       # remove option value for all
          return                   # value given already
       if dval:
-         # set default value      
+         # set default value
          if flag == 1:
             self.params[opt] = dval
          else:
             self.params[opt] = [dval]
 
-   # add/strip COS block for give file name and cosflg if given/not-given cosfile
-   # return the file size after the convertion
-   def cos_convert(self, locfile, cosflg, cosfile = None):
+   def cos_convert(self, locfile, cosflg, cosfile=None):
+      """Add or strip a COS block for a local file using ``cosconvert``.
+
+      Args:
+         locfile (str): Path to the local file to convert.
+         cosflg (str): Conversion flag passed to ``cosconvert``.
+         cosfile (str, optional): Destination path for the converted file.  If
+            ``None``, conversion is done in place on *locfile*.
+
+      Returns:
+         int | None: File size in bytes after conversion, or the result of a
+         logged error on failure.
+      """
       if cosfile:
          cmd = "cosconvert -{} {} {}".format(cosflg, cosfile, locfile)
       else:
@@ -1107,22 +1501,38 @@ class PgOPT(PgFile):
       else:
          return info['data_size']
 
-   # evaluate count of values for given options
    def get_option_count(self, opts):
+      """Evaluate the count of values for a set of options and validate them.
+
+      Args:
+         opts (list[str]): Short option keys to inspect.
+
+      Returns:
+         int: The maximum value count across all provided options that are set
+         in ``self.params``.
+      """
       count = 0
       for opt in opts:
          if opt in self.params:
             cnt = len(self.params[opt])
             if cnt > count: count = cnt
-      if count > 0: self.validate_multiple_options(count, opts) 
+      if count > 0: self.validate_multiple_options(count, opts)
       return count
 
-   # gather subgroup indices recursively for given condition
-   #  dsid: Dataset Id
-   #  pidx: parent group index
-   # gtype: group type if not empty, P - public groups only)
-   # Return: array reference of group indices
-   def get_all_subgroups(self, dcnd, pidx, gtype = None):
+   def get_all_subgroups(self, dcnd, pidx, gtype=None):
+      """Gather all subgroup indices recursively for a given parent index.
+
+      Args:
+         dcnd (str): SQL condition string scoping the dataset (e.g.
+            ``"dsid = 'd123456'""``).
+         pidx (int): Parent group index to start from.
+         gtype (str, optional): Group type filter (e.g. ``'P'`` for public
+            groups only).  ``None`` includes all types.
+
+      Returns:
+         list[int]: All group indices reachable from *pidx*, including *pidx*
+         itself.
+      """
       gidxs = [pidx]
       gflds = "gindex"
       if gtype: gflds += ", grptype"
@@ -1136,15 +1546,24 @@ class PgOPT(PgFile):
          gidxs.extend(subs)
       return gidxs
 
-   # gather public subgroup indices recursively for given condition. A group index is
-   # gathered only if there are data files right under it. The pidx is included too
-   # if file count of it larger then zero.
-   #  dsid: Dataset Id
-   #  pidx: parent group index
-   #  cfld: count field (dwebcnt, nwebcnt, savedcnt)
-   # pfcnt: file count for parent group index pidx 0 to skip)
-   # Return: array reference of group indices
-   def get_data_subgroups(self, dcnd, pidx, cfld, pfcnt = 0):
+   def get_data_subgroups(self, dcnd, pidx, cfld, pfcnt=0):
+      """Gather public subgroup indices that directly contain data files.
+
+      Only includes a group index when its count field (e.g. ``dwebcnt``) is
+      greater than zero.  The parent *pidx* is included when it has files not
+      accounted for by its children.
+
+      Args:
+         dcnd (str): SQL condition string scoping the dataset.
+         pidx (int): Parent group index to start from.
+         cfld (str): Count field name (e.g. ``'dwebcnt'``, ``'nwebcnt'``).
+         pfcnt (int, optional): Pre-fetched file count for *pidx*; ``0`` to
+            query the database.
+
+      Returns:
+         list[int] | None: Group indices with data files, or ``None`` if none
+         found.
+      """
       if not pfcnt:    # get file count for the parent group
          pfcnt = self.group_file_count(dcnd, pidx, cfld)
          if not pfcnt: return None
@@ -1164,8 +1583,18 @@ class PgOPT(PgFile):
       if pfcnt > 0: gidxs.insert(0, pidx)
       return (gidxs if gidxs else None)
 
-   # get group file count for given count field name
    def group_file_count(self, cnd, gidx, cfld):
+      """Get the file count for a group from ``dsgroup`` or ``dataset``.
+
+      Args:
+         cnd (str): SQL condition string (dataset scope).
+         gidx (int): Group index; ``0`` queries the ``dataset`` table instead
+            of ``dsgroup``.
+         cfld (str): Count field name to retrieve.
+
+      Returns:
+         int: The file count, or ``0`` if the record is not found.
+      """
       if gidx:
          table = "dsgroup"
          cnd += " AND gindex = {}".format(gidx)
@@ -1174,8 +1603,15 @@ class PgOPT(PgFile):
       pgrec = self.pgget(table, cfld, cnd)
       return (pgrec[cfld] if pgrec else 0)
 
-   # set file format for actions -AM/-AW from given local files
    def set_file_format(self, count):
+      """Detect and set the archive format for local files in ``self.params['LF']``.
+
+      Populates ``self.params['AF']`` with detected formats and marks the option
+      as auto-set.
+
+      Args:
+         count (int): Number of files to inspect (matches the length of ``LF``).
+      """
       if 'LF' in self.params:
          files = self.params['LF']
       else:
@@ -1191,9 +1627,24 @@ class PgOPT(PgFile):
          self.params['AF'] = fmts
          self.OPTS['AF'][2] |= 2
 
-   # get frequency information
    @staticmethod
-   def get_control_frequency(frequency):   
+   def get_control_frequency(frequency):
+      """Parse a frequency string into a frequency list and unit character.
+
+      Accepts formats like ``'1Y'``, ``'3M'``, ``'2W'``, ``'7D'``, ``'12H'``,
+      ``'30N'``, ``'60S'``, and fractional-month forms ``'1M/2'`` through
+      ``'1M/10'`` (denominators 2, 3, 5, 6, 10 only).
+
+      Args:
+         frequency (str): Frequency string to parse.
+
+      Returns:
+         tuple: ``(freq, unit)`` where *freq* is a 7-element list
+         ``[years, months, days, hours, minutes, seconds, fractions]`` and
+         *unit* is the uppercase unit character (``'Y'``, ``'M'``, ``'W'``,
+         ``'D'``, ``'H'``, ``'N'``, or ``'S'``).  On error, returns
+         ``(None, errmsg)`` where *errmsg* describes the problem.
+      """
       val = nf = 0
       unit = None
       ms = re.match(r'^(\d+)([YMWDHNS])$', frequency, re.I)
@@ -1208,15 +1659,16 @@ class PgOPT(PgFile):
             unit = 'M'
             if nf < 2 or nf > 10 or (30%nf): val = 0
       if not val:
+         # Bug fix #5: normalise all error paths to return (None, errmsg)
          if nf:
-            unit = "fraction of month frequency '{}' MUST be (2,3,5,6,10)".format(frequency)
+            errmsg = "fraction of month frequency '{}' MUST be (2,3,5,6,10)".format(frequency)
          elif unit:
-            val = "frequency '{}' MUST be larger than 0".format(frequency)
+            errmsg = "frequency '{}' MUST be larger than 0".format(frequency)
          elif re.search(r'/(\d+)$', frequency):
-            val = "fractional frequency '{}' for month ONLY".format(frequency)
+            errmsg = "fractional frequency '{}' for month ONLY".format(frequency)
          else:
-            val = "invalid frequency '{}', unit must be (Y,M,W,D,H)".format(frequency)
-         return (None, unit)
+            errmsg = "invalid frequency '{}', unit must be (Y,M,W,D,H)".format(frequency)
+         return (None, errmsg)
       freq = [0]*7   # initialize the frequence list
       uidx = {'Y': 0, 'D': 2, 'H': 3, 'N': 4, 'S': 5}
       if unit == 'M':
@@ -1228,8 +1680,19 @@ class PgOPT(PgFile):
          freq[uidx[unit]] = val
       return (freq, unit)
 
-   #  check if valid data time for given pindex
-   def valid_data_time(self, pgrec, cstr = None, logact = 0):
+   def valid_data_time(self, pgrec, cstr=None, logact=0):
+      """Check whether a control record's data time is valid for its parent index.
+
+      Args:
+         pgrec (dict): Control record containing ``'pindex'``, ``'datatime'``,
+            and ``'frequency'`` fields.
+         cstr (str, optional): Context string prepended to log messages.
+         logact (int, optional): Log action bits for warning messages.
+
+      Returns:
+         int: ``self.SUCCESS`` if valid or no check needed; ``self.FAILURE``
+         otherwise.
+      """
       if pgrec['pindex'] and pgrec['datatime']:
          (freq, unit) = self.get_control_frequency(pgrec['frequency'])
          if not freq:
@@ -1241,31 +1704,64 @@ class PgOPT(PgFile):
             return self.FAILURE
       return self.SUCCESS
 
-   # publish filelists for given datasets
    def publish_dataset_filelist(self, dsids):
+      """Publish file lists for a collection of datasets.
+
+      Args:
+         dsids (list[str]): Dataset IDs whose file lists should be published.
+      """
       for dsid in dsids:
          self.pgsystem("publish_filelist " + dsid, self.PGOPT['wrnlog'], 7)
 
-   # get the current active version index for given dsid
-   def get_version_index(self, dsid, logact = 0):
+   def get_version_index(self, dsid, logact=0):
+      """Get the current active version index for a dataset.
+
+      Args:
+         dsid (str): Dataset ID to query.
+         logact (int, optional): Log action bits for error messages.
+
+      Returns:
+         int: The active version index, or ``0`` if none found.
+      """
       pgrec = self.pgget("dsvrsn", "vindex", "dsid = '{}' AND status = 'A'".format(dsid), logact)
       return (pgrec['vindex'] if pgrec else 0)
 
-   # append given format (data or archive) sfmt to format string sformat
    @staticmethod
-   def append_format_string(sformat, sfmt, chkend = 0):
+   def append_format_string(sformat, sfmt, chkend=0):
+      """Append format components to an existing format string without duplicates.
+
+      Args:
+         sformat (str | None): Existing format string (dot-separated components).
+         sfmt (str | None): Format components to append (dot-separated).
+         chkend (int, optional): ``1`` to only check for a match at the end of
+            *sformat*; ``0`` (default) to check anywhere.
+
+      Returns:
+         str: Updated format string with new components appended.
+      """
       mp = r'(^|\.){}$' if chkend else r'(^|\.){}(\.|$)'
       if sfmt:
          if not sformat:
             sformat = sfmt
          else:
             for fmt in re.split(r'\.', sfmt):
-               if not re.search(mp.format(fmt), sformat, re.I): sformat += '.' + fmt
+               # Bug fix #6: escape regex metacharacters in format component
+               if not re.search(mp.format(re.escape(fmt)), sformat, re.I): sformat += '.' + fmt
       return sformat
 
-   # get request type string or shared info
    @staticmethod
-   def request_type(rtype, idx = 0):   
+   def request_type(rtype, idx=0):
+      """Return a descriptive string or attribute for a request type code.
+
+      Args:
+         rtype (str): Single-character request type code (e.g. ``'C'``, ``'S'``).
+         idx (int, optional): ``0`` for the type description string (default);
+            ``1`` for the associated integer attribute.
+
+      Returns:
+         str | int: The requested attribute from the internal ``RTYPE`` table.
+         Falls back to type ``'U'`` (``"Data"``) for unknown codes.
+      """
       RTYPE = {
          'C': ["Customized Data",                0],
          'D': ["CDP Link",                       0],
@@ -1283,8 +1779,24 @@ class PgOPT(PgFile):
       if rtype not in RTYPE: rtype = 'U'
       return RTYPE[rtype][idx]
 
-   # email notice of for user
-   def send_request_email_notice(self, pgrqst, errmsg, fcount, rstat, readyfile = None, pgpart = None):
+   def send_request_email_notice(self, pgrqst, errmsg, fcount, rstat, readyfile=None, pgpart=None):
+      """Compose and send (or cache) a request email notice to the user.
+
+      Handles error, empty-output, and success scenarios, building the email
+      body from a template notice file and substituting placeholders.
+
+      Args:
+         pgrqst (dict): Database record from ``dsrqst`` with request details.
+         errmsg (str | None): Error description, or ``None`` on success.
+         fcount (int): Number of output files generated.
+         rstat (str): Current request status character.
+         readyfile (str, optional): Path to write the email buffer as a ready
+            file.
+         pgpart (dict, optional): Partition record when processing partitions.
+
+      Returns:
+         str: Updated request status character (e.g. ``'E'`` on email error).
+      """
       pgcntl = self.PGOPT['RCNTL']
       rhome = self.params['WH'] if 'WH' in self.params and self.params['WH'] else self.PGLOG['RQSTHOME']
       if errmsg:
@@ -1313,7 +1825,7 @@ class PgOPT(PgFile):
          enote = "email_notice_globus"
       else:
          enote = "email_" + ("command" if pgrqst['location'] else "notice")
-      if enote[0] not in '/.': enote = "{}/notices/{}".format(rhome, enote)      
+      if enote[0] not in '/.': enote = "{}/notices/{}".format(rhome, enote)
       finfo = self.check_local_file(enote, 128)
       if not finfo:
          if finfo is None:
@@ -1431,8 +1943,20 @@ class PgOPT(PgFile):
          self.set_local_mode(readyfile, 1, self.PGLOG['FILEMODE'])
       return rstat
 
-   #  cache partition process error to existing email buffer
    def cache_partition_email_error(self, ridx, errmsg):
+      """Cache a partition processing error into the existing email buffer.
+
+      Updates ``dsrqst.einfo`` by substituting the ``<PARTERR>`` placeholder
+      with the error message and a new placeholder for the next error.
+
+      Args:
+         ridx (int): Request index identifying the ``dsrqst`` row.
+         errmsg (str): Error description to embed in the email buffer.
+
+      Returns:
+         int: Non-zero if the update succeeded; ``0`` if no placeholder was
+         found in the existing email buffer.
+      """
       pkey = "<PARTERR>"
       pgrec = self.pgget("dsrqst", 'einfo', "rindex = {}".format(ridx), self.PGOPT['extlog'])
       if not (pgrec and pgrec['einfo'] and pgrec['einfo'].find(pkey) > -1): return 0
