@@ -219,7 +219,7 @@ class PgCMD(PgLock):
                sys.exit(0)
       if not cidx:  # add new dscheck record
          record = {}
-         if hosts and re.match(r'^(ds\d|\d)\d\d\.\d$', hosts):
+         if hosts and re.match(r'^\w\d\d\d\d\d\d$', hosts):
             self.pglog(hosts + ": Cannot pass DSID for hostname to submit batch process", self.LGEREX)
          if oindex: self.set_command_control(oindex, otype, cmd, logact)
          record['oindex'] = oindex
