@@ -27,6 +27,28 @@ import traceback
 from unidecode import unidecode
 
 class PgLOG:
+   """Logging and process management class for RDA Python tools.
+
+   PgLOG provides a unified interface for logging messages to files and
+   STDERR/STDOUT, sending email notifications, running system commands,
+   and managing process metadata.
+
+   Logging behavior is controlled by bitfield ``logact`` flags (e.g. MSGLOG,
+   WARNLG, ERRLOG, EXITLG).  Combine flags with ``|`` to compose actions::
+
+       pglog.pglog("something went wrong", PgLOG.LOGERR | PgLOG.EXITLG)
+
+   Key flag groups:
+
+   * Output destination: ``MSGLOG`` (log file), ``WARNLG`` / ``ERRLOG`` (STDERR),
+     ``EMLLOG`` / ``SNDEML`` (email buffer / send immediately)
+   * Control flow:       ``EXITLG`` (sys.exit after logging), ``RETMSG`` (return msg)
+   * Formatting:         ``SEPLIN`` (separator line), ``BRKLIN`` (blank line)
+   * Return constants:   ``SUCCESS`` (1), ``FAILURE`` (0), ``FINISH`` (2)
+
+   Instance state is held in ``self.PGLOG`` (dict), ``self.CPID`` (process info
+   dict), ``self.COMMANDS`` (command-path cache), and ``self.HOSTTYPES``.
+   """
 
    # define some constants for logging actions
    MSGLOG = (0x00001)   # logging message
@@ -72,6 +94,13 @@ class PgLOG:
    FAILURE = 0   # Unsuccessful function call
 
    def __init__(self):
+      """Initialize PgLOG with default configuration values.
+
+      Populates ``self.PGLOG`` with site defaults (paths, email settings,
+      user IDs, batch system info, etc.) then calls :meth:`set_common_pglog`
+      to override those defaults from environment variables and detect the
+      runtime environment (hostname, PBS job, PATH construction, etc.).
+      """
       self.PGLOG = {
          # more defined in untaint_suid() with environment variables
          'EMLADDR': '',
@@ -156,23 +185,50 @@ class PgLOG:
       # set additional common PGLOG values
       self.set_common_pglog()
 
-   # get time string in format YYMMDDHHNNSS for given ctime; or current time if ctime is 0
-   def current_datetime(self, ctime = 0):
-      if self.PGLOG['GMTZ']:
-         dt = time.gmtime(ctime) if ctime else time.gmtime()
-      else:
-         dt = time.localtime(ctime) if ctime else time.localtime()
+   def current_datetime(self, ctime=0):
+      """Return a datetime string in YYYYMMDDHHMMSS format.
+
+      Args:
+          ctime: Unix timestamp (seconds).  Uses current time when 0.
+
+      Returns:
+          14-character string ``YYYYMMDDHHMMSS`` in local or GMT time
+          depending on ``self.PGLOG['GMTZ']``.
+      """
+      get_time = time.gmtime if self.PGLOG['GMTZ'] else time.localtime
+      dt = get_time(ctime) if ctime else get_time()
       return "{:02}{:02}{:02}{:02}{:02}{:02}".format(dt[0], dt[1], dt[2], dt[3], dt[4], dt[5])
 
-   # get an environment variable and untaint it
-   def get_environment(self, name, default = None, logact = 0):
+   def get_environment(self, name, default=None, logact=0):
+      """Return an environment variable value, optionally logging if missing.
+
+      Args:
+          name:    Environment variable name.
+          default: Value returned when the variable is unset (default None).
+          logact:  Logging action flags; if non-zero and variable is missing,
+                   calls :meth:`pglog` with that action.
+
+      Returns:
+          The variable's string value, or *default* if unset.
+      """
       env = os.getenv(name, default)
       if env is None and logact:
          self.pglog(name + ": Environment variable is not defined", logact)
       return env
 
-   # cache the msg string to global email entries for later call of send_email()
-   def set_email(self,  msg, logact = 0):
+   def set_email(self, msg, logact=0):
+      """Append or prepend *msg* to the internal email buffers.
+
+      Buffers are flushed and composed by :meth:`send_email` /
+      :meth:`send_python_email`.  Pass ``msg=None`` to clear ``EMLMSG``.
+
+      Args:
+          msg:    Message text to buffer.  ``None`` clears ``EMLMSG``.
+          logact: Combination of ``EMLTOP`` (prepend / finalise as top-level
+                  email), ``ERRLOG`` (record as numbered error), ``EMLSUM``
+                  (record in summary section), ``EMLLOG`` (record in detail
+                  section), ``BRKLIN`` / ``SEPLIN`` (formatting).
+      """
       if logact and msg:
          if logact&self.EMLTOP:
             if self.PGLOG['PRGMSG']:
@@ -215,12 +271,25 @@ class PgLOG:
       elif msg is None:
          self.PGLOG['EMLMSG'] = ""
 
-   # retrieve the cached email message
    def get_email(self):
+      """Return the currently buffered email message string."""
       return self.PGLOG['EMLMSG']
 
-   #  send a customized email with all entries included
-   def send_customized_email(self, logmsg, emlmsg, logact = None):
+   def send_customized_email(self, logmsg, emlmsg, logact=None):
+      """Send an email whose headers are embedded inside *emlmsg*.
+
+      The message body must contain ``From:``, ``To:``, and ``Subject:``
+      header lines.  ``Cc:`` is optional.  Headers are stripped from the
+      body before sending.
+
+      Args:
+          logmsg: Prefix string for error/status log messages.
+          emlmsg: Full email text with embedded ``From/To/Cc/Subject`` lines.
+          logact: Logging action flags (default ``LOGWRN``).
+
+      Returns:
+          ``SUCCESS`` on success, ``FAILURE`` on error.
+      """
       if logact is None: logact = self.LOGWRN
       entries = {
          'fr': ["From",    1, None],
@@ -257,14 +326,43 @@ class PgLOG:
          self.pglog(errmsg, (logact|self.ERRLOG)&~self.EXITLG)
       return ret
 
-   #  send an email; if empty msg send email message saved in self.PGLOG['EMLMSG'] instead
-   def send_email(self, subject = None, receiver = None, msg = None, sender = None, logact = None):
+   def send_email(self, subject=None, receiver=None, msg=None, sender=None, logact=None):
+      """Send an email via :meth:`send_python_email`.
+
+      If *msg* is empty, the buffered ``EMLMSG`` is used and cleared.
+
+      Args:
+          subject:  Email subject line.  Defaults to a hostname/command string.
+          receiver: Recipient address.  Defaults to ``EMLADDR`` or ``CURUID``.
+          msg:      Message body.  Uses buffered ``EMLMSG`` when omitted.
+          sender:   Sender address.  Defaults to ``CURUID``.
+          logact:   Logging action flags (default ``LOGWRN``).
+
+      Returns:
+          ``SUCCESS`` on success, ``FAILURE`` on error or no message to send.
+      """
       if logact is None: logact = self.LOGWRN
       return self.send_python_email(subject, receiver, msg, sender, None, logact)
 
-   #  send an email via python module smtplib; if empty msg send email message saved
-   #  in self.PGLOG['EMLMSG'] instead. pass cc = '' for skipping 'Cc: '
-   def send_python_email(self, subject = None, receiver = None, msg = None, sender = None, cc = None, logact = None):
+   def send_python_email(self, subject=None, receiver=None, msg=None, sender=None, cc=None, logact=None):
+      """Send an email using Python's ``smtplib``.
+
+      If *msg* is empty, uses and clears the buffered ``EMLMSG``.
+      Pass ``cc=''`` explicitly to suppress the Cc header entirely.
+
+      Args:
+          subject:  Email subject.  Auto-generated from hostname/command if omitted.
+          receiver: Recipient address.  Defaults to ``EMLADDR`` or ``CURUID``.
+          msg:      Message body.  Uses buffered ``EMLMSG`` when omitted.
+          sender:   Sender address.  Defaults to ``CURUID``.
+          cc:       Carbon-copy address(es).  Uses ``CCDADDR`` when ``None``;
+                    pass ``''`` to skip Cc entirely.
+          logact:   Logging action flags (default ``LOGWRN``).
+
+      Returns:
+          ``SUCCESS`` on success, empty string when there is nothing to send,
+          or ``FAILURE`` on SMTP error.
+      """
       if logact is None: logact = self.LOGWRN
       if not msg:
          if self.PGLOG['EMLMSG']:
@@ -297,6 +395,7 @@ class PgLOG:
       emlmsg['Subject'] = subject
       if self.CPID['CPID']: logmsg += " in " + self.CPID['CPID']
       logmsg += ", Subject: {}\n".format(subject)
+      eml = None
       try:
          eml = smtplib.SMTP(self.PGLOG['EMLSRVR'], self.PGLOG['EMLPORT'])
          eml.send_message(emlmsg)
@@ -304,27 +403,41 @@ class PgLOG:
          errmsg = f"Error sending email:\n{err}\n{logmsg}"
          return self.pglog(errmsg, (logact|self.ERRLOG)&~self.EXITLG)
       finally:
-         eml.quit()
-         self.log_email(str(emlmsg))
-         self.pglog(logmsg, logact&~self.EXITLG)
-         return self.SUCCESS
+         if eml is not None:
+            eml.quit()
+      self.log_email(str(emlmsg))
+      self.pglog(logmsg, logact&~self.EXITLG)
+      return self.SUCCESS
 
-   # log email sent
    def log_email(self, emlmsg):
-      if not self.CPID['PID']: self.CPID['PID'] =  "{}-{}-{}".format(self.PGLOG['HOSTNAME'], self.get_command(), self.PGLOG['CURUID'])
+      """Append a sent-email record to the email log file.
+
+      Args:
+          emlmsg: Full email message string (as returned by ``str(EmailMessage)``).
+      """
+      if not self.CPID['PID']:
+         self.CPID['PID'] = "{}-{}-{}".format(self.PGLOG['HOSTNAME'], self.get_command(), self.PGLOG['CURUID'])
       cmdstr = "{} {} at {}\n".format(self.CPID['PID'], self.break_long_string(self.CPID['CMD'], 40, "...", 1), self.current_datetime())
       fn = "{}/{}".format(self.PGLOG['LOGPATH'], self.PGLOG['EMLFILE'])
       try:
-         f = open(fn, 'a')
-         f.write(cmdstr + emlmsg)
-         f.close()
+         with open(fn, 'a') as f:
+            f.write(cmdstr + emlmsg)
       except FileNotFoundError as e:
-          print(e)
+         print(e)
    
-   # Function: cmdlog(cmdline)
-   # cmdline - program name and all arguments
-   # ctime - time (in seconds) when the command starts
-   def cmdlog(self, cmdline = None, ctime = 0, logact = None):
+   def cmdlog(self, cmdline=None, ctime=0, logact=None):
+      """Log a command start or end event and update process timing info.
+
+      When *cmdline* is ``None`` or matches ``end|quit|exit|abort``, logs the
+      elapsed execution time and clears process state.  Otherwise records the
+      command in ``self.CPID`` and logs its start.
+
+      Args:
+          cmdline: Command string to log.  ``None`` or an end-keyword logs
+                   the elapsed time since the matching start.
+          ctime:   Unix timestamp (seconds) for the event.  Defaults to now.
+          logact:  Logging action flags (default ``MSGLOG|FRCLOG``).
+      """
       if logact is None: logact = self.MSGLOG|self.FRCLOG
       if not ctime: ctime = int(time.time())
       if not cmdline or re.match('(end|quit|exit|abort)', cmdline, re.I):
@@ -347,11 +460,32 @@ class PgLOG:
             self.CPID['CMD'] = cmdline
          self.CPID['CTM'] = ctime
 
-   # Function: self.pglog(msg, logact) return self.FAILURE or log message if not exit
-   #   msg  -- message to log
-   # locact -- logging actions: MSGLOG, WARNLG, ERRLOG, EXITLG, EMLLOG, & SNDEML
-   # log and display message/error and exit program according logact value
-   def pglog(self, msg, logact = None):
+   def pglog(self, msg, logact=None):
+      """Log *msg* and take action based on *logact* bitfield flags.
+
+      This is the central logging method.  It writes to the log file and/or
+      STDERR/STDOUT, buffers for email, sends email immediately, or exits the
+      process — all controlled by the *logact* bitmask.
+
+      Args:
+          msg:    Message text to log.  Leading whitespace is stripped.
+          logact: Combination of action flags (default ``MSGLOG``):
+
+                  * ``MSGLOG``  — write to log file
+                  * ``WARNLG``  — write to STDERR as a warning
+                  * ``ERRLOG``  — write to error log file and STDERR
+                  * ``EXITLG``  — call ``sys.exit(1)`` after logging
+                  * ``EMLLOG``  — append *msg* to email buffer
+                  * ``SNDEML``  — send buffered email now
+                  * ``RETMSG``  — return *msg* instead of ``FAILURE``
+                  * ``FRCLOG``  — force write even if MSGLOG not set
+                  * ``SEPLIN``  — prepend a separator line
+                  * ``BRKLIN``  — prepend a blank line
+
+      Returns:
+          The *msg* string if ``RETMSG`` is set; otherwise ``FAILURE`` (0).
+          Does not return when ``EXITLG`` is set.
+      """
       if logact is None: logact = self.MSGLOG  
       retmsg = None
       logact &= self.PGLOG['LOGMASK']   # filtering the log actions
@@ -366,7 +500,7 @@ class PgLOG:
          if msg: msg = msg.rstrip() + "; "
          msg += ext
       else:
-         if msg and not re.search(r'(\n|\r)$', msg): msg += "\n"
+         if msg and not msg.endswith(('\n', '\r')): msg += "\n"
          if logact&self.RETMSG: retmsg = msg
       if logact&self.EMLALL:
          if logact&self.SNDEML or not msg:
@@ -403,8 +537,18 @@ class PgLOG:
       else:
          return (retmsg if retmsg else self.FAILURE)
 
-   # write a log message
-   def write_message(self, msg, file, logact):   
+   def write_message(self, msg, file, logact):
+      """Write *msg* to *file* (or STDOUT/STDERR when *file* is ``None``).
+
+      When *file* is given but cannot be opened, falls back to STDOUT/STDERR
+      with an error notice.  Appends a call-trace for error-log writes.
+
+      Args:
+          msg:    Text to write.
+          file:   Absolute path to log file, or ``None`` for console output.
+          logact: Logging action flags used to select output stream and
+                  formatting (``ERRLOG``, ``EXITLG``, ``BRKLIN``, ``SEPLIN``).
+      """
       doclose = False
       errlog = logact&self.ERRLOG
       if file:
@@ -422,13 +566,26 @@ class PgLOG:
       if errlog and file and not logact&(self.EMLALL|self.SKPTRC): OUT.write(self.get_call_trace())
       if doclose: OUT.close()
 
-   # check and disconnet database before exit
-   def pgexit(self, stat = 0):
+   def pgexit(self, stat=0):
+      """Close the database connection (if open) and exit the process.
+
+      Args:
+          stat: Exit status code passed to ``sys.exit`` (default 0).
+      """
       if self.PGLOG['PGDBBUF']: self.PGLOG['PGDBBUF'].close()
       sys.exit(stat)
 
-   # get a command string for error log dump
    def get_error_command(self, ctime, logact):
+      """Build a one-line error/abort header string for log entries.
+
+      Args:
+          ctime:  Unix timestamp (seconds) at the time of the error.
+          logact: Logging action flags used to determine the prefix word
+                  (``ABORTS``, ``QUITS``, or ``ERROR``).
+
+      Returns:
+          Formatted string ending with ``\\n``.
+      """
       if not self.CPID['PID']: self.CPID['PID'] =  "{}-{}-{}".format(self.PGLOG['HOSTNAME'], self.get_command(), self.PGLOG['CURUID'])
       cmdstr = "{} {}".format((("ABORTS" if logact&self.ERRLOG else "QUITS") if logact&self.EXITLG else "ERROR"), self.CPID['PID'])
       cmdstr = self.cmd_execute_time(cmdstr, (ctime - self.CPID['CTM']))
@@ -436,26 +593,53 @@ class PgLOG:
       cmdstr += " {} at {}\n".format(self.break_long_string(self.CPID['CMD'], 40, "...", 1), self.current_datetime(ctime))
       return cmdstr
 
-   # get call trace track
    @staticmethod
-   def get_call_trace(cut = 1):
+   def get_call_trace(cut=1):
+      """Return a formatted call-stack trace string.
+
+      Args:
+          cut: Number of innermost frames to omit (default 1 to exclude
+               this method itself).
+
+      Returns:
+          A ``Trace: file(line){func}=>...`` string ending with ``\\n``,
+          or an empty string when the stack is empty.
+      """
       t = traceback.extract_stack()
       n = len(t) - cut
-      str = ''
+      trace = ''
       sep = 'Trace: '
       for i in range(n):
-        tc = t[i]
-        str += "{}{}({}){}".format(sep, tc[0], tc[1], ("" if tc[2] == '<module>' else "{%s()}" % tc[2]))
-        if i == 0: sep = '=>'
-      return str + "\n" if str else ""
+         tc = t[i]
+         trace += "{}{}({}){}".format(sep, tc[0], tc[1], ("" if tc[2] == '<module>' else "{%s()}" % tc[2]))
+         if i == 0: sep = '=>'
+      return trace + "\n" if trace else ""
 
-   # get caller file name
    @staticmethod
-   def get_caller_file(cidx = 0):
+   def get_caller_file(cidx=0):
+      """Return the source-file path of a caller frame.
+
+      Args:
+          cidx: Index into ``traceback.extract_stack()`` (default 0 = oldest frame).
+
+      Returns:
+          Absolute path string of the caller's source file.
+      """
       return traceback.extract_stack()[cidx][0]
 
-   # log message, msg, for degugging processes according to the debug level
-   def pgdbg(self, level, msg = None, do_trace = True):
+   def pgdbg(self, level, msg=None, do_trace=True):
+      """Append a debug message to the debug log file if *level* is in range.
+
+      No action is taken when ``PGLOG['DBGLEVEL']`` is falsy.  The level
+      range is specified as an integer (``0``–*N*) or a ``"min-max"`` string.
+
+      Args:
+          level:    Integer debug level for this message, or a string whose
+                    leading digits are parsed as the level.
+          msg:      Message text.  Omit to log a header-only entry that also
+                    warns on STDERR.
+          do_trace: When ``True`` (default), appends a call-stack trace.
+      """
       if not self.PGLOG['DBGLEVEL']: return     # no further action
       if not isinstance(level, int):
          ms = re.match(r'^(\d+)', level)
@@ -483,14 +667,26 @@ class PgLOG:
          if self.CPID['CPID']: msg += self.CPID['CPID'] + " <= "
          msg += self.break_long_string(self.CPID['CMD'], 40, "...", 1)
       # logging debug info
-      DBG = open(dfile, 'a')
-      DBG.write("{}:{}\n".format(level, msg))
-      if do_trace: DBG.write(self.get_call_trace())
-      DBG.close()
+      with open(dfile, 'a') as DBG:
+         DBG.write("{}:{}\n".format(level, msg))
+         if do_trace: DBG.write(self.get_call_trace())
 
-   # return trimed string (strip leading and trailling spaces); remove comments led by '#' if rmcmt > 0
    @staticmethod
-   def pgtrim(line, rmcmt = 1):
+   def pgtrim(line, rmcmt=1):
+      """Strip leading/trailing whitespace and optionally remove comments.
+
+      Args:
+          line:  Input string to trim.
+          rmcmt: Comment removal mode:
+
+                 * ``0`` — no comment removal
+                 * ``1`` — remove lines starting with ``#`` and inline comments
+                   preceded by two-or-more spaces (``  #``)
+                 * ``2`` — remove inline comments preceded by one-or-more spaces
+
+      Returns:
+          Trimmed string, or ``''`` for comment-only lines.
+      """
       if line:
          if rmcmt:
             if re.match(r'^\s*#', line): # comment line
@@ -504,14 +700,28 @@ class PgLOG:
          line = line.strip()  # remove leading and trailing whitespaces
       return line
 
-   # set self.PGLOG['PUSGDIR'] from the program file with full path
    def set_help_path(self, progfile):
+      """Set ``PGLOG['PUSGDIR']`` to the directory containing *progfile*.
+
+      Args:
+          progfile: Path to the calling program (typically ``__file__``).
+      """
       self.PGLOG['PUSGDIR'] = op.dirname(op.abspath(progfile))
 
-   # Function: show_usage(progname: Perl program name to get file "progname.usg")
-   # show program usage in file "self.PGLOG['PUSGDIR']/progname.usg" on screen with unix
-   # system function 'pg', exit program when done.
-   def show_usage(self, progname, opts = None):
+   def show_usage(self, progname, opts=None):
+      """Display usage information from ``<progname>.usg`` then exit.
+
+      When *opts* is provided, prints only the description of each listed
+      option key extracted from the usage file.  Otherwise displays the full
+      file via ``more``.
+
+      Args:
+          progname: Base program name (without ``.py``).  The file
+                    ``<PUSGDIR>/<progname>.usg`` is read.
+          opts:     Dict mapping option letter to ``[type, ...]`` where
+                    ``type`` is 0=Mode, 1=Single-Value, 2=Multi-Value, else Action.
+                    Pass ``None`` to display the full usage file.
+      """
       if self.PGLOG['PUSGDIR'] is None: self.set_help_path(self.get_caller_file(1))
       usgname = self.join_paths(self.PGLOG['PUSGDIR'], progname + '.usg')
       if opts:   # show usage for individual option of dsarch
@@ -525,59 +735,69 @@ class PgLOG:
             else:
                msg = "Action"
             sys.stdout.write("\nDescription of {} Option -{}:\n".format(msg, opt))
-            IN = open(usgname, 'r')
             nilcnt = begin = 0
-            for line in IN:
-               if begin == 0:
-                  rx = "  -{} or -".format(opt)
-                  if re.match(rx, line): begin = 1
-               elif re.match(r'^\s*$', line):
-                  if nilcnt: break
-                  nilcnt = 1
-               else:
-                  if re.match(r'\d[\.\s\d]', line): break    # section title
-                  if nilcnt and re.match(r'  -\w\w or -', line): break
-                  nilcnt = 0
-               if begin: sys.stdout.write(line)
-            IN.close()
+            with open(usgname, 'r') as IN:
+               for line in IN:
+                  if begin == 0:
+                     rx = "  -{} or -".format(opt)
+                     if re.match(rx, line): begin = 1
+                  elif re.match(r'^\s*$', line):
+                     if nilcnt: break
+                     nilcnt = 1
+                  else:
+                     if re.match(r'\d[\.\s\d]', line): break    # section title
+                     if nilcnt and re.match(r'  -\w\w or -', line): break
+                     nilcnt = 0
+                  if begin: sys.stdout.write(line)
       else:
          os.system("more " + usgname)
       self.pgexit(0)
 
-   # compare error message to patterns saved in self.PGLOG['ERR2STD']
-   # return 1 if matched; 0 otherwise
    def err2std(self, line):
+      """Return 1 if *line* matches any pattern in ``PGLOG['ERR2STD']``, else 0.
+
+      Used to redirect stderr lines to stdout when they match known patterns.
+      """
       for err in self.PGLOG['ERR2STD']:
          if line.find(err) > -1: return 1
       return 0
 
-   # compare message to patterns saved in self.PGLOG['STD2ERR']
-   # return 1 if matched; 0 otherwise
    def std2err(self, line):
+      """Return 1 if *line* matches any pattern in ``PGLOG['STD2ERR']``, else 0.
+
+      Used to redirect stdout lines to stderr when they match known patterns.
+      """
       for out in self.PGLOG['STD2ERR']:
          if line.find(out) > -1: return 1
       return 0
 
-   # Function: pgsystem(pgcmd, logact, cmdopt, instr)
-   #  pgcmd  - Linux system command, can be a string, "ls -l", or a list, ['ls', '-l']
-   # logact  - logging action option, defaults to self.LOGWRN
-   # cmdopt  - command control option, default to 5 (1+4)
-   #           0 - no command control,
-   #           1 - log pgcmd (include the sub command calls),
-   #           2 - log standard output,
-   #           4 - log error output
-   #           7 - log all (pgcmd, and standard/error outputs),
-   #           8 - log command with time,
-   #          16 - return standard output message upon success
-   #          32 - log error as standard output
-   #          64 - force returning self.FAILURE if called process aborts
-   #         128 - tries 2 times for failed command before quits
-   #         256 - cache standard error message
-   #         512 - log instr & seconds with pgcmd if cmdopt&1
-   #        1024 - turn on shell
-   # instr   - input string passing to the command via stdin if not None
-   # seconds - number of seconds to wait for a timeout process if > 0
-   def pgsystem(self, pgcmd, logact = None, cmdopt = 5, instr = None, seconds = 0):
+   def pgsystem(self, pgcmd, logact=None, cmdopt=5, instr=None, seconds=0):
+      """Run a system command and log/return its output.
+
+      Args:
+          pgcmd:   Command to execute — either a string (``"ls -l"``) or a
+                   list (``['ls', '-l']``).
+          logact:  Logging action flags (default ``LOGWRN``).
+          cmdopt:  Bitfield controlling logging and execution behaviour:
+
+                   * ``1``    — log the command line
+                   * ``2``    — log stdout
+                   * ``4``    — log stderr as errors
+                   * ``8``    — log command with timing (via :meth:`cmdlog`)
+                   * ``16``   — return stdout string on success instead of ``SUCCESS``
+                   * ``32``   — merge stderr into stdout
+                   * ``64``   — return ``FAILURE`` if subprocess prints ``ABORTS``
+                   * ``128``  — retry once on failure
+                   * ``256``  — cache stderr in ``PGLOG['SYSERR']``
+                   * ``512``  — log *instr* / *seconds* alongside command
+                   * ``1024`` — force shell execution
+
+          instr:   String fed to the command via stdin (default ``None``).
+          seconds: Timeout in seconds; 0 means no timeout.
+
+      Returns:
+          Stdout string when ``cmdopt & 16``; otherwise ``SUCCESS`` or ``FAILURE``.
+      """
       if logact is None: logact = self.LOGWRN
       ret = self.SUCCESS
       if not pgcmd: return ret  # empty command
@@ -692,17 +912,39 @@ class PgLOG:
          retbuf = ''
       return (retbuf if cmdopt&16 else ret)
 
-   # strip carriage return '\r', but keep ending newline '\n'
    @staticmethod
    def strip_output_line(line):
+      """Strip carriage returns from a terminal output line.
+
+      Also filters intermediate progress-bar lines (lines with a ``%``
+      counter that is not 100).
+
+      Args:
+          line: A single output line (already stripped of surrounding whitespace).
+
+      Returns:
+          Cleaned string, ``None`` for suppressed progress lines, or the
+          original *line* if no special characters are present.
+      """
       ms = re.search(r'\r([^\r]+)\r*$', line)
       if ms: return ms.group(1)   
       ms = re.search(r'\s\.+\s+(\d+)%\s+', line)
       if ms and int(ms.group(1)) != 100: return None
       return line
 
-   # show command running time string formated by seconds_to_string_time()
-   def cmd_execute_time(self, cmdstr, last, logact = None):
+   def cmd_execute_time(self, cmdstr, last, logact=None):
+      """Append execution time to *cmdstr* when *last* meets the threshold.
+
+      Args:
+          cmdstr: Base command/label string.
+          last:   Elapsed time in seconds.
+          logact: When non-zero, passes the result to :meth:`pglog` and
+                  returns its return value.  When zero/``None``, returns
+                  the formatted string directly.
+
+      Returns:
+          Log return value when *logact* is set; formatted string otherwise.
+      """
       msg = cmdstr
       if last >= self.PGLOG['CMDTIME']:   # show running for at least one minute
          msg += " ({})".format(self.seconds_to_string_time(last))
@@ -711,39 +953,77 @@ class PgLOG:
       else:
          return msg
 
-   # convert given seconds to string time with units of S-Second,M-Minute,H-Hour,D-Day
    @staticmethod
-   def seconds_to_string_time(seconds, showzero = 0):
+   def seconds_to_string_time(seconds, showzero=0):
+      """Convert a duration in seconds to a compact human-readable string.
+
+      Examples: ``90`` → ``"1M30S"``, ``3661`` → ``"1H1M1S"``.
+
+      Args:
+          seconds:  Duration in seconds (int or float).  Negative or zero
+                    values produce an empty string unless *showzero* is set.
+          showzero: When non-zero, returns ``"0S"`` for a zero-second duration.
+
+      Returns:
+          String composed of ``D`` / ``H`` / ``M`` / ``S`` components,
+          with fractional seconds shown to 3 decimal places when *seconds*
+          is a float.  Returns ``""`` for non-positive *seconds* unless
+          *showzero* is set.
+      """
       msg = ''
-      s = m = h = 0
       if seconds > 0:
-         s = seconds%60                  # seconds (0-59)
-         minutes = int(seconds/60)       # total minutes
-         m = minutes%60                  # minutes (0-59)
-         if minutes >= 60:
-            hours = int(minutes/60)      # total hours
-            h = hours%24                 # hours (0-23)
-            if hours >= 24:
-               msg += "{}D".format(int(hours/24))   # days
-            if h: msg += "{}H".format(h)
-         if m: msg += "{}M".format(m)
+         minutes, s = divmod(seconds, 60)
+         hours, m = divmod(int(minutes), 60)
+         days, h = divmod(hours, 24)
+         if days: msg += "{}D".format(days)
+         if h: msg += "{}H".format(h)
+         if m: msg += "{}M".format(int(m))
          if s:
-            msg += "%dS"%(s) if isinstance(s, int) else "{:.3f}S".format(s)
+            msg += "%dS" % s if isinstance(s, int) else "{:.3f}S".format(s)
       elif showzero:
          msg = "0S"
       return msg
 
-   #  wrap function to call pgsystem() with a timeout control
-   #  return self.FAILURE if error eval or time out
-   def tosystem(self, cmd, timeout = 0, logact = 0, cmdopt = 5, instr = None):
+   def tosystem(self, cmd, timeout=0, logact=0, cmdopt=5, instr=None):
+      """Run a system command with a timeout via :meth:`pgsystem`.
+
+      Args:
+          cmd:     Command string or list (passed to :meth:`pgsystem`).
+          timeout: Seconds before the command is killed.  Uses
+                   ``PGLOG['TIMEOUT']`` when 0.
+          logact:  Logging action flags.
+          cmdopt:  Command option bitfield (see :meth:`pgsystem`).
+          instr:   String passed to the command via stdin.
+
+      Returns:
+          ``SUCCESS``, ``FAILURE``, or captured stdout (when ``cmdopt & 16``).
+      """
       if logact is None: logact = self.LOGWRN
       if not timeout: timeout = self.PGLOG['TIMEOUT']   # set default timeout if missed
       return self.pgsystem(cmd, logact, cmdopt, instr, timeout)
 
-   # insert breaks, default to '\n', for every length, default to 1024,
-   # for long string; return specified number lines if mline given
    @staticmethod
-   def break_long_string(lstr, limit = 1024, bsign = "\n", mline = 200, bchars = ' &;', minlmt = 20, eline = 0):
+   def break_long_string(lstr, limit=1024, bsign="\n", mline=200, bchars=' &;', minlmt=20, eline=0):
+      """Insert line-break markers into *lstr* and optionally truncate it.
+
+      Lines longer than *limit* are broken at a character in *bchars* when
+      possible, or hard-broken at *limit*.  The result is capped at *mline*
+      lines; an optional tail of *eline* lines is preserved after the cap.
+
+      Args:
+          lstr:   Input string to wrap.
+          limit:  Maximum line length before a break is inserted (default 1024).
+          bsign:  Break marker inserted between segments (default ``"\\n"``).
+          mline:  Maximum number of output lines/segments (default 200).
+          bchars: Characters at which a soft break is preferred (default ``' &;'``).
+          minlmt: Minimum position for a soft break; hard-breaks below this
+                  (default 20).
+          eline:  Number of trailing lines to preserve after *mline* is reached
+                  (default 0).
+
+      Returns:
+          Wrapped (and possibly truncated) string.
+      """
       length = len(lstr) if lstr else 0
       if length <= limit: return lstr
       if bsign is None: bsign = "\n"
@@ -801,11 +1081,20 @@ class PgLOG:
             mcnt += 1
       return retstr
 
-   # join two paths by remove overlapping directories
-   # diff = 0: join given pathes
-   #        1: remove path1 from path2
    @staticmethod
-   def join_paths(path1, path2, diff = 0):   
+   def join_paths(path1, path2, diff=0):
+      """Join or diff two POSIX paths, removing overlapping directory components.
+
+      Args:
+          path1: Left-hand path (base).
+          path2: Right-hand path (to append or subtract).
+          diff:  ``0`` — join *path1* and *path2* de-duplicating overlapping
+                 tail/head components; ``1`` — remove *path1* prefix from
+                 *path2* and return the remainder.
+
+      Returns:
+          Joined or relative path string.
+      """
       if not path2: return path1
       if not path1 or not diff and re.match('/', path2): return path2
       if diff:
@@ -841,15 +1130,30 @@ class PgLOG:
       else:
          return '/'.join(adir1 + adir2)
 
-   # validate if a command for a given BATCH host is accessable and executable
-   # Return self.SUCCESS if valid; self.FAILURE if not
-   def valid_batch_host(self, host, logact = 0):
+   def valid_batch_host(self, host, logact=0):
+      """Return ``SUCCESS`` if *host* is a known batch host with an accessible submit command.
+
+      Args:
+          host:   Batch host name (case-insensitive).
+          logact: Logging action flags passed to :meth:`valid_command` on failure.
+      """
       HOST = host.upper()
       return self.SUCCESS if HOST in self.BCHCMDS and self.valid_command(self.BCHCMDS[HOST], logact) else self.FAILURE
 
-   # validate if a given command is accessable and executable
-   # Return the full command path if valid; '' if not
-   def valid_command(self, cmd, logact = 0):
+   def valid_command(self, cmd, logact=0):
+      """Return the full path of *cmd* if it is accessible and executable.
+
+      Results are cached in ``self.COMMANDS``.
+
+      Args:
+          cmd:    Command name (with optional arguments, e.g. ``"rsync -a"``).
+          logact: Logging action flags; when non-zero, logs an error if the
+                  command is not found.
+
+      Returns:
+          Full path string (with arguments appended) on success; ``''`` if
+          the command is not found.
+      """
       ms = re.match(r'^(\S+)( .*)$', cmd)
       if ms:
          option = ms.group(2)
@@ -866,8 +1170,17 @@ class PgLOG:
          self.COMMANDS[cmd] = buf
       return self.COMMANDS[cmd]
 
-   # get full command path if possible
    def command_path(self, cmdstr):
+      """Return *cmdstr* with the command name replaced by its full path when available.
+
+      Args:
+          cmdstr: Command string (``"cmd arg1 arg2"``).
+
+      Returns:
+          String with the leading command resolved to its full path, or the
+          original *cmdstr* if the command already contains a path separator
+          or cannot be found via ``shutil.which``.
+      """
       if not cmdstr: return ''
       ary = cmdstr.split(' ', 1)
       cmd = ary[0]
@@ -876,8 +1189,19 @@ class PgLOG:
       pcmd = shutil.which(cmd)
       return (pcmd+optstr) if pcmd else cmdstr
 
-   # add carbon copies to self.PGLOG['CCDADDR']
-   def add_carbon_copy(self, cc = None, isstr = None, exclude = 0, specialist = None):
+   def add_carbon_copy(self, cc=None, isstr=None, exclude=0, specialist=None):
+      """Update the Cc address list in ``PGLOG['CCDADDR']``.
+
+      Passing both *cc* and *isstr* as ``None`` clears the Cc list.
+
+      Args:
+          cc:         Address string (if *isstr*) or list of addresses.
+                      ``None`` or empty clears the list.
+          isstr:      When truthy, *cc* is treated as a comma/space-separated string.
+          exclude:    String of addresses to skip (substring match).
+          specialist: Address substituted when the sentinel value ``"S"``
+                      appears in the address list.
+      """
       if not cc:
          if cc is None and isstr is None: self.PGLOG['CCDADDR'] = ''
       else:
@@ -894,8 +1218,16 @@ class PgLOG:
                self.PGLOG['CCDADDR'] += ", "
             self.PGLOG['CCDADDR'] += email
 
-   # get the current host name; or batch sever name if getbatch is 1
-   def get_host(self, getbatch = 0):
+   def get_host(self, getbatch=0):
+      """Return the short hostname of the current or batch server.
+
+      Args:
+          getbatch: When non-zero and a batch job ID is active, returns the
+                    batch server name instead of the local hostname.
+
+      Returns:
+          Short hostname string (domain stripped).
+      """
       if getbatch and self.PGLOG['CURBID'] != 0:
          host = self.PGLOG['PGBATCH']
       elif self.PGLOG['HOSTNAME']:
@@ -904,10 +1236,16 @@ class PgLOG:
          host = socket.gethostname()
       return self.get_short_host(host)
 
-   #
-   # strip domain names and retrun the server name itself
-   #
    def get_short_host(self, host):
+      """Strip the domain suffix from *host* and return the short hostname.
+
+      Args:
+          host: Fully-qualified or short hostname string.
+
+      Returns:
+          Short hostname, or an uppercase batch-host token when the host
+          matches a known batch system.
+      """
       if not host: return ''
       ms = re.match(r'^([^\.]+)\.', host)
       if ms: host = ms.group(1)
@@ -916,8 +1254,8 @@ class PgLOG:
       if HOST in self.BCHCMDS: return HOST
       return host
 
-   # get a live PBS host name
    def get_pbs_host(self):
+      """Return the first live PBS host from ``self.PBSHOSTS``, or ``None``."""
       if not self.PBSSTATS and self.PGLOG['PBSHOSTS']:
          self.PBSHOSTS = self.PGLOG['PBSHOSTS'].split(':')
          for host in self.PBSHOSTS:
@@ -926,8 +1264,13 @@ class PgLOG:
          if host in self.PBSSTATS and self.PBSSTATS[host]: return host
       return None
 
-   # set host status, 0 dead & 1 live, for one or all avalaible pbs hosts
-   def set_pbs_host(self, host = None, stat = 0):
+   def set_pbs_host(self, host=None, stat=0):
+      """Set the live/dead status for one or all PBS hosts.
+
+      Args:
+          host: Host name to update.  When ``None``, updates all known hosts.
+          stat: ``1`` for live, ``0`` for dead (default 0).
+      """
       if host:
          self.PBSSTATS[host] = stat
       else:
@@ -936,8 +1279,13 @@ class PgLOG:
          for host in self.PBSHOSTS:
             self.PBSSTATS[host] = stat
 
-   #  reset the batch host name in case was not set properly
-   def reset_batch_host(self, bhost, logact = None):
+   def reset_batch_host(self, bhost, logact=None):
+      """Change the active batch host to *bhost* if no job is currently running.
+
+      Args:
+          bhost:  New batch host name (case-insensitive).
+          logact: Logging action flags (default ``LOGWRN``).
+      """
       if logact is None: logact = self.LOGWRN
       bchhost = bhost.upper()
       if bchhost != self.PGLOG['PGBATCH']:
@@ -952,9 +1300,16 @@ class PgLOG:
                self.PGLOG['PGBATCH'] = ''
                self.PGLOG['CURBID'] = 0
 
-   # return the base command name of the current process
    @staticmethod
-   def get_command(cmdstr = None):
+   def get_command(cmdstr=None):
+      """Return the base command name, stripping directory and ``.py``/``.pl`` extension.
+
+      Args:
+          cmdstr: Path string.  Defaults to ``sys.argv[0]``.
+
+      Returns:
+          Base name without extension.
+      """
       if not cmdstr: cmdstr = sys.argv[0]
       cmdstr = op.basename(cmdstr)
       ms = re.match(r'^(.+)\.(py|pl)$', cmdstr)
@@ -963,9 +1318,20 @@ class PgLOG:
       else:
          return cmdstr
 
-   # wrap a given command cmd for either sudo or setuid wrapper pgstart_['username']
-   # to run as user asuser
-   def get_local_command(self, cmd, asuser = None):
+   def get_local_command(self, cmd, asuser=None):
+      """Wrap *cmd* so it runs as *asuser* on the local host.
+
+      Uses a ``pgstart_<user>`` setuid wrapper when available, or
+      ``sudo -u <user>`` when ``SUDOGDEX`` is enabled.
+
+      Args:
+          cmd:    Command string to wrap.
+          asuser: Target username.  Returns *cmd* unchanged when ``None`` or
+                  equal to the current user.
+
+      Returns:
+          Wrapped command string, or the original *cmd* if no wrapping is needed.
+      """
       cuser = self.PGLOG['SETUID'] if self.PGLOG['SETUID'] else self.PGLOG['CURUID']
       if not asuser or cuser == asuser: return cmd
       if cuser == self.PGLOG['GDEXUSER']:
@@ -975,21 +1341,44 @@ class PgLOG:
          return "sudo -u {} {}".format(self.PGLOG['GDEXUSER'], cmd)    # sudo as user gdexdata
       return cmd
 
-   # wrap a given command cmd for either sudo or setuid wrapper pgstart_['username']
-   # to run as user asuser on a given remote host
-   def get_remote_command(self, cmd, host, asuser = None):
+   def get_remote_command(self, cmd, host, asuser=None):
+      """Wrap *cmd* for execution as *asuser* on *host* (delegates to :meth:`get_local_command`).
+
+      Args:
+          cmd:    Command string to wrap.
+          host:   Target hostname (currently unused; reserved for future SSH wrapping).
+          asuser: Target username.
+
+      Returns:
+          Wrapped command string.
+      """
       return self.get_local_command(cmd, asuser)
 
-   # wrap a given sync command for given host name with/without sudo
-   def get_sync_command(self, host, asuser = None):
+   def get_sync_command(self, host, asuser=None):
+      """Return the sync command name for *host* with appropriate user context.
+
+      Args:
+          host:   Target hostname.
+          asuser: User to run as; affects which sync command variant is chosen.
+
+      Returns:
+          Sync command string (e.g. ``"synccasper"`` or ``"casper-sync"``).
+      """
       host = self.get_short_host(host)
       if (not (self.PGLOG['SETUID'] and self.PGLOG['SETUID'] == self.PGLOG['GDEXUSER']) and
          (not asuser or asuser == self.PGLOG['GDEXUSER'])):
          return "sync" + host
       return host + "-sync"
 
-   # set self.PGLOG['SETUID'] as needed
-   def set_suid(self, cuid = 0):
+   def set_suid(self, cuid=0):
+      """Set the real and effective UID to *cuid* and update ``SETUID``.
+
+      Calls :meth:`set_specialist_environments` when switching to a
+      non-gdex specialist user.
+
+      Args:
+          cuid: Target numeric UID.  Defaults to the current effective UID.
+      """
       if not cuid: cuid = self.PGLOG['EUID']
       if cuid != self.PGLOG['EUID'] or cuid != self.PGLOG['RUID']:
          os.setreuid(cuid, cuid)
@@ -998,8 +1387,16 @@ class PgLOG:
             self.set_specialist_environments(self.PGLOG['SETUID'])
             self.PGLOG['CURUID'] == self.PGLOG['SETUID']      # set CURUID to a specific specialist
 
-   # set comman pglog
    def set_common_pglog(self):
+      """Initialise runtime ``PGLOG`` values from the environment.
+
+      Detects the current user, hostname, PBS job state, and constructs the
+      ``PATH`` environment variable.  Also sets all path-related ``PGLOG``
+      keys (``LOGPATH``, ``DSSDATA``, ``TMPDIR``, etc.) by reading environment
+      variables of the same name via :meth:`SETPGLOG`.
+
+      Called automatically by :meth:`__init__`.
+      """
       self.PGLOG['CURDIR'] = os.getcwd()   
       # set current user id
       self.PGLOG['RUID'] = os.getuid()
@@ -1115,12 +1512,21 @@ class PgLOG:
       self.PGLOG['TMPSYNC'] = self.PGLOG['DSSDBHM'] + "/tmp/.syncdir"   
       os.umask(2)
 
-   # check and return TMPSYNC path, and add it if not exists
    def get_tmpsync_path(self):
+      """Return the path to the temporary sync directory (``PGLOG['TMPSYNC']``)."""
       return self.PGLOG['TMPSYNC']
 
-   # append or prepend locpath to pgpath
-   def add_local_path(self, locpath, pgpath, append = 0):
+   def add_local_path(self, locpath, pgpath, append=0):
+      """Add colon-separated paths from *locpath* to *pgpath* without duplicates.
+
+      Args:
+          locpath: Colon-separated path string to merge in.
+          pgpath:  Existing path string to update.
+          append:  ``1`` to append, ``0`` to prepend (default 0).
+
+      Returns:
+          Updated colon-separated path string.
+      """
       if not locpath:
          return pgpath
       elif not pgpath:
@@ -1137,14 +1543,35 @@ class PgLOG:
             pgpath = path + ":" + pgpath
       return pgpath
 
-   # set self.PGLOG value; return a string or an array reference if sep is not emty
-   def SETPGLOG(self, name, value = ''):
+   def SETPGLOG(self, name, value=''):
+      """Set ``PGLOG[name]`` from the environment variable *name* or fall back to *value*.
+
+      If the environment variable is set and non-empty it takes precedence.
+      If not, the existing ``PGLOG[name]`` value is kept (if present), then
+      *value* is used as the final default.  Values starting with ``PG``
+      are treated as unresolved placeholders and replaced with ``''``.
+
+      Args:
+          name:  ``PGLOG`` key and environment variable name.
+          value: Default value when neither the environment nor an existing
+                 ``PGLOG`` entry is available.
+      """
       oval = self.PGLOG[name] if name in self.PGLOG else ''
       nval = self.get_environment(name, ('' if re.match('PG', value) else value))
       self.PGLOG[name] = nval if nval else oval
 
-   # set specialist home and return the default shell
    def set_specialist_home(self, specialist):
+      """Set ``HOME`` for *specialist* and return their default shell.
+
+      Reads ``/etc/passwd`` to determine the home directory and shell.
+      Updates ``HOME`` in the environment when the path exists.
+
+      Args:
+          specialist: Login name of the specialist user.
+
+      Returns:
+          Shell basename string (e.g. ``"tcsh"``).
+      """
       if specialist == self.PGLOG['CURUID']: return   # no need reset
       if 'MAIL' in os.environ and re.search(self.PGLOG['CURUID'], os.environ['MAIL']):
          os.environ['MAIL'] = re.sub(self.PGLOG['CURUID'], specialist, os.environ['MAIL'])   
@@ -1163,8 +1590,16 @@ class PgLOG:
          os.environ['HOME'] = home
       return shell
 
-   #  set environments for a specified specialist
-   def set_specialist_environments(self, specialist):   
+   def set_specialist_environments(self, specialist):
+      """Parse *specialist*'s ``~/.tcshrc`` and apply ``setenv`` directives.
+
+      Respects host-conditional ``if``/``else``/``endif`` blocks so that
+      only the directives matching the current hostname are applied.  Skips
+      ``PATH``, ``SHELL``, ``IFS``, and ``CDPATH`` for security.
+
+      Args:
+          specialist: Login name of the specialist user.
+      """
       shell = self.set_specialist_home(specialist)
       resource = os.environ['HOME'] + "/.tcshrc"
       checkif = 0   # 0 outside of if; 1 start if, 2 check envs, -1 checked already
@@ -1214,8 +1649,15 @@ class PgLOG:
       self.SETPGLOG("HOMEBIN", self.PGLOG['PGBINDIR'])
       os.environ['PATH'] = self.add_local_path(self.PGLOG['HOMEBIN'], os.environ['PATH'], 0)
 
-   # set one environment for specialist
    def one_specialist_environment(self, line):
+      """Parse and apply a single ``setenv VAR VALUE`` statement.
+
+      Expands ``$VAR`` references in the value.  Skips protected variables
+      (``PATH``, ``SHELL``, ``IFS``, ``CDPATH``).
+
+      Args:
+          line: String after the ``setenv`` keyword (``"VAR VALUE"``).
+      """
       ms = re.match(r'^(\w+)[=\s]+(.+)$', line)
       if not ms: return
       (var, val) = ms.groups()
@@ -1225,8 +1667,21 @@ class PgLOG:
       if ms: val = ms.group(2)   # remove quotes
       os.environ[var] = val
    
-   # get and repalce environment variables in ginve string; defaults to the values in self.PGLOG
-   def replace_environments(self, envstr, default = '', logact = 0):
+   def replace_environments(self, envstr, default='', logact=0):
+      """Expand the first ``$VAR`` or ``${VAR}`` reference in *envstr*.
+
+      Looks up the variable in the environment first, then in ``PGLOG``,
+      then falls back to *default*.
+
+      Args:
+          envstr:  String containing a ``$VAR`` reference.
+          default: Fallback value (string or dict).  When a dict, the variable
+                   name is used as the key.
+          logact:  Logging action flags passed to :meth:`get_environment`.
+
+      Returns:
+          String with the first variable reference substituted.
+      """
       ishash = isinstance(default, dict)
       ms = re.search(r'(^|.)\$({*)(\w+)(}*)', envstr)
       if ms:
@@ -1238,8 +1693,19 @@ class PgLOG:
          envstr = re.sub(r'{}\${}'.format(lead, rep), (pre+env), envstr)
       return envstr
 
-   # validate if the current host is a valid host to process
-   def check_process_host(self, hosts, chost = None, mflag = None, pinfo = None, logact = None):
+   def check_process_host(self, hosts, chost=None, mflag=None, pinfo=None, logact=None):
+      """Check whether the current host is permitted to process *pinfo*.
+
+      Args:
+          hosts:  Host string or pattern.  Prefix ``!`` to exclude listed hosts.
+          chost:  Host to check against (default: current/batch host).
+          mflag:  Match mode — ``'G'`` general, ``'M'`` exact, ``'I'`` inclusive.
+          pinfo:  Process description logged on failure.
+          logact: Logging action flags (default ``LOGERR``).
+
+      Returns:
+          ``1`` if processing is permitted; ``0`` otherwise.
+      """
       ret = 1
       error = ''
       if not mflag: mflag = 'G'
@@ -1265,9 +1731,20 @@ class PgLOG:
          self.pglog("{}: CANNOT be processed on {} for hosthame {}".format(pinfo, chost, error), logact)
       return ret
 
-   # convert special foreign characters into ascii characters
    @staticmethod
-   def convert_chars(name, default = 'X'):      
+   def convert_chars(name, default='X'):
+      """Transliterate *name* to ASCII-safe characters.
+
+      Uses ``unidecode`` to transliterate Unicode characters, then strips any
+      remaining non-alphanumeric / non-underscore characters.
+
+      Args:
+          name:    Input string to convert.
+          default: Return value when *name* is empty or fully non-convertible.
+
+      Returns:
+          ASCII-safe alphanumeric/underscore string, or *default*.
+      """
       if not name: return default
       if re.match(r'^[a-zA-Z0-9]+$', name): return name  # conversion not needed
       decoded_name = unidecode(name).strip()
@@ -1278,15 +1755,37 @@ class PgLOG:
       else:
          return default
 
-   #  Retrieve host and process id
-   def current_process_info(self, realpid = 0):
+   def current_process_info(self, realpid=0):
+      """Return ``[hostname, pid]`` for the current or batch process.
+
+      Args:
+          realpid: When non-zero, always returns the real OS PID.
+                   When zero and a batch job is active, returns the batch
+                   server name and job ID instead.
+
+      Returns:
+          List of ``[hostname_or_batch, pid_or_jobid]``.
+      """
       if realpid or self.PGLOG['CURBID'] < 1:
          return [self.PGLOG['HOSTNAME'], os.getpid()]
       else:
          return [self.PGLOG['PGBATCH'], self.PGLOG['CURBID']]
 
-   # convert given @ARGV to string. quote the entries with spaces
-   def argv_to_string(self, argv = None, quote = 1, action = None):
+   def argv_to_string(self, argv=None, quote=1, action=None):
+      """Convert an argument list to a shell-safe string.
+
+      Arguments containing shell special characters (``< > | whitespace``)
+      are single-quoted (or double-quoted when they contain single quotes).
+
+      Args:
+          argv:   List of argument strings.  Defaults to ``sys.argv[1:]``.
+          quote:  When non-zero, quotes arguments with special characters.
+          action: When set, calls :meth:`pglog` with ``LGEREX`` if any
+                  argument contains a special character (safety guard).
+
+      Returns:
+          Space-joined argument string.
+      """
       argstr = ''
       if argv is None: argv = sys.argv[1:]
       for arg in argv:
@@ -1303,9 +1802,18 @@ class PgLOG:
          argstr += arg
       return argstr
 
-   # convert an integer to non-10 based string
    @staticmethod
    def int2base(x, base):
+      """Convert integer *x* to a string in the given *base*.
+
+      Args:
+          x:    Integer to convert.
+          base: Target numeric base (e.g. 8 for octal, 16 for hex).
+
+      Returns:
+          String representation of *x* in *base*, with a leading ``'-'``
+          for negative values.
+      """
       if x == 0: return '0'
       negative = 0
       if x < 0:
@@ -1313,15 +1821,26 @@ class PgLOG:
          x = -x
       dgts = []
       while x:
-         dgts.append(str(int(x%base)))
-         x = int(x/base)
+         dgts.append(str(x % base))
+         x //= base
       if negative: dgts.append('-')
       dgts.reverse()
       return ''.join(dgts)
 
-   # convert a non-10 based string to an integer
    @staticmethod
    def base2int(x, base):
+      """Convert a decimal-encoded *base*-number string back to a plain integer.
+
+      The input *x* is a decimal integer whose digits represent a number
+      written in *base* (e.g. ``x=1010, base=2`` → ``10``).
+
+      Args:
+          x:    Integer or string whose digits represent a base-*base* number.
+          base: Source numeric base.
+
+      Returns:
+          Decoded integer value.
+      """
       if not isinstance(x, int): x = int(x)
       if x == 0: return 0
       negative = 0
@@ -1331,15 +1850,22 @@ class PgLOG:
       num = 0
       fact = 1
       while x:
-         num += (x%10)*fact
+         num += (x % 10) * fact
          fact *= base
-         x = int(x/10)
+         x //= 10
       if negative: num = -num
       return num
 
-   # convert integer to ordinal string
    @staticmethod
    def int2order(num):
+      """Return the ordinal string for *num* (e.g. ``1`` → ``"1st"``).
+
+      Args:
+          num: Non-negative integer.
+
+      Returns:
+          String with appropriate suffix: ``st``, ``nd``, ``rd``, or ``th``.
+      """
       ordstr = ['th', 'st', 'nd', 'rd']
       snum = str(num)
       num %= 100
