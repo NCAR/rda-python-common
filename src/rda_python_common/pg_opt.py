@@ -1524,7 +1524,7 @@ class PgOPT(PgFile):
 
       Args:
          dcnd (str): SQL condition string scoping the dataset (e.g.
-            ``"dsid = 'd123456'""``).
+            ``"dsid = 'd123456'"``).
          pidx (int): Parent group index to start from.
          gtype (str, optional): Group type filter (e.g. ``'P'`` for public
             groups only).  ``None`` includes all types.
