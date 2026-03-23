@@ -1667,7 +1667,7 @@ class PgOPT(PgFile):
          elif re.search(r'/(\d+)$', frequency):
             errmsg = "fractional frequency '{}' for month ONLY".format(frequency)
          else:
-            errmsg = "invalid frequency '{}', unit must be (Y,M,W,D,H)".format(frequency)
+            errmsg = "invalid frequency '{}', unit must be (Y,M,W,D,H,N,S)".format(frequency)
          return (None, errmsg)
       freq = [0]*7   # initialize the frequence list
       uidx = {'Y': 0, 'D': 2, 'H': 3, 'N': 4, 'S': 5}
