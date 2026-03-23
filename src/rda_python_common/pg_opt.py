@@ -67,7 +67,7 @@ class PgOPT(PgFile):
       # The third hash value define bit flags,
       # For Action Options:
       # -1 - VSN card actions
-      # >0 - setions
+      # >0 - set actions
       #
       # For Mode Options:
       # 1 - mode for archiving actions
@@ -92,7 +92,7 @@ class PgOPT(PgFile):
       # 128(0x080) - '' allowed for single letter value
       # 256(0x100) - date field
       #
-      # The fourth hash values defined retrictions for single letter values
+      # The fourth hash values defined restriction for single letter values
       ###############################################################################
       self.OPTS = {}
       # global initial optional values
@@ -1669,7 +1669,7 @@ class PgOPT(PgFile):
          else:
             errmsg = "invalid frequency '{}', unit must be (Y,M,W,D,H,N,S)".format(frequency)
          return (None, errmsg)
-      freq = [0]*7   # initialize the frequence list
+      freq = [0]*7   # initialize the frequency list
       uidx = {'Y': 0, 'D': 2, 'H': 3, 'N': 4, 'S': 5}
       if unit == 'M':
          freq[1] = val
