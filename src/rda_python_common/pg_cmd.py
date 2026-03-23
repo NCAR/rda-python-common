@@ -716,7 +716,7 @@ class PgCMD(PgLock):
             otype, dsid, action, and specialist fields.
 
       Returns:
-         str: A concise string such as 'Rqst42 ds123.0 ST of jsmith'.
+         str: A concise string such as 'Rqst42 d123000 ST of jsmith'.
       """
       if pgrec['oindex']:
          if pgrec['command'] == "dsupdt":
