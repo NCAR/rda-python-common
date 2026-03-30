@@ -184,6 +184,24 @@ class PgLOG:
       self.PBSSTATS = {}
       # set additional common PGLOG values
       self.set_common_pglog()
+      self.OUTPUT = None
+
+   def open_output(self, outfile=None):
+      """Open the result output destination.
+
+      Args:
+         outfile (str, optional): Path to a file to write results to.  If
+            ``None`` or omitted, output is directed to ``sys.stdout``.
+      """
+      if outfile:  # result output file
+         try:
+            self.OUTPUT = open(outfile, 'w')
+         except Exception as e:
+            self.pglog("{}: Error open file to write - {}".format(outfile, str(e)), self.PGOPT['extlog'])
+      else:                             # result to STDOUT
+         if self.OUTPUT and self.OUTPUT != sys.stdout:
+            self.OUTPUT.close()
+            self.OUTPUT = sys.stdout
 
    def current_datetime(self, ctime=0):
       """Return a datetime string in YYYYMMDDHHMMSS format.
@@ -573,6 +591,7 @@ class PgLOG:
           stat: Exit status code passed to ``sys.exit`` (default 0).
       """
       if self.PGLOG['PGDBBUF']: self.PGLOG['PGDBBUF'].close()
+      if self.OUTPUT and self.OUTPUT != sys.stdout: self.OUTPUT.close()
       sys.exit(stat)
 
    def get_error_command(self, ctime, logact):
