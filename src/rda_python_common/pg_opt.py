@@ -47,7 +47,6 @@ class PgOPT(PgFile):
    def __init__(self):
       """Initialize PgOPT and its parent PgFile, setting up all class attributes."""
       super().__init__()  # initialize parent class
-      self.OUTPUT = None
       self.CMDOPTS = {}
       self.INOPTS = {}
       # global variables are used by all applications and this package.
@@ -289,21 +288,6 @@ class PgOPT(PgFile):
          else:
             return odval[0]   # return the first char of a default string
       return None
-
-   def open_output(self, outfile=None):
-      """Open the result output destination.
-
-      Args:
-         outfile (str, optional): Path to a file to write results to.  If
-            ``None`` or omitted, output is directed to ``sys.stdout``.
-      """
-      if outfile:  # result output file
-         try:
-            self.OUTPUT = open(outfile, 'w')
-         except Exception as e:
-            self.pglog("{}: Error open file to write - {}".format(outfile, str(e)), self.PGOPT['extlog'])
-      else:                               # result to STDOUT
-         self.OUTPUT = sys.stdout
 
    def validate_infile_names(self, dsid):
       """Validate all input file names against the expected dataset ID.
