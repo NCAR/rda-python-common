@@ -199,9 +199,8 @@ class PgLOG:
          except Exception as e:
             self.pglog("{}: Error open file to write - {}".format(outfile, str(e)), self.PGOPT['extlog'])
       else:                             # result to STDOUT
-         if self.OUTPUT and self.OUTPUT != sys.stdout:
-            self.OUTPUT.close()
-            self.OUTPUT = sys.stdout
+         if self.OUTPUT and self.OUTPUT != sys.stdout: self.OUTPUT.close()
+         self.OUTPUT = sys.stdout
 
    def current_datetime(self, ctime=0):
       """Return a datetime string in YYYYMMDDHHMMSS format.
