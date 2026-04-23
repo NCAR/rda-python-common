@@ -821,7 +821,7 @@ class PgFile(PgUtil, PgSIG):
    #     host - remote host name
    #   bucket - bucket name on Object store
    #     meta - reference to metadata hash
-   def object_copy_remote(self, tofile, fromfile, host, bucket = None, meta = None, logact = 0):
+   def object_copy_remote(self, tofile, fromfile, host, bucket = None, logact = 0):
       """Copy a file from the object store to a remote host.
 
       If host is local, delegates to object_copy_local(). Otherwise downloads to
@@ -1513,7 +1513,6 @@ class PgFile(PgUtil, PgSIG):
                (hstat, msg) = self.host_down_status('', self.QHOSTS[endpoint], 1, logact)
                if hstat: errmsg += "\n" + msg
                self.errlog(errmsg, 'B', loop, logact)
-         loop += 1
       if ret == self.SUCCESS: self.ECNTS['B'] = 0   # reset error count
       return ret
 
@@ -1555,7 +1554,7 @@ class PgFile(PgUtil, PgSIG):
       if ret and action:
          cnt = 0
          errmsg = "{}: Cannot {} from {}".format(dir, action, self.PGLOG['HOSTNAME'])
-         (hstat, msg) = self.host_down_status('', host, 0, logact)
+         (hstat, msg) = self.host_down_status(dir, host, 0, logact)
          if hstat: errmsg += "\n" + msg
          self.errlog(errmsg, etype, 1, logact|self.ERRLOG)
       return ret
@@ -2169,7 +2168,7 @@ class PgFile(PgUtil, PgSIG):
       loop = 0
       while loop < 2:
          buf = self.pgsystem(cmd, self.LOGWRN, self.CMDRET)
-         if buf or not self.PGLOG['SYSERR'] or self.PGLOG['SYSERR'].find('Not found in archive') > -1: break
+         if buf or not self.PGLOG['SYSERR'] or self.PGLOG['SYSERR'].find(self.PGLOG['MISSFILE']) > -1: break
          errmsg = self.PGLOG['SYSERR']
          (hstat, msg) = self.host_down_status(file, host, 0, logact)
          if hstat: errmsg += "\n" + msg
@@ -2294,7 +2293,7 @@ class PgFile(PgUtil, PgSIG):
       """Return the count of object keys matching a path prefix.
 
       Args:
-         path (str): Object key prefix to list (trailing '/' stripped).
+         path (str): Object key prefix to query.
          bucket (str | None): Bucket name; defaults to PGLOG['OBJCTBKT'].
          logact (int): Logging action flags; default 0.
 
@@ -2385,9 +2384,426 @@ class PgFile(PgUtil, PgSIG):
       bfile = op.basename(file)
       bcmd = self.BACKCMD
       cmd = f"{bcmd} ls -ep {endpoint} -p {bdir} --filter {bfile}"
-      loop = 0
-      flist = {}
+      ccnt = loop = 0
       while loop < 2:
+         buf = self.pgsystem(cmd, logact, self.CMDRET)
+         syserr = self.PGLOG['SYSERR']
+         if buf:
+            getstat = 0
+            for line in re.split(r'\n', buf):
+               if re.match(r'^(User|-+)\s*\|', line):
+                  getstat += 1
+               elif getstat > 1:
+                  ret = self.backup_file_stat(line, opt)
+                  if ret: break
+            if ret: break
+            if loop or opt&64 == 0: return ret
+            time.sleep(self.PGSIG['ETIME'])
+         elif syserr:
+            if syserr.find("Directory '{}' not found on endpoint".format(bdir)) > -1:
+               if loop or opt&64 == 0: return ret
+               time.sleep(self.PGSIG['ETIME'])
+            elif ccnt < 2 and syserr.find("The connection to the server was broken") > -1:
+               time.sleep(self.PGSIG['ETIME'])
+               ccnt += 1
+               continue
+            else:
+               if opt&64 == 0: return self.FAILURE
+               errmsg = "Error Execute: {}\n{}".format(cmd, syserr)
+               (hstat, msg) = self.host_down_status('', self.QHOSTS[endpoint], 0, logact)
+               if hstat: errmsg += "\n" + msg
+               self.errlog(errmsg, 'B', loop, logact)
+         loop += 1
+      if ret: self.ECNTS['B'] = 0   # reset error count
+      return ret
+
+   # backup store function to get file stat
+   def backup_file_stat(self, line, opt):
+      """Parse one line of dsglobus ls output into a file-info dict.
+
+      Args:
+         line (str): One output line from dsglobus ls.
+         opt (int): Info bitmask.
+
+      Returns:
+         dict | None: File info dict, or None if the line cannot be parsed.
+      """
+      info = {}
+      items = re.split(r'[\s\|]+', line)
+      if len(items) < 8: return None
+      info['isfile'] = (1 if items[6] == 'file' else 0)
+      info['data_size'] = int(items[3])
+      info['fname'] = items[7]
+      if not opt: return info
+      if opt&17:
+         mdate = items[4]
+         mtime = items[5]
+         ms = re.match(r'^(\d+:\d+:\d+)', mtime)
+         if ms: mtime = ms.group(1)
+         if self.PGLOG['GMTZ']: (mdate, mtime) = self.addhour(mdate, mtime, self.PGLOG['GMTZ'])
+         if opt&1:
+            info['date_modified'] = mdate
+            info['time_modified'] = mtime
+         if opt&16: info['week_day'] = self.get_weekday(mdate)
+      if opt&2: info['logname'] = items[0]
+      if opt&4: info['mode'] = self.get_file_mode(items[2])
+      if opt&8: info['group'] = items[1]
+      return info
+
+   # check and get a file status information inside a tar file
+   # file: File name to be checked
+   # tfile: the tar file name
+   #  opt: 0 - get data size only (fname, data_size, isfile), fname is the file basename
+   #       1 - get date/time modified (date_modified, time_modfied)
+   #       2 - get file owner's login name (logname)
+   #       4 - get permission mode in 3 octal digits (mode)
+   #       8 - get group name (group)
+   #      16 - get week day 0-Sunday, 1-Monday (week_day)
+   # Return a dict of file info, or None if file not exists
+   def check_tar_file(self, file, tfile, opt = 0, logact = 0):
+      """Return status info for a member file inside a tar archive.
+
+      Args:
+         file (str): Member file name to search for.
+         tfile (str): Path to the tar archive.
+         opt (int): Info bitmask (0=size, 1=mtime, 2=owner, 4=mode, 8=group, 16=weekday).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | None | int: File info dict, None if not in archive, self.FAILURE on error.
+      """
+      ret = None 
+      if not (file and tfile): return ret
+      for loop in range(2):
+         buf = self.pgsystem("tar -tvf {} {}".format(tfile, file), self.LOGWRN, self.CMDRET)
+         if buf or not self.PGLOG['SYSERR'] or self.PGLOG['SYSERR'].find('Not found in archive') > -1: break
+         errmsg = self.PGLOG['SYSERR']
+         (hstat, msg) = self.host_down_status(tfile, self.LHOST, 0, logact)
+         self.errlog(errmsg, 'L', loop, logact)
+      if loop > 0: return self.FAILURE
+      if buf:
+         for line in re.split(r'\n', buf):
+            ret = self.tar_file_stat(line, opt)
+            if ret: break
+      self.ECNTS['L'] = 0   # reset error count
+      return ret
+
+   # local function to get file stat in a tar file
+   def tar_file_stat(self, line, opt):
+      """Parse one line of ``tar -tvf`` output into a file-info dict.
+
+      Args:
+         line (str): One output line from tar listing.
+         opt (int): Info bitmask.
+
+      Returns:
+         dict | None: File info dict, or None if the line cannot be parsed.
+      """
+      items = re.split(r'\s+', line)
+      if len(items) < 6: return None
+      ms = re.match(r'^([d\-])([\w\-]{9})$', items[0])
+      if not ms: return None
+      info = {}
+      info['isfile'] = (1 if ms and ms.group(1) == "-" else 0)
+      info['data_size'] = int(items[2])
+      info['fname'] = op.basename(items[5])
+      if not opt: return info
+      if opt&4: info['mode'] = self.get_file_mode(ms.group(2))
+      if opt&17:
+         mdate = items[3]
+         mtime = items[4]
+         if self.PGLOG['GMTZ']: (mdate, mtime) = self.addhour(mdate, mtime, self.PGLOG['GMTZ'])
+         if opt&1:
+            info['date_modified'] = mdate
+            info['time_modified'] = mtime
+         if opt&16: info['week_day'] = self.get_weekday(mdate)
+      if opt&10:
+         ms = re.match(r'^(\w+)/(\w+)', items[1])
+         if ms:
+            if opt&2: info['logname'] = ms.group(1)
+            if opt&8: info['group'] = ms.group(2)
+      return info
+
+   # check and get a file status information on ftp server
+   # file: File name to be checked
+   # name: login user name
+   # pswd: login password
+   #  opt: 0 - get data size only (fname, data_size, isfile), fname is the file basename
+   #       1 - get date/time modified (date_modified, time_modfied)
+   #       2 - get file owner's login name (logname)
+   #       4 - get permission mode in 3 octal digits (mode)
+   #       8 - get group name (group)
+   #      16 - get week day 0-Sunday, 1-Monday (week_day)
+   # Return a dict of file info, or None if file not exists
+   def check_ftp_file(self, file, opt = 0, name = None, pswd = None, logact = 0):
+      """Return status info for a file on an FTP server via ncftpls.
+
+      Retries with the parent directory listing if the direct file listing fails.
+
+      Args:
+         file (str): FTP file path to check.
+         opt (int): Info bitmask (0=size, 1=mtime, 2=owner, 4=mode, 8=group, 16=weekday).
+         name (str | None): FTP login name.
+         pswd (str | None): FTP password.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | None | int: File info dict, None if not found, self.FAILURE on error.
+      """
+      if not file: return None
+      ms = re.match(r'^(.+)/$', file)
+      if ms: file = ms.group(1)     # remove ending '/' in case
+      cmd = "ncftpls -l "
+      if name: cmd += "-u {} ".format(name)
+      if pswd: cmd += "-p {} ".format(pswd)
+      fname = op.basename(file)
+      for loop in range(2):
+         buf = self.pgsystem(cmd + file, self.LOGWRN, self.CMDRET)
+         if buf: break
+         if self.PGLOG['SYSERR']:
+            self.errlog(self.PGLOG['SYSERR'], 'O', loop, logact|self.LOGERR)         
+         if loop == 0: file = op.dirname(file) + '/'
+      if loop > 1: return self.FAILURE
+      for line in re.split(r'\n', buf):
+         if not line or line.find(fname) < 0: continue
+         info = self.ftp_file_stat(line, opt)
+         if info: return info
+      return None   
+
+   # local function to get stat of a file on ftp server
+   def ftp_file_stat(self, line, opt):
+      """Parse one line of ncftpls -l output into a file-info dict.
+
+      Handles both year-based and time-based ls date formats.
+
+      Args:
+         line (str): One output line from ncftpls -l.
+         opt (int): Info bitmask.
+
+      Returns:
+         dict | None: File info dict, or None if the line cannot be parsed.
+      """
+      items = re.split(r'\s+', line)
+      if len(items) < 9: return None
+      ms = re.match(r'^([d\-])([\w\-]{9})$', items[0])
+      info = {}
+      info['isfile'] = (1 if ms and ms.group(1) == "-" else 0)
+      info['data_size'] = int(items[4])
+      info['fname'] = op.basename(items[8])
+      if not opt: return info
+      if opt&4: info['mode'] = self.get_file_mode(ms.group(2))
+      if opt&17:
+         dy = int(items[6])
+         mn = self.get_month(items[5])
+         if re.match(r'^\d+$', items[7]):
+            yr = int(items[7])
+            mtime = "00:00:00"
+         else:
+            mtime = items[7] + ":00"
+            cdate = self.curdate()
+            ms = re.match(r'^(\d+)-(\d\d)', cdate)
+            if ms:
+               yr = int(ms.group(1))
+               cm = int(ms.group(2))   # current month
+               if cm < mn: yr -= 1     # previous year
+         mdate = "{}-{:02}-{:02}".format(yr, mn, dy)
+         if opt&1:
+            info['date_modified'] = mdate
+            info['time_modified'] = mtime
+         if opt&16: info['week_day'] = self.get_weekday(mdate)
+      if opt&2: info['logname'] = items[2]
+      if opt&8: info['group'] = items[3]
+      return info
+
+   # get an array of directories/files under given dir on a given host name (including local host)
+   #  dir: directory name to be listed
+   # host: host name the directory on, default to self.LHOST
+   #  opt:  0 - get data size only (fname, data_size, isfile), fname is the file basename
+   #        1 - get date/time modified (date_modified, time_modfied)
+   #        2 - get file owner's login name (logname)
+   #        4 - get permission mode in 3 octal digits (mode)
+   #        8 - get group name (group)
+   #       16 - get week day 0-Sunday, 1-Monday (week_day)
+   #       32 - get checksum (checksum), work for local file only
+   # Return: a dict with filenames as keys None if empty directory
+   def gdex_glob(self, dir, host, opt = 0, logact = 0):
+      """List files/directories on any supported storage host.
+
+      Dispatches to local_glob(), object_glob(), backup_glob(), or remote_glob().
+
+      Args:
+         dir (str): Directory or path prefix to list.
+         host (str): Storage host name.
+         opt (int): Info bitmask for each entry's file-info dict.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict: Mapping of file path → file-info dict (empty when directory is empty).
+      """
+      shost = self.strip_host_name(host)
+      if self.pgcmp(shost, self.LHOST, 1) == 0:
+         return self.local_glob(dir, opt, logact)
+      elif self.pgcmp(shost, self.OHOST, 1) == 0:
+         return self.object_glob(dir, None, opt, logact)      
+      elif self.pgcmp(shost, self.BHOST, 1) == 0:
+         return self.backup_glob(dir, None, opt, logact)
+      else:
+         return self.remote_glob(dir, host, opt, logact)
+   rda_glob = gdex_glob
+
+   # get an array of directories/files under given dir on local host
+   #  dir: directory name to be listed
+   #  opt: 0 - get data size only (fname, data_size, isfile), fname is the file basename
+   #       1 - get date/time modified (date_modified, time_modfied)
+   #       2 - get file owner's login name (logname)
+   #       4 - get permission mode in 3 octal digits (mode)
+   #       8 - get group name (group)
+   #      16 - get week day 0-Sunday, 1-Monday (week_day)
+   #      32 - get checksum (checksum), work for local file only
+   #     256 - get files only and ignore directories
+   # Return: dict with filenames as keys or None if empty directory
+   def local_glob(self, dir, opt = 0, logact = 0):
+      """List files/directories under a local directory path using glob patterns.
+
+      Appends '/*' when dir has no glob characters and exists as a directory.
+      Appends '*' when dir does not exist (allows prefix-style patterns).
+      Bit 256 in opt filters out directories.
+
+      Args:
+         dir (str): Local directory path or glob pattern.
+         opt (int): Info bitmask; bit 256 = files only.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict: Mapping of file path → file-info dict.
+      """
+      flist = {}
+      if not re.search(r'[*?]', dir):
+         if op.exists(dir):
+            dir = self.join_paths(dir, "*")
+         else:
+            dir += "*"
+      for file in glob.glob(dir):
+         info = self.check_local_file(file, opt, logact)
+         if info and (info['isfile'] or not 256&opt): flist[file] = info
+      return flist
+
+   # check and get file status information of a file on remote host
+   #  dir: remote directory name
+   # host: host name the directory on, default to self.LHOST
+   #  opt: 0 - get data size only (fname, data_size, isfile), fname is the file basename
+   #       1 - get date/time modified (date_modified, time_modfied)
+   #       2 - file owner's login name (logname), assumed 'gdexdata'
+   #       4 - get permission mode in 3 octal digits (mode)
+   #       8 - get group name (group), assumed 'dss'
+   #      16 - get week day 0-Sunday, 1-Monday (week_day)
+   # Return: dict with filenames as keys or None if empty directory
+   def remote_glob(self, dir, host, opt = 0, logact = 0):
+      """List files/directories in a remote directory via the sync command.
+
+      Args:
+         dir (str): Remote directory path.
+         host (str): Remote hostname.
+         opt (int): Info bitmask.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict: Mapping of file path → file-info dict (empty on error).
+      """
+      flist = {}
+      if not re.search(r'/$', dir): dir += '/'
+      buf = self.pgsystem(self.get_sync_command(host) + " dir", self.LOGWRN, self.CMDRET)
+      if not buf:
+         if self.PGLOG['SYSERR'] and self.PGLOG['SYSERR'].find(self.PGLOG['MISSFILE']) < 0:
+            self.errlog("{}-{}: Error list directory\n{}".format(host, dir, self.PGLOG['SYSERR']), 'R', 1, logact)   
+         return flist
+      for line in re.split(r'\n', buf):
+         info = self.remote_file_stat(line, opt)
+         if info: flist[dir + info['fname']] = info
+      return flist
+
+   # check and get muiltiple object store file status information
+   #  dir: object directory name
+   #  opt: 0 - get data size only (fname, data_size, isfile), fname is the file basename
+   #       1 - get date/time modified (date_modified, time_modfied)
+   #       2 - get file owner's login name (logname)
+   #       8 - get group name (group)
+   #      16 - get week day 0-Sunday, 1-Monday (week_day)
+   # Return: a dict with filenames as keys, or None if not exists
+   def object_glob(self, dir, bucket = None, opt = 0, logact = 0):
+      """List object-store files matching a key prefix.
+
+      Args:
+         dir (str): Object key prefix to list (trailing '/' stripped).
+         bucket (str | None): Bucket name; defaults to PGLOG['OBJCTBKT'].
+         opt (int): Info bitmask (bits 2 and 8 trigger metadata fetch).
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | int: Mapping of key → file-info dict, or self.FAILURE on error.
+      """
+      flist = {}
+      if not bucket: bucket = self.PGLOG['OBJCTBKT']
+      ms = re.match(r'^(.+)/$', dir)
+      if ms: dir = ms.group(1)
+      ocmd = self.OBJCTCMD
+      cmd = "{} lo {} -b {}".format(ocmd, dir, bucket)
+      ary = err = None
+      buf = self.pgsystem(cmd, self.LOGWRN, self.CMDRET)
+      if buf:
+         if re.match(r'^\[\{', buf):
+            ary = json.loads(buf)
+         elif not re.match(r'^\[\]', buf):
+            err = "{}\n{}".format(self.PGLOG['SYSERR'], buf)
+      else:
+         err = self.PGLOG['SYSERR']
+      if not ary:
+         if err:
+            self.errlog("{}-{}-{}: Error list files\n{}".format(self.OHOST, bucket, dir, err), 'O', 1, logact)
+            return self.FAILURE
+         else:
+            return flist
+      for hash in ary:
+         uhash = None
+         if opt&10:
+            ucmd = "{} gm -l {} -b {}".format(ocmd, hash['Key'], bucket)
+            ubuf = self.pgsystem(ucmd, self.LOGWRN, self.CMDRET)
+            if ubuf and re.match(r'^\{.+', ubuf): uhash = json.loads(ubuf)
+         info = self.object_file_stat(hash, uhash, opt)
+         if info: flist[hash['Key']] = info
+      return flist
+
+   # check and get muiltiple Quasar backup file status information
+   #  dir: backup path
+   #  opt: 0 - get data size only (fname, data_size, isfile), fname is the file basename
+   #       1 - get date/time modified (date_modified, time_modfied)
+   #       2 - get file owner's login name (logname)
+   #       8 - get group name (group)
+   #      16 - get week day 0-Sunday, 1-Monday (week_day)
+   #      64 - rechecking
+   # Return: a dict with filenames as keys, or None if not exists
+   def backup_glob(self, dir, endpoint = None, opt = 0, logact = 0):
+      """List files/directories on a Quasar backup endpoint.
+
+      Bit 64 in opt enables re-checking after a sleep when the directory is not
+      found or empty.
+
+      Args:
+         dir (str): Directory path on the backup endpoint.
+         endpoint (str | None): Globus endpoint; defaults to PGLOG['BACKUPEP'].
+         opt (int): Info bitmask; bit 64 = recheck.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         dict | int | None: Mapping of fname → file-info dict, self.FAILURE on error,
+                            or None when directory does not exist.
+      """
+      if not dir: return None
+      if not endpoint: endpoint = self.PGLOG['BACKUPEP']
+      bcmd = self.BACKCMD
+      cmd = f"{bcmd} ls -ep {endpoint} -p {dir}"
+      flist = {}
+      for loop in range(2):
          buf = self.pgsystem(cmd, logact, self.CMDRET)
          syserr = self.PGLOG['SYSERR']
          if buf:
@@ -2402,7 +2818,7 @@ class PgFile(PgUtil, PgSIG):
             if loop or opt&64 == 0: return None
             time.sleep(self.PGSIG['ETIME'])
          elif syserr:
-            if syserr.find("Directory '{}' not found on endpoint".format(bdir)) > -1:
+            if syserr.find("Directory '{}' not found on endpoint".format(dir)) > -1:
                if loop or opt&64 == 0: return None
                time.sleep(self.PGSIG['ETIME'])
             else:
@@ -2411,7 +2827,6 @@ class PgFile(PgUtil, PgSIG):
                (hstat, msg) = self.host_down_status('', self.QHOSTS[endpoint], 0, logact)
                if hstat: errmsg += "\n" + msg
                self.errlog(errmsg, 'B', loop, logact)
-         loop += 1
       if flist:
          self.ECNTS['B'] = 0   # reset error count
          return flist
@@ -2562,9 +2977,9 @@ class PgFile(PgUtil, PgSIG):
       elif dir and not re.match(r'^(\.|\./|/)$', dir) and dir not in self.DELDIRS:
          self.DELDIRS[dir] = val
 
+   # remove the recorded delete directory if it is empty
    def clean_delete_directory(self, logact = 0):
-      """Remove recorded empty directories up to DIRLVLS parent levels; or unlimited
-      parent levels until reaching the root path if DIRLVLS == -1. 
+      """Remove recorded empty directories up to DIRLVLS parent levels.
 
       Iterates from leaf to parent, deleting directories that are confirmed empty
       via gdex_empty_directory(). Clears DELDIRS after completion.
@@ -2572,16 +2987,14 @@ class PgFile(PgUtil, PgSIG):
       Args:
          logact (int): Logging action flags; defaults to LOGWRN when 0.
       """
-      if not self.DIRLVLS:
-         return
+      if not self.DIRLVLS: return
       if logact:
          lact = logact&~(self.EXITLG)
       else:
          logact = lact = self.LOGWRN
       lvl = self.DIRLVLS
       self.DIRLVLS = 0     # set to 0 to stop recording directory
-      while True:
-         if lvl == 0: break
+      while lvl != 0:
          if lvl > 0: lvl -= 1
          dirs = {}
          for dir in self.DELDIRS:
@@ -2592,19 +3005,16 @@ class PgFile(PgUtil, PgSIG):
                if self.delete_gdex_file(dir, host, logact):
                   self.pglog(dinfo + ": Empty directory removed", lact)
             elif dstat > 0:
-               if dstat == 1 and lvl >= 0:
-                  self.pglog(dinfo + ": Directory not empty yet", lact)
+               if dstat == 1 and lvl > 0: self.pglog(dinfo + ": Directory not empty yet", lact)
                continue
-            pdir = op.dirname(dir)
-            if pdir and not re.match(r'^(\.|\./|/)$', pdir): dirs[pdir] = host
+            pdir = self.dirname(dir)
+            if lvl and pdir and not re.match(r'^(\.|\./|/)$', pdir): dirs[pdir] = host
          if not dirs: break
          self.DELDIRS = dirs
-         if lvl != 0: continue
-         break
       self.DELDIRS = {}   # empty cache afterward
 
    # remove the empty given directory and its all subdirectories
-   # return 1 if empty directory removed 0 otherwise
+   # return 1 if empty dirctory removed 0 otherwise
    def clean_empty_directory(self, dir, host, logact = 0):
       """Recursively remove empty subdirectories under a given directory.
 
@@ -2826,7 +3236,7 @@ class PgFile(PgUtil, PgSIG):
       Returns:
          tuple: (output_filename, updated_fmt) after the operation.
       """
-      ms = re.match(r'^(.+)\.{}$'.format(self.CMPSTR), ifile)
+      ms = re.match(r'^(.+)\.({})'.format(self.CMPSTR), ifile)
       if ms:
          ofile = ms.group(1)
       else:
@@ -2934,6 +3344,293 @@ class PgFile(PgUtil, PgSIG):
       """
       if not op.isabs(file): file = self.join_paths(os.getcwd(), file)
       return self.errlog("{}: {}".format(file, msg), 'L', 1, logact)
+
+   # check if given path is executable locally
+   # return self.SUCCESS if yes self.FAILURE if not
+   def check_local_executable(self, path, actstr = '', logact = 0):
+      """Check whether a local path is executable by the current process.
+
+      Args:
+         path (str): Local path to test.
+         actstr (str): Optional action prefix for the error message.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS if executable, self.FAILURE otherwise.
+      """
+      if os.access(path, os.X_OK): return self.SUCCESS
+      if self.check_local_accessible(path, actstr, logact):
+         if actstr: actstr += '-'
+         self.errlog("{}{}: Accessible, but Unexecutable on'{}'".format(actstr, path, self.PGLOG['HOSTNAME']), 'L', 1, logact)
+      return self.FAILURE
+
+   # check if given path is writable locally
+   # return self.SUCCESS if yes self.FAILURE if not
+   def check_local_writable(self, path, actstr = '', logact = 0):
+      """Check whether a local path is writable by the current process.
+
+      Args:
+         path (str): Local path to test.
+         actstr (str): Optional action prefix for the error message.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS if writable, self.FAILURE otherwise.
+      """
+      if os.access(path, os.W_OK): return self.SUCCESS
+      if self.check_local_accessible(path, actstr, logact):
+         if actstr: actstr += '-'
+         self.errlog("{}{}: Accessible, but Unwritable on'{}'".format(actstr, path, self.PGLOG['HOSTNAME']), 'L', 1, logact)
+      return self.FAILURE
+
+   # check if given path is accessible locally
+   # return self.SUCCESS if yes, self.FAILURE if not
+   def check_local_accessible(self, path, actstr = '', logact = 0):
+      """Check whether a local path exists and is accessible by the current process.
+
+      Args:
+         path (str): Local path to test.
+         actstr (str): Optional action prefix for the error message.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS if accessible, self.FAILURE otherwise.
+      """
+      if os.access(path, os.F_OK): return self.SUCCESS
+      if actstr: actstr += '-'
+      self.errlog("{}{}: Unaccessible on '{}'".format(actstr, path, self.PGLOG['HOSTNAME']), 'L', 1, logact)
+      return self.FAILURE
+
+   # check if given webfile under self.PGLOG['DSSDATA'] is writable
+   # return self.SUCCESS if yes self.FAILURE if not
+   def check_webfile_writable(self, action, wfile, logact = 0):
+      """Check whether a web file path under DSSDATA is locally writable.
+
+      Returns SUCCESS immediately for paths outside DSSDATA (no check needed).
+
+      Args:
+         action (str): Action description for the error message.
+         wfile (str): Web file absolute path.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS if writable or outside DSSDATA, self.FAILURE otherwise.
+      """
+      ms = re.match(r'^({}/\w+)'.format(self.PGLOG['DSSDATA']), wfile)
+      if ms:
+         return self.check_local_writable(ms.group(1), "{} {}".format(action, wfile), logact)
+      else:
+         return self.SUCCESS    # do not need check
+
+   # convert the one file to another via uncompress, move/copy, and/or compress
+   def convert_files(self, ofile, ifile, keep = 0, logact = 0):
+      """Convert a file between compression formats via decompress → move → compress.
+
+      Handles the full pipeline: decompresses ifile (if compressed), moves/copies
+      to the target name, and re-compresses (if ofile has a compression extension).
+      The keep flag preserves a backup of the input file.
+
+      Args:
+         ofile (str): Output (destination) file name.
+         ifile (str): Input (source) file name.
+         keep (int): 1 to preserve a '.keep' copy of the input.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS if ofile exists after conversion, self.FAILURE otherwise.
+      """
+      if ofile == ifile: return self.SUCCESS
+      oname = ofile
+      iname = ifile
+      if keep: kfile = ifile + ".keep"
+      oext = iext = None
+      for ext in self.PGCMPS:
+         if oext is None:
+             ms = re.match(r'^(.+)\.{}$'.format(ext), ofile)
+             if ms:
+               oname = ms.group(1)
+               oext = ext
+         if iext is None:
+             ms = re.match(r'^(.+)\.{}$'.format(ext), ifile)
+             if ms:
+               iname = ms.group(1)
+               iext = ext
+      if iext and oext and oext == iext:
+         oext = iext = None
+         iname = ifile
+         oname = ofile
+      if iext:  # uncompress
+         if keep:
+            if iext == 'zip':
+               kfile = ifile
+            else:
+               self.local_copy_local(kfile, ifile, logact)
+         if self.pgsystem("{} {}".format(self.PGCMPS[iext][1], ifile), logact, 5):
+            if iext == "zip":
+               path = op.dirname(iname)
+               if path and path != '.': self.move_local_file(iname, op.basename(iname), logact)
+               if not keep: self.delete_local_file(ifile, logact)
+      if oname != iname:   # move/copy
+         path = op.dirname(oname)
+         if path and not op.exists(path): self.make_local_directory(path, logact)
+         if keep and not op.exists(kfile):
+            self.local_copy_local(oname, iname, logact)
+            kfile = iname
+         else:
+            self.move_local_file(oname, iname, logact)
+      if oext: # compress
+         if keep and not op.exists(kfile):
+            if oext == "zip":
+               kfile = oname
+            else:
+               self.local_copy_local(kfile, oname, logact)
+         if oext == "zip":
+            path = op.dirname(oname)
+            if path:
+               if path != '.': path = self.change_local_directory(path, logact)
+               bname = op.basename(oname)
+               self.pgsystem("{} {}.zip {}".format(self.PGCMPS[oext][0], bname, bname), logact, 5)
+               if path != '.': self.change_local_directory(path, logact)
+            else:
+               self.pgsystem("{} {} {}".format(self.PGCMPS[oext][0], ofile, oname), logact, 5)
+            if not keep and op.exists(ofile): self.delete_local_file(oname, logact)
+         else:
+            self.pgsystem("{} {}".format(self.PGCMPS[oext][0], oname), logact, 5)
+      if keep and op.exists(kfile) and kfile != ifile:
+         if op.exists(ifile):
+            self.delete_local_file(kfile, logact)
+         else:
+            self.move_local_file(ifile, kfile, logact)
+      if op.exists(ofile):
+         return self.SUCCESS
+      else:
+         return self.errlog("{}: ERROR convert from {}".format(ofile, ifile), 'L', 1, logact)
+
+   #  comapre two files from given two hash references to the file information
+   #  return 0 if same, 1  different, -1 if can not compare
+   @staticmethod
+   def compare_file_info(ainfo, binfo):
+      """Compare two file-info dicts by size, modified date, and modified time.
+
+      Args:
+         ainfo (dict | None): First file-info dict.
+         binfo (dict | None): Second file-info dict.
+
+      Returns:
+         int: 0 if identical, 1 if different, -1 if either dict is missing.
+      """
+      if not (ainfo and binfo): return -1   # at least one is missing
+      return (0 if (ainfo['data_size'] == binfo['data_size'] and
+                    ainfo['date_modified'] == binfo['date_modified'] and
+                    ainfo['time_modified'] == binfo['time_modified']) else 1)
+
+   # get local_dirname
+   @staticmethod
+   def get_local_dirname(file):
+      """Return the directory part of a local file path.
+
+      Returns the current working directory when dirname() would return '.'.
+
+      Args:
+         file (str): Local file path.
+
+      Returns:
+         str: Absolute directory path.
+      """
+      dir = op.dirname(file)
+      if dir == '.': dir = os.getcwd()
+      return dir
+
+   # collect valid file names under a given directory, current directory if empty
+   def get_directory_files(self, dir = None, limit = 0, level = 0):
+      """Collect all regular file paths under a directory, recursively.
+
+      Args:
+         dir (str | None): Root directory to search; searches '*' in cwd when None.
+         limit (int): Maximum recursion depth; 0 = unlimited.
+         level (int): Current recursion depth (internal; start at 0).
+
+      Returns:
+         list[str] | None: Sorted list of file paths, or None when no files found.
+      """
+      files = []
+      if dir:
+         if level == 0 and op.isfile(dir):
+            files.append(dir)
+            return files
+         dir += "/*"
+      else:
+         dir = "*"
+      for file in glob.glob(dir):
+         if op.isdir(file):
+            if limit == 0 or (limit-level) > 0:
+               fs = self.get_directory_files(file, limit, level+1)
+               if fs: files.extend(fs)
+         else:
+            files.append(file)
+      return files if files else None
+
+   # reads a local file into a string and returns it
+   def read_local_file(self, file, logact = 0):
+      """Read and return the entire contents of a local text file.
+
+      Args:
+         file (str): Local file path to read.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         str | int: File contents string on success, self.FAILURE on error.
+      """
+      try:
+         fd = open(file, 'r')
+      except Exception as e:
+         return self.errlog("{}: {}".format(file, str(e)), 'L', 1, logact)
+      else:
+         fstr = fd.read()
+         fd.close()
+      return fstr
+
+   # open a local file and return the file handler
+   def open_local_file(self, file, mode = 'r', logact = None):
+      """Open a local file and return the file object.
+
+      Args:
+         file (str): Local file path.
+         mode (str): Open mode string (e.g. 'r', 'w', 'a', 'rb'); default 'r'.
+         logact (int | None): Logging action flags; defaults to LOGERR.
+
+      Returns:
+         file | int: Opened file object on success, self.FAILURE on error.
+      """
+      if logact is None: logact = self.LOGERR
+      try:
+         fd = open(file, mode)
+      except Exception as e:
+         return self.errlog("{}: {}".format(file, str(e)), 'L', 1, logact)
+      return fd
+
+   # change absolute paths to relative paths
+   def get_relative_paths(self, files, cdir, logact = 0):
+      """Convert absolute file paths to paths relative to a working directory.
+
+      Args:
+         files (list[str]): List of file paths to convert.
+         cdir (str | None): Base directory; defaults to os.getcwd() when None.
+         logact (int): Logging action flags for paths outside cdir; default 0.
+
+      Returns:
+         list[str]: File paths made relative to cdir.
+      """
+      cnt = len(files)
+      if cnt == 0: return files
+      if not cdir: cdir = os.getcwd()
+      for i in range(cnt):
+         afile = files[i]
+         if op.isabs(afile):
+            files[i] = self.join_paths(afile, cdir, 1)
+         else:
+            self.pglog("{}: is not under the working directory '{}'".format(afile, cdir), logact)
+      return files
 
    # check if the action to path is blocked
    def check_block_path(self, path, act = '', logact = 0):
