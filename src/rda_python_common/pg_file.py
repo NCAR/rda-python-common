@@ -2385,7 +2385,8 @@ class PgFile(PgUtil, PgSIG):
       bfile = op.basename(file)
       bcmd = self.BACKCMD
       cmd = f"{bcmd} ls -ep {endpoint} -p {bdir} --filter {bfile}"
-      ccnt = loop = 0
+      loop = 0
+      flist = {}
       while loop < 2:
          buf = self.pgsystem(cmd, logact, self.CMDRET)
          syserr = self.PGLOG['SYSERR']
