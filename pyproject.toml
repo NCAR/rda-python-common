@@ -18,7 +18,7 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
 ]
 dependencies = [
-  "psycopg2-binary",
+  "psycopg2==2.9.10",
   "rda-python-globus",
   "unidecode"
 ]
