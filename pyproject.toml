@@ -18,6 +18,7 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
 ]
 dependencies = [
+  "hvac",
   "psycopg2==2.9.10",
   "rda-python-globus",
   "unidecode"
