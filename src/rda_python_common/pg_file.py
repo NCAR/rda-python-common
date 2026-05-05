@@ -3007,7 +3007,7 @@ class PgFile(PgUtil, PgSIG):
             elif dstat > 0:
                if dstat == 1 and lvl > 0: self.pglog(dinfo + ": Directory not empty yet", lact)
                continue
-            pdir = self.dirname(dir)
+            pdir = op.dirname(dir)
             if lvl and pdir and not re.match(r'^(\.|\./|/)$', pdir): dirs[pdir] = host
          if not dirs: break
          self.DELDIRS = dirs
