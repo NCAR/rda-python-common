@@ -203,7 +203,7 @@ from rda_python_common.pgpassword import PgPassword
 
 pw = PgPassword()
 pw.default_scinfo('rdadb', 'dssdb', 'rda-pgdb', 'gdexweb', None, 5432)
-password = pw.get_baopassword() or pw.get_pg_pass()
+password = pw.get_baopassword() or pw.get_pgpassword()
 ```
 
 In every case `super().__init__()` cooperates correctly across the

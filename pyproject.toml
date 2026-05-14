@@ -20,7 +20,8 @@ classifiers = [
 dependencies = [
   "psycopg2-binary",
   "rda-python-globus",
-  "unidecode"
+  "unidecode",
+  "hvac"
 ]
 
 [project.urls]

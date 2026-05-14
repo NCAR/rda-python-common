@@ -1158,7 +1158,7 @@ class PgOPT(PgFile):
          if self.OPTS[opt][2]&16:
             if not val:
                val = 0
-            elif re.match(r'^\d+$', val):
+            elif val.isdigit():
                val = int(val)
          elif val and (opt == 'DS' or opt == 'OD'):
             val = self.format_dataset_id(val)

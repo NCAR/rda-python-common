@@ -961,7 +961,7 @@ class PgSIG(PgDBI):
       lines = buf.split('\n')
       for line in lines:
          if chkt:
-            if re.match(r'^Job', line):
+            if line.startswith('Job'):
                line = re.sub(r'^Job ID', 'JobID', line, 1)
                line = re.sub(r'Finish Time', 'FinishTime', line, 1)
                line = re.sub(r'Req Mem', 'ReqMem', line, 1)

@@ -2595,7 +2595,7 @@ class PgFile(PgUtil, PgSIG):
       if opt&17:
          dy = int(items[6])
          mn = self.get_month(items[5])
-         if re.match(r'^\d+$', items[7]):
+         if items[7].isdigit():
             yr = int(items[7])
             mtime = "00:00:00"
          else:
@@ -2972,7 +2972,7 @@ class PgFile(PgUtil, PgSIG):
       if dir is None:
          if isinstance(val, int):
             self.DIRLVLS = val
-         elif re.match(r'^\d+$', val):
+         elif val.isdigit():
             self.DIRLVLS = int(val)
       elif dir and not re.match(r'^(\.|\./|/)$', dir) and dir not in self.DELDIRS:
          self.DELDIRS[dir] = val

@@ -39,7 +39,7 @@ class PgPassword(PgDBI):
       opt = None
       dohelp = True
       for arg in argv:
-         if re.match(r'^-\w+$', arg):
+         if re.match(r'^-[a-zA-Z]\w*$', arg):
             opt = arg[1:]
          elif opt:
             if opt == 'l':
@@ -72,7 +72,7 @@ class PgPassword(PgDBI):
          self.default_scinfo(self.DBINFO['dbname'], self.DBINFO['scname'], self.DBINFO['dbhost'],
                              self.DBINFO['lnname'], None, self.DBINFO['dbport'])   
       self.password = self.get_baopassword()
-      if not self.password: self.password = self.get_pg_pass()
+      if not self.password: self.password = self.get_pgpassword()
 
 # main function to excecute this script
 def main():
