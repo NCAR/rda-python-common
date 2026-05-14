@@ -12,8 +12,9 @@ import os
 import re
 from os import path as op
 from .pg_util import PgUtil
+from .pg_dbi import PgDBI
 
-class PgSplit(PgUtil):
+class PgSplit(PgUtil, PgDBI):
    """Manages synchronisation of wfile records between shared and per-dataset tables.
 
    Handles compare, add, update, and delete operations between the shared
