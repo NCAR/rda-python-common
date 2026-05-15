@@ -252,7 +252,7 @@ class PgLOG:
                msg = self.PGLOG['PRGMSG'] + "\n" + msg
                self.PGLOG['PRGMSG'] = ""
             if self.PGLOG['ERRCNT'] == 0:
-               if not re.search(r'\n$', msg): msg += "!\n"
+               if not msg.endswith('\n'): msg += "!\n"
             else:
                if self.PGLOG['ERRCNT'] == 1:
                   msg += " with 1 Error:\n"
@@ -1423,7 +1423,7 @@ class PgLOG:
       try:
          self.PGLOG['RDAUID'] = self.PGLOG['GDEXUID'] = pwd.getpwnam(self.PGLOG['GDEXUSER']).pw_uid
          self.PGLOG['RDAGID'] = self.PGLOG['GDEXGID'] = grp.getgrnam(self.PGLOG['GDEXGRP']).gr_gid
-      except:
+      except KeyError:
          self.PGLOG['RDAUID'] = self.PGLOG['GDEXUID'] = 0
          self.PGLOG['RDAGID'] = self.PGLOG['GDEXGID'] = 0
       if self.PGLOG['CURUID'] == self.PGLOG['GDEXUSER']: self.PGLOG['SETUID'] = self.PGLOG['GDEXUSER']   
@@ -1624,8 +1624,8 @@ class PgLOG:
       missthen = 0
       try:
          rf = open(resource, 'r')
-      except:
-         return   # skip if cannot open   
+      except OSError:
+         return   # skip if cannot open
       nline = rf.readline()
       while nline:
          line = self.pgtrim(nline)
@@ -1638,12 +1638,12 @@ class PgLOG:
             missthen = 0
             if re.match(r'^then$', line): continue   # then on next line
             checkif = 0   # end of inline if
-         elif re.match(r'^endif', line):
+         elif line.startswith('endif'):
             checkif = 0   # end of if
             continue
          elif checkif == -1:   # skip the line
             continue
-         elif checkif == 2 and re.match(r'^else', line):
+         elif checkif == 2 and line.startswith('else'):
             checkif = -1   # done check envs in if
             continue
          if checkif == 1:

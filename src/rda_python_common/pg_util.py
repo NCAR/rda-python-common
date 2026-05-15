@@ -93,22 +93,22 @@ class PgUtil(PgLOG):
          int | str: Numeric month (1-12) when fmt is None; formatted string otherwise.
       """
       if not isinstance(mn, int):
-         if re.match(r'^\d+$', mn):
+         if mn.isdigit():
             mn = int(mn)
          else:
             for m in range(12):
                if re.match(mn, self.MONTHS[m], re.I):
                   mn = m + 1
                   break
-      if fmt and mn > 0 and mn < 13:
+      if fmt and 0 < mn < 13:
          slen = len(fmt)
          if slen == 2:
             smn = "{:02}".format(mn)
-         elif re.match(r'^mon', fmt, re.I):
+         elif fmt[:3].lower() == 'mon':
             smn = self.MNS[mn-1] if slen == 3 else self.MONTHS[mn-1]
-            if re.match(r'^Mon', fmt):
+            if fmt.startswith('Mon'):
                smn = smn.capitalize()
-            elif re.match(r'^MON', fmt):
+            elif fmt.startswith('MON'):
                smn = smn.upper()
          else:
             smn = str(mn)
@@ -131,26 +131,26 @@ class PgUtil(PgLOG):
                     formatted string otherwise.
       """
       if not isinstance(wday, int):
-         if re.match(r'^\d+$', wday):
+         if wday.isdigit():
             wday = int(wday)
          else:
             for w in range(7):
                if re.match(wday, self.WDAYS[w], re.I):
                   wday = w
                   break
-      if fmt and wday >= 0 and wday <= 6:
+      if fmt and 0 <= wday <= 6:
          slen = len(fmt)
          if slen == 4:
             swday = self.WDAYS[wday]
-            if re.match(r'^We', fmt):
+            if fmt.startswith('We'):
                swday = swday.capitalize()
-            elif re.match(r'^WE', fmt):
+            elif fmt.startswith('WE'):
                swday = swday.upper()
          elif slen == 3:
             swday = self.WDS[wday]
-            if re.match(r'^Ww', fmt):
+            if fmt.startswith('Ww'):
                swday = swday.capitalize()
-            elif re.match(r'^WW', fmt):
+            elif fmt.startswith('WW'):
                swday = swday.upper()
          else:
             swday = str(wday)
@@ -179,7 +179,7 @@ class PgUtil(PgLOG):
       if exists is None or exists:
          if not op.exists(file): return ''    # file does not exist
       bname = op.basename(file)
-      if re.match(r'^,.*', bname): return ''       # hidden file
+      if bname.startswith(','): return ''       # hidden file
       if re.search(r'index\.(htm|html|shtml)$', bname, re.I): return ''   # index file
       if  type and type != 'D': return type
       if re.search(r'\.(doc|php|html|shtml)(\.|$)', bname, re.I): return ''    # file with special extention
@@ -314,7 +314,7 @@ class PgUtil(PgLOG):
       """
       if not date: return default
       if not isinstance(date, str): date = str(date)
-      if re.match(r'^0000', date): return default
+      if date.startswith('0000'): return default
       return date
 
    #    fmt: date format, default to "YYYY-MM-DD"
@@ -422,7 +422,7 @@ class PgUtil(PgLOG):
       adt = re.split(sep, sdt)
       acnt = len(adt)
       for i in range(acnt):
-         if re.match(r'^\d+$', adt[i]): adt[i] = int(adt[i])
+         if adt[i].isdigit(): adt[i] = int(adt[i])
       return adt
 
    #    date: given date in format of fromfmt
@@ -490,19 +490,20 @@ class PgUtil(PgLOG):
          if i >= mcnt: break
          fmt = formats[k]
          val = ms[0][i]
-         if re.match(r'^Y', fmt, re.I):
+         head = fmt[:1].upper()
+         if head == 'Y':
             dates[0] = int(val)
             if len(fmt) == 3: dates[0] *= 10
-         elif re.match(r'^C', fmt, re.I):
+         elif head == 'C':
             dates[0] = 100 * int(val)      # year at end of century
-         elif re.match(r'^M', fmt, re.I):
-            if re.match(r'^Mon', fmt, re.I):
+         elif head == 'M':
+            if fmt[:3].upper() == 'MON':
                dates[1] = self.get_month(val)
             else:
                dates[1] = int(val)
-         elif re.match(r'^Q', fmt, re.I):
+         elif head == 'Q':
             dates[1] = 3 * int(val)        # month at end of quarter
-         elif re.match(r'^H', fmt, re.I):  # hour
+         elif head == 'H':  # hour
             dates.append(int(val))
          else:    # day
             dates[2] = int(val)
@@ -653,11 +654,11 @@ class PgUtil(PgLOG):
             slen = len(fmt)
             if slen == 2:
                smn = "{:02}".format(m)
-            elif re.match(r'^mon', fmt, re.I):
+            elif fmt[:3].lower() == 'mon':
                smn = self.MNS[m-1] if slen == 3 else self.MONTHS[m-1]
-               if re.match(r'^Mo', fmt):
+               if fmt.startswith('Mo'):
                   smn = smn.capitalize()
-               elif re.match(r'^MO', fmt):
+               elif fmt.startswith('MO'):
                   smn = smn.upper()
             else:
                smn = str(m)

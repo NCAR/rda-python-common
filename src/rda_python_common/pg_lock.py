@@ -1,7 +1,7 @@
 ###############################################################################
 #     Title: pg_lock.py
 #    Author: Zaihua Ji,  zji@ucar.edu
-#      Date: 08/118/2020
+#      Date: 08/18/2020
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-12-01 convert to class PgLock

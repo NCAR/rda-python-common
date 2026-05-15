@@ -1,7 +1,7 @@
 ###############################################################################
 #     Title: pg_split.py  -- PostgreSQL DataBase Interface foe table wfile
 #    Author: Zaihua Ji,  zji@ucar.edu
-#      Date: 09/010/2024
+#      Date: 09/10/2024
 #             2025-01-10 transferred to package rda_python_common from
 #             https://github.com/NCAR/rda-shared-libraries.git
 #             2025-12-01 convert to class PgSplit
@@ -12,8 +12,9 @@ import os
 import re
 from os import path as op
 from .pg_util import PgUtil
+from .pg_dbi import PgDBI
 
-class PgSplit(PgUtil):
+class PgSplit(PgUtil, PgDBI):
    """Manages synchronisation of wfile records between shared and per-dataset tables.
 
    Handles compare, add, update, and delete operations between the shared

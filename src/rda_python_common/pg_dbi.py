@@ -62,12 +62,12 @@ class PgDBI(PgLOG):
       super().__init__()  # initialize parent class
 
       #  PostgreSQL specified query timestamp format
-      self.fmtyr = lambda fn=self: "extract(year from {})::int".format(fn)
-      self.fmtqt = lambda fn=self: "extract(quarter from {})::int".format(fn)
-      self.fmtmn = lambda fn=self: "extract(month from {})::int".format(fn)
-      self.fmtdt = lambda fn=self: "date({})".format(fn)
-      self.fmtym = lambda fn=self: "to_char({}, 'yyyy-mm')".format(fn)
-      self.fmthr = lambda fn=self: "extract(hour from {})::int".format(fn)
+      self.fmtyr = lambda fn: "extract(year from {})::int".format(fn)
+      self.fmtqt = lambda fn: "extract(quarter from {})::int".format(fn)
+      self.fmtmn = lambda fn: "extract(month from {})::int".format(fn)
+      self.fmtdt = lambda fn: "date({})".format(fn)
+      self.fmtym = lambda fn: "to_char({}, 'yyyy-mm')".format(fn)
+      self.fmthr = lambda fn: "extract(hour from {})::int".format(fn)
 
       self.pgdb = None    # reference to a connected database object
       self.curtran = 0    # 0 - no transaction, 1 - in transaction
@@ -577,7 +577,7 @@ class PgDBI(PgLOG):
             self.qelog(dberror, 0, "Retry Connecting", ary, pgcnt, self.LOGWRN)
             self.pgconnect(1, pgcnt + 1)
             return (self.FAILURE if not self.pgdb else self.SUCCESS)
-         elif re.match(r'^55', pgcode):  #  try to lock again
+         elif pgcode.startswith('55'):  #  try to lock again
             self.qelog(dberror, 10, "Retry Locking", ary, pgcnt, self.LOGWRN)
             return self.SUCCESS
          elif pgcode == '25P02':   #  try to add table
