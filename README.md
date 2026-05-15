@@ -2,6 +2,80 @@
 
 Python common library codes to be shared by other RDA python utility programs.
 
+## Installing and using in another RDA python repo
+
+`rda-python-common` is the foundation that every other `rda-python-*` repo
+builds on.  To consume it from a new or existing repo, follow these steps.
+
+### 1. Install the package
+
+For local development, clone this repo alongside your project and install it
+in editable mode so that changes are picked up without re-installing:
+
+```bash
+git clone https://github.com/NCAR/rda-python-common.git
+cd rda-python-common
+pip install -e .
+```
+
+For a regular (non-editable) install from a checkout:
+
+```bash
+pip install /path/to/rda-python-common
+```
+
+For a production install on a system that uses the published distribution:
+
+```bash
+pip install rda_python_common
+```
+
+The package brings in its own transitive dependencies (`psycopg2-binary`,
+`rda-python-globus`, `unidecode`, `hvac`).
+
+### 2. Declare it as a dependency in your project
+
+Add `rda_python_common` to the `dependencies` list of your project's
+`pyproject.toml` so that downstream installs pull it in automatically:
+
+```toml
+[project]
+name = "rda_python_yourtool"
+version = "0.1.0"
+dependencies = [
+  "rda_python_common",
+  # ... other deps
+]
+```
+
+This is the same pattern used by `rda-python-dsarch`, `rda-python-dsupdt`,
+`rda-python-dsrqst`, `rda-python-dscheck`, `rda-python-metrics`, and
+`rda-python-miscs`.
+
+### 3. Import the modules you need
+
+Two import styles are supported (see [Usage examples](#usage-examples) below):
+
+```python
+# Preferred for new code -- import the class from the lower-case module
+from rda_python_common.pg_log import PgLOG
+from rda_python_common.pg_dbi import PgDBI
+
+# Legacy module-style imports remain supported for back-compatibility
+from rda_python_common import PgLOG, PgDBI
+PgLOG.pglog("hello", PgLOG.LOGWRN)
+```
+
+### 4. Verify the install
+
+```bash
+python -c "import rda_python_common; print(rda_python_common.__version__)"
+```
+
+You should see the installed version (currently `2.1.8`).  If the import
+fails, double-check that the active Python environment is the one where you
+ran `pip install`.
+
 ## Modules
 
 All shared functionality lives under `src/rda_python_common/` and is organised as
