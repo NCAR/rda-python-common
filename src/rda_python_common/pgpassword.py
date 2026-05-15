@@ -64,23 +64,29 @@ class PgPassword(PgDBI):
       Parse ``sys.argv`` and apply CLI overrides.
 
       Recognized options:
-         -l URL    -- OpenBao URL (stored in self.PGDBI['BAOURL'])
-         -k TOKEN  -- OpenBao token name (stored in self.PGDBI['BAOTOKEN'])
-         -d NAME   -- PostgreSQL database name
-         -c NAME   -- PostgreSQL schema name
-         -u NAME   -- PostgreSQL login user name
-         -h HOST   -- PostgreSQL server host name
-         -p PORT   -- PostgreSQL port number
+         -? / --help -- show usage and exit
+         -l URL      -- OpenBao URL (stored in self.PGDBI['BAOURL'])
+         -k TOKEN    -- OpenBao token name (stored in self.PGDBI['BAOTOKEN'])
+         -d NAME     -- PostgreSQL database name
+         -c NAME     -- PostgreSQL schema name
+         -u NAME     -- PostgreSQL login user name
+         -h HOST     -- PostgreSQL server host name
+         -p PORT     -- PostgreSQL port number
 
-      If no arguments are supplied a usage message is printed and the
-      process exits with status 0. Unknown options or stray values
-      cause an immediate error exit via ``self.pglog(..., LGEREX)``.
+      With no arguments, all defaults inherited from PgDBI/PgLOG are
+      used and the password lookup proceeds. Unknown options, stray
+      values, or an option without its required value cause an
+      immediate error exit via ``self.pglog(..., LGEREX)``.
       """
       argv = sys.argv[1:]
       opt = None
-      dohelp = True
       for arg in argv:
-         if re.match(r'^-[a-zA-Z]$', arg):
+         if arg in ('-?', '-help', '--help'):
+            self.set_help_path(__file__)
+            self.show_usage("pgpassword")
+         elif re.match(r'^-[a-zA-Z]$', arg):
+            if opt:
+               self.pglog("-" + opt + ": missing option value", self.LGEREX)
             opt = arg[1:]
          elif opt:
             if opt == 'l':
@@ -91,13 +97,12 @@ class PgPassword(PgDBI):
                self.dbopt = True
                self.DBINFO[self.DBFLDS[opt]] = arg
             else:
-               self.pglog(arg + ": Unknown option", self.LGEREX)
-            dohelp = False
+               self.pglog("-" + opt + ": Unknown option", self.LGEREX)
+            opt = None
          else:
-            self.pglog(arg + ": Value provided without option", self.LGEREX)
-      if dohelp:
-         self.set_help_path(__file__)
-         self.show_usage("pgpassword")
+            self.pglog(arg + ": value provided without option", self.LGEREX)
+      if opt:
+         self.pglog("-" + opt + ": missing option value", self.LGEREX)
 
    # get the pgpassword
    def start_actions(self):
@@ -114,7 +119,7 @@ class PgPassword(PgDBI):
       self.password = self.get_baopassword()
       if not self.password: self.password = self.get_pgpassword()
 
-# main function to excecute this script
+# main function to execute this script
 def main():
    """Entry point for the ``pgpassword`` console script: print the retrieved password to stdout."""
    object = PgPassword()
