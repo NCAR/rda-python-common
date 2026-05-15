@@ -99,7 +99,7 @@ The tree is single inheritance everywhere except at two join points:
 
 - **`pgpassword.py`** — `PgPassword(PgDBI)`.  Standalone CLI entry point
   (`pgpassword`) that resolves a PostgreSQL login password from OpenBao
-  (`get_baopassword`) or `~/.pgpass` (`get_pg_pass`) given database/schema/
+  (`get_baopassword`) or `~/.pgpass` (`get_pgpassword()`) given database/schema/
   host/port/user selectors via `-d`, `-c`, `-h`, `-p`, `-u`, `-l`, `-k`.
   Prints the resolved password to stdout so shell scripts can capture it.
 
