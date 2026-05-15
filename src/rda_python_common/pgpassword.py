@@ -39,7 +39,7 @@ class PgPassword(PgDBI):
       opt = None
       dohelp = True
       for arg in argv:
-         if re.match(r'^-[a-zA-Z]\w*$', arg):
+         if re.match(r'^-[a-zA-Z]$', arg):
             opt = arg[1:]
          elif opt:
             if opt == 'l':
