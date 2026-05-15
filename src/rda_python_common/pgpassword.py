@@ -119,7 +119,7 @@ class PgPassword(PgDBI):
       self.password = self.get_baopassword()
       if not self.password: self.password = self.get_pgpassword()
 
-# main function to excecute this script
+# main function to execute this script
 def main():
    """Entry point for the ``pgpassword`` console script: print the retrieved password to stdout."""
    object = PgPassword()
