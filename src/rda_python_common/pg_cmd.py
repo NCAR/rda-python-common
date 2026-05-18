@@ -389,7 +389,7 @@ class PgCMD(PgLock):
          if pgrqst: pgctl = self.get_dsrqst_control(pgrqst, logact)
       return pgctl
 
-   def get_dynamic_options(self, cmd, oindex, otype):
+   def get_dynamic_options(self, cmd, oindex, otype, hostname=None):
       """Runs cmd to retrieve dynamic option strings, retrying on timeout.
 
       Executes the command up to three times, retrying when a connection
@@ -401,6 +401,11 @@ class PgCMD(PgLock):
          oindex (int or None): Object index appended to cmd when truthy.
          otype (str or None): Object type appended to cmd when truthy;
             'R' selects the first option from a slash-separated pair.
+         hostname (str or None): If provided, the command is executed
+            remotely via ``ssh <hostname> ...`` instead of locally; the
+            leading command name is resolved to its absolute path via
+            ``command_path`` so the remote shell does not depend on its
+            own PATH.
 
       Returns:
          str: The parsed option string, or '' if the command produced no
@@ -408,6 +413,7 @@ class PgCMD(PgLock):
       """
       if oindex: cmd += " {}".format(oindex)
       if otype: cmd += ' ' + otype
+      if hostname: cmd = "ssh {} {}".format(hostname, self.command_path(cmd))
       ret = options = ''
       for loop in range(3):
          ret = self.pgsystem(cmd, self.LOGWRN, 1299)  # 1+2+16+256+1024

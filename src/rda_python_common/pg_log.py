@@ -180,6 +180,7 @@ class PgLOG:
       self.BCHCMDS = {'PBS': 'qsub'}
       # global dists to cashe information
       self.COMMANDS = {}
+      self.CMDPATHS = {}    # cache of bare command name -> full path (or '' if not found)
       self.PBSHOSTS = []
       self.PBSSTATS = {}
       # set additional common PGLOG values
@@ -1197,15 +1198,19 @@ class PgLOG:
       Returns:
           String with the leading command resolved to its full path, or the
           original *cmdstr* if the command already contains a path separator
-          or cannot be found via ``shutil.which``.
+          or cannot be found via ``shutil.which``.  Results of the
+          ``shutil.which`` lookup are cached in ``self.CMDPATHS``.
       """
       if not cmdstr: return ''
-      ary = cmdstr.split(' ', 1)
-      cmd = ary[0]
-      if re.search(r'[\\/]', cmd): return cmdstr
-      optstr = (' ' + ary[1]) if len(ary) > 1 else ''
-      pcmd = shutil.which(cmd)
-      return (pcmd+optstr) if pcmd else cmdstr
+      sp = cmdstr.find(' ')
+      cmd = cmdstr if sp < 0 else cmdstr[:sp]
+      if '/' in cmd or '\\' in cmd: return cmdstr
+      pcmd = self.CMDPATHS.get(cmd)
+      if pcmd is None:
+         pcmd = shutil.which(cmd) or ''
+         self.CMDPATHS[cmd] = pcmd
+      if not pcmd: return cmdstr
+      return pcmd if sp < 0 else pcmd + cmdstr[sp:]
 
    def add_carbon_copy(self, cc=None, isstr=None, exclude=0, specialist=None):
       """Update the Cc address list in ``PGLOG['CCDADDR']``.
