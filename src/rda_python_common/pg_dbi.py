@@ -13,11 +13,39 @@ import re
 import time
 import hvac
 from datetime import datetime
-import psycopg2 as PgSQL
-from psycopg2.extras import execute_values
-from psycopg2.extras import execute_batch
 from os import path as op
 from .pg_log import PgLOG
+
+# Driver selection: prefer psycopg2 (the historical driver) when available,
+# fall back to psycopg (v3) so this module can run with either installed.
+try:
+   import psycopg2 as PgSQL
+   from psycopg2.extras import execute_values, execute_batch
+   PG_DRIVER = 'psycopg2'
+except ImportError:
+   import psycopg as PgSQL
+   PG_DRIVER = 'psycopg3'
+
+   # psycopg3 removed extras.execute_values / extras.execute_batch.
+   # cursor.executemany() in psycopg3 is efficient by default (it uses prepared
+   # statements internally), so the shims below provide matching signatures.
+
+   def execute_values(cursor, sql, argslist, page_size=100):
+      """psycopg2-compatible shim using executemany().
+
+      Replaces the single ``VALUES %s`` placeholder in ``sql`` (as expected by
+      psycopg2's execute_values) with a per-row ``VALUES (%s, %s, ...)`` tuple
+      built from the first row, then calls ``cursor.executemany()``.
+      """
+      if not argslist: return
+      ncol = len(argslist[0])
+      row_ph = '(' + ','.join(['%s']*ncol) + ')'
+      new_sql = re.sub(r'(?i)\bVALUES\s+%s\b', 'VALUES ' + row_ph, sql, count=1)
+      cursor.executemany(new_sql, argslist)
+
+   def execute_batch(cursor, sql, argslist, page_size=100):
+      """psycopg2-compatible shim using executemany()."""
+      cursor.executemany(sql, argslist)
 
 class PgDBI(PgLOG):
    """PostgreSQL Database Interface layer extending PgLOG.
