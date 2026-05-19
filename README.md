@@ -72,7 +72,7 @@ PgLOG.pglog("hello", PgLOG.LOGWRN)
 python -c "import rda_python_common; print(rda_python_common.__version__)"
 ```
 
-You should see the installed version (currently `2.1.12`).  If the import
+You should see the installed version (currently `2.1.13`).  If the import
 fails, double-check that the active Python environment is the one where you
 ran `pip install`.
 
@@ -145,7 +145,8 @@ The tree is single inheritance everywhere except at two join points:
   long-running batch jobs coordinate cleanly.
 
 - **`pg_dbi.py`** — `PgDBI(PgLOG)`.  PostgreSQL database interface built on
-  `psycopg2`.  Wraps connection management, batch `INSERT`/`SELECT`/
+  `psycopg` (v3 by default, with `psycopg2` as an opt-in fallback).  Wraps
+  connection management, batch `INSERT`/`SELECT`/
   `UPDATE`/`DELETE`, transaction control, and credential lookup from
   `.pgpass` or OpenBao.  All RDA tools talk to the `rdadb` database through
   this class.

@@ -16,13 +16,12 @@ from datetime import datetime
 from os import path as op
 from .pg_log import PgLOG
 
-# Driver selection: prefer psycopg2 (the historical driver) when available,
-# fall back to psycopg (v3) so this module can run with either installed.
+# Driver selection: prefer psycopg (v3) as the default driver; fall back to
+# psycopg2 when psycopg is not installed.  Both drivers share enough surface
+# (connect(**config), Error/OperationalError, cursor.execute/executemany/
+# fetchone/description, connection.commit/rollback/close/autocommit) for this
+# module to use either transparently.
 try:
-   import psycopg2 as PgSQL
-   from psycopg2.extras import execute_values, execute_batch
-   PG_DRIVER = 'psycopg2'
-except ImportError:
    import psycopg as PgSQL
    PG_DRIVER = 'psycopg3'
 
@@ -46,6 +45,10 @@ except ImportError:
    def execute_batch(cursor, sql, argslist, page_size=100):
       """psycopg2-compatible shim using executemany()."""
       cursor.executemany(sql, argslist)
+except ImportError:
+   import psycopg2 as PgSQL
+   from psycopg2.extras import execute_values, execute_batch
+   PG_DRIVER = 'psycopg2'
 
 class PgDBI(PgLOG):
    """PostgreSQL Database Interface layer extending PgLOG.
@@ -684,7 +687,7 @@ class PgDBI(PgLOG):
             if not self.PGDBI['DBPORT']: self.PGDBI['DBPORT'] = self.get_dbport(self.PGDBI['DBNAME'])
          if self.PGDBI['DBPORT']: config['port'] = self.PGDBI['DBPORT']
          config['password'] = '***'
-         sqlstr = "psycopg2.connect(**{})".format(config)
+         sqlstr = "{}.connect(**{})".format(PG_DRIVER, config)
          config['password'] = self.get_pgpass_password()
          if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, sqlstr)
          try:
