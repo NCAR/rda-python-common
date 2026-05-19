@@ -14,6 +14,8 @@ import sys
 import errno
 import signal
 import time
+import subprocess
+import psutil
 from contextlib import contextmanager
 from .pg_dbi import PgDBI
 
@@ -204,6 +206,42 @@ class PgSIG(PgDBI):
       self.PGLOG['LOGMASK'] |= self.MSGLOG    # turn on logging before daemon stops
       self.pglog("{} Started at {}, Stopped gracefully{} by {}".format(self.PGSIG['DSTR'], self.PGSIG['STRTM'], msg, self.current_datetime()), self.LOGWRN)
 
+   # scan running processes via psutil and return a list of dicts matching aname/uname
+   # Mirrors the semantics of the previous "ps -u U -f | grep A" / "ps -C A -f" pipelines:
+   #   - with uname:  substring match of aname anywhere in cmdline (looser, like grep)
+   #   - without uname: aname matches the executable basename (with optional .ext)
+   # Each entry has keys: 'pid', 'ppid', 'args' ('args' is cmdline[1:] joined).
+   def _scan_app_processes(self, aname, uname=None):
+      """Scan running processes matching an application name, optionally by user.
+
+      Args:
+         aname (str): Application name (basename or substring of cmdline).
+         uname (str, optional): Username filter.
+
+      Returns:
+         list[dict]: Each dict has keys ``pid``, ``ppid``, ``args``.
+      """
+      results = []
+      for proc in psutil.process_iter(['pid', 'ppid', 'username', 'cmdline']):
+         try:
+            info = proc.info
+            cmdline = info.get('cmdline') or []
+            if not cmdline: continue
+            if uname is not None and info.get('username') != uname: continue
+            if uname:
+               if not any(aname in arg for arg in cmdline): continue
+            else:
+               exe = os.path.basename(cmdline[0])
+               if exe != aname and re.sub(r'\.\w+$', '', exe) != aname: continue
+            results.append({
+               'pid': info['pid'],
+               'ppid': info['ppid'],
+               'args': ' '.join(cmdline[1:]),
+            })
+         except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+      return results
+
    # check if a daemon is running already
    # aname - application name for the daemon
    # uname - user login name who started the daemon
@@ -218,21 +256,11 @@ class PgSIG(PgDBI):
       Returns:
          int: The process ID of the running daemon, or 0 if not running.
       """
-      if uname:
-         self.check_vuser(uname, aname)
-         pcmd = "ps -u {} -f | grep {} | grep ' 1 '".format(uname, aname)
-         mp = r"^\s*{}\s+(\d+)\s+1\s+".format(uname)
-      else:
-         pcmd = "ps -C {} -f | grep ' 1 '".format(aname)
-         mp = r"^\s*\w+\s+(\d+)\s+1\s+"
-      buf = self.pgsystem(pcmd, self.LOGWRN, 20+1024)
-      if buf:
-         cpid = os.getpid()
-         lines = buf.split('\n')
-         for line in lines:
-            ms = re.match(mp, line)
-            pid = int(ms.group(1)) if ms else 0
-            if pid > 0 and pid != cpid: return pid
+      if uname: self.check_vuser(uname, aname)
+      cpid = os.getpid()
+      for p in self._scan_app_processes(aname, uname):
+         if p['ppid'] != 1: continue
+         if p['pid'] != cpid: return p['pid']
       return 0
 
    # check if an application is running already; other than the current processs
@@ -251,31 +279,21 @@ class PgSIG(PgDBI):
       Returns:
          int: The process ID of the running instance, or 0 if not found.
       """
-      if uname:
-         self.check_vuser(uname, aname)
-         pcmd = "ps -u {} -f | grep {} | grep -v ' grep '".format(uname, aname)
-         mp = r"^\s*{}\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(uname, aname)
-      else:
-         pcmd = "ps -C {} -f".format(aname)
-         mp = r"^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
-      buf = self.pgsystem(pcmd, self.LOGWRN, 20+1024)
-      if not buf: return 0
+      if uname: self.check_vuser(uname, aname)
+      procs = self._scan_app_processes(aname, uname)
+      if not procs: return 0
       cpids = [os.getpid(), os.getppid()]
       pids = []
       ppids = []
       astrs = []
-      lines = buf.split('\n')
-      for line in lines:
-         ms = re.match(mp, line)
-         if not ms: continue
-         pid = int(ms.group(1))
-         ppid = int(ms.group(2))
+      for p in procs:
+         pid, ppid = p['pid'], p['ppid']
          if pid in cpids:
             if ppid not in cpids: cpids.append(ppid)
             continue
          pids.append(pid)
          ppids.append(ppid)
-         if sargv: astrs.append(ms.group(3))
+         if sargv: astrs.append(p['args'])
       pcnt = len(pids)
       if not pcnt: return 0
       i = 0
@@ -329,25 +347,15 @@ class PgSIG(PgDBI):
       Returns:
          int: Number of running instances (excluding the current process).
       """
-      if uname:
-         self.check_vuser(uname, aname)
-         pcmd = "ps -u {} -f | grep {} | grep -v ' grep '".format(uname, aname)
-         mp = r"^\s*{}\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(uname, aname)
-      else:
-         pcmd = "ps -C {} -f".format(aname)
-         mp = r"^\s*\w+\s+(\d+)\s+(\d+)\s+.*{}\S*\s+(.*)$".format(aname)
-      buf = self.pgsystem(pcmd, self.LOGWRN, 20+1024)
-      if not buf: return 0
+      if uname: self.check_vuser(uname, aname)
+      procs = self._scan_app_processes(aname, uname)
+      if not procs: return 0
       dpids = [os.getpid(), os.getppid()]
       pids = []
       ppids = []
       astrs = []
-      lines = buf.split('\n')
-      for line in lines:
-         ms = re.match(mp, line)
-         if not ms: continue
-         pid = int(ms.group(1))
-         ppid = int(ms.group(2))
+      for p in procs:
+         pid, ppid = p['pid'], p['ppid']
          if pid in dpids:
             if ppid > 1 and ppid not in dpids: dpids.append(ppid)
             continue
@@ -356,7 +364,7 @@ class PgSIG(PgDBI):
             continue
          pids.append(pid)
          ppids.append(ppid)
-         if sargv: astrs.append(ms.group(3))
+         if sargv: astrs.append(p['args'])
       pcnt = len(pids)
       if not pcnt: return 0
       i = 0
@@ -627,18 +635,20 @@ class PgSIG(PgDBI):
          list: PIDs of processes that were successfully killed.
       """
       if logact is None: logact = self.LOGWRN
-      buf = self.pgsystem("ps --ppid {} -o pid".format(pid), logact, 20)
       pids = []
-      if buf:
-         lines = buf.split('\n')
-         for line in lines:
-            ms = re.match(r'^\s*(\d+)', line)
-            if not ms: continue
-            cid = int(ms.group(1))
-            if not self.check_process(cid): continue
-            cids = self.kill_children(cid, logact)
-            if cids: pids = cids + pids
-            if self.kill_process(cid, signal.SIGKILL, logact) == self.SUCCESS: pids.insert(0, cid)
+      try:
+         children = psutil.Process(pid).children()
+      except psutil.NoSuchProcess:
+         children = []
+      except Exception as e:
+         self.pglog("Error listing children of pid {}: {}".format(pid, str(e)), logact)
+         children = []
+      for child in children:
+         cid = child.pid
+         if not self.check_process(cid): continue
+         cids = self.kill_children(cid, logact)
+         if cids: pids = cids + pids
+         if self.kill_process(cid, signal.SIGKILL, logact) == self.SUCCESS: pids.insert(0, cid)
       if logact and len(pids): self.pglog("Process({}) Killed".format(','.join(map(str, pids))), logact)
       return pids
 
@@ -808,13 +818,11 @@ class PgSIG(PgDBI):
       Returns:
          int: 1 if the process is running, 0 otherwise.
       """
-      buf = self.pgsystem("ps -p {} -o pid".format(pid), self.LGWNEX, 20)
-      if buf:
-         mp = r'^\s*{}$'.format(pid)
-         lines = buf.split('\n')
-         for line in lines:
-            if re.match(mp, line): return 1
-      return 0
+      try:
+         os.kill(pid, 0)
+      except OSError:
+         return 0
+      return 1
 
    # check a process id on give host
    def check_host_pid(self, host, pid, pmsg=None, logact=None):
@@ -1092,7 +1100,10 @@ class PgSIG(PgDBI):
             self.PGLOG['ERRFILE'] = re.sub(r'\.log$', '.err', self.PGLOG['LOGFILE'], 1)
          bckcmd += " 2>> {}/{}".format(self.PGLOG['LOGPATH'], self.PGLOG['ERRFILE'])
       bckcmd += " &"
-      os.system(bckcmd)
+      # shell=True is required for the redirections (>> / 2>>) and trailing '&';
+      # the '&' makes the shell fork the command and exit, so the command gets
+      # reparented to init (ppid=1), matching the lookup logic in record_background().
+      subprocess.Popen(bckcmd, shell=True)
       return self.record_background(cmd, logact)
 
    # get background process id for given bcmd
@@ -1170,27 +1181,31 @@ class PgSIG(PgDBI):
       """
       if logact is None: logact = self.LOGWRN
       ms = re.match(r'^(\S+)', bcmd)
-      if ms:
-         aname = ms.group(1)
-      else:
-         aname = bcmd
-      mp = r"^\s*(\S+)\s+(\d+)\s+1\s+.*{}(.*)$".format(aname)
-      pc = "ps -u {},{} -f | grep ' 1 ' | grep {}".format(self.PGLOG['CURUID'], self.PGLOG['GDEXUSER'], aname)
+      aname = ms.group(1) if ms else bcmd
+      curuid = self.PGLOG['CURUID']
+      gdexuser = self.PGLOG['GDEXUSER']
       for i in range(2):
-         buf = self.pgsystem(pc, logact, 20+1024)
-         if buf:
-            lines = buf.split('\n')
-            for line in lines:
-               ms = re.match(mp, line)
-               if not ms: continue
-               (uid, sbid, acmd) = ms.groups()
-               bid = int(sbid)
+         for proc in psutil.process_iter(['pid', 'ppid', 'username', 'cmdline']):
+            try:
+               info = proc.info
+               if info.get('ppid') != 1: continue
+               uid = info.get('username')
+               if uid != curuid and uid != gdexuser: continue
+               cmdline = info.get('cmdline') or []
+               if not cmdline: continue
+               line = ' '.join(cmdline)
+               idx = line.find(aname)
+               if idx < 0: continue
+               bid = info['pid']
                if bid in self.CBIDS: return -1
-               if uid == self.PGLOG['GDEXUSER']:
+               acmd = line[idx+len(aname):]
+               if uid == gdexuser:
                   acmd = re.sub(r'^\.(pl|py)\s+', '', acmd, 1)
                if re.match(r'^{}{}'.format(aname, acmd), bcmd): continue
                self.CBIDS[bid] = bcmd
                return 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+               continue
          time.sleep(2)
       return 0
 

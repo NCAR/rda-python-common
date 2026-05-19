@@ -19,6 +19,7 @@ import re
 import time
 import glob
 import json
+import hashlib
 from .pg_util import PgUtil
 from .pg_sig import PgSIG
 
@@ -2874,23 +2875,31 @@ class PgFile(PgUtil, PgSIG):
                             (with None for missing files) for multiple files, or None
                             on failure.
       """
-      cmd = 'md5sum '
       if count > 0:
          checksum = [None]*count
          for i in range(count):
             if op.isfile(file[i]):
-               chksm = self.pgsystem(cmd + file[i], logact, 20)
-               if chksm:
-                  ms = re.search(r'(\w{32})', chksm)
-                  if ms: checksum[i] = ms.group(1)
+               checksum[i] = self._file_md5(file[i], logact)
       else:
          checksum = None
          if op.isfile(file):
-            chksm = self.pgsystem(cmd + file, logact, 20)
-            if chksm:
-               ms = re.search(r'(\w{32})', chksm)
-               if ms: checksum = ms.group(1)
+            checksum = self._file_md5(file, logact)
       return checksum
+
+   def _file_md5(self, path, logact=0):
+      """Compute MD5 hex digest of *path*, reading in 1 MiB chunks.
+
+      Returns the hex digest string, or None on read error.
+      """
+      try:
+         h = hashlib.md5()
+         with open(path, 'rb') as fh:
+            for chunk in iter(lambda: fh.read(1048576), b''):
+               h.update(chunk)
+         return h.hexdigest()
+      except OSError as e:
+         self.pglog("Error md5sum {}: {}".format(path, str(e)), logact)
+         return None
 
    # Evaluate md5 checksums and compare them for two given files
    #  file1, file2: file names

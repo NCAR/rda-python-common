@@ -18,6 +18,7 @@ import grp
 import shlex
 import smtplib
 from email.message import EmailMessage
+import subprocess
 from subprocess import Popen, PIPE
 from os import path as op
 import time
@@ -769,7 +770,7 @@ class PgLOG:
                      nilcnt = 0
                   if begin: sys.stdout.write(line)
       else:
-         os.system("more " + usgname)
+         subprocess.run(['more', usgname])
       self.pgexit(0)
 
    def err2std(self, line):
@@ -1600,15 +1601,12 @@ class PgLOG:
          os.environ['MAIL'] = re.sub(self.PGLOG['CURUID'], specialist, os.environ['MAIL'])   
       home = "{}/{}".format(self.PGLOG['USRHOME'], specialist)
       shell = "tcsh"
-      buf = self.pgsystem("grep ^{}: /etc/passwd".format(specialist), self.LOGWRN, 20)
-      if buf:
-         lines = buf.split('\n')
-         for line in lines:
-            ms = re.search(r':(/.+):(/.+)', line)
-            if ms:
-               home = ms.group(1)
-               shell = op.basename(ms.group(2))
-               break
+      try:
+         pwent = pwd.getpwnam(specialist)
+         home = pwent.pw_dir
+         shell = op.basename(pwent.pw_shell)
+      except KeyError:
+         pass
       if home != os.environ['HOME'] and op.exists(home):
          os.environ['HOME'] = home
       return shell
