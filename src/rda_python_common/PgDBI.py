@@ -17,11 +17,34 @@ import re
 import time
 import hvac
 from datetime import datetime
-import psycopg2 as PgSQL
-from psycopg2.extras import execute_values
-from psycopg2.extras import execute_batch
 from os import path as op
 from . import PgLOG
+
+# Prefer psycopg (v3); fall back to psycopg2 if v3 is not installed.
+try:
+   import psycopg as PgSQL
+   PG_DRIVER = 'psycopg3'
+
+   def execute_values(cursor, sql, argslist, page_size=100):
+      """Compatibility shim for psycopg2.extras.execute_values on psycopg3.
+
+      Rewrites ``VALUES %s`` placeholder to ``VALUES (%s, %s, ...)`` based on
+      the column count inferred from the first row, then dispatches to
+      psycopg3's ``executemany`` (which already batches efficiently).
+      """
+      if not argslist: return
+      ncol = len(argslist[0])
+      row_ph = '(' + ','.join(['%s'] * ncol) + ')'
+      new_sql = re.sub(r'(?i)\bVALUES\s+%s\b', 'VALUES ' + row_ph, sql, count=1)
+      cursor.executemany(new_sql, argslist)
+
+   def execute_batch(cursor, sql, argslist, page_size=100):
+      """Compatibility shim for psycopg2.extras.execute_batch on psycopg3."""
+      cursor.executemany(sql, argslist)
+except ImportError:
+   import psycopg2 as PgSQL
+   from psycopg2.extras import execute_values, execute_batch
+   PG_DRIVER = 'psycopg2'
 
 pgdb = None    # reference to a connected database object
 curtran = 0    # 0 - no transaction, 1 - in transaction
@@ -526,7 +549,7 @@ def pgconnect(reconnect = 0, pgcnt = 0, autocommit = True):
          if not PGDBI['DBPORT']: PGDBI['DBPORT'] = get_dbport(PGDBI['DBNAME'])
       if PGDBI['DBPORT']: config['port'] = PGDBI['DBPORT']
       config['password'] = '***'
-      sqlstr = "psycopg2.connect(**{})".format(config)
+      sqlstr = "{}.connect(**{})".format(PG_DRIVER, config)
       config['password'] = get_pgpass_password()
       if PgLOG.PGLOG['DBGLEVEL']: PgLOG.pgdbg(1000, sqlstr)
       try:
