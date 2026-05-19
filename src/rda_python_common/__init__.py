@@ -22,7 +22,7 @@ object that existing callers expect.
 
 from . import PgLOG, PgUtil, PgDBI, PgFile, PgLock, PgCMD, PgSIG, PgOPT, PgSplit
 
-__version__ = "2.1.10"
+__version__ = "2.1.11"
 
 __all__ = [
    "PgLOG",
