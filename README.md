@@ -4,30 +4,30 @@ Python common library codes to be shared by other RDA python utility programs.
 
 ## Environment setup
 
+Create a Python environment first; the install command in the next section
+runs inside whichever environment you activate here.
+
 ### Option A — Python venv (DECS machines)
 
 ```bash
 python3 -m venv $ENVHOME          # e.g. /glade/u/home/gdexdata/gdexmsenv
 source $ENVHOME/bin/activate
-pip install rda_python_common
 ```
 
 ### Option B — Conda (DAV/Casper)
 
 ```bash
-conda create -n pg-gdex python=3.10
+conda create -n pg-gdex python=3.12
 conda activate pg-gdex            # e.g. /glade/work/gdexdata/conda-envs/pg-gdex
-pip install rda_python_common
 ```
 
 The conda environment is typically at `/glade/work/gdexdata/conda-envs/pg-gdex`.
 
-## Installing and using in another RDA python repo
+## Installing rda-python-common
 
-`rda-python-common` is the foundation that every other `rda-python-*` repo
-builds on.  To consume it from a new or existing repo, follow these steps.
-
-### 1. Install the package
+Pick whichever install mode fits your workflow.  All three pull in the
+transitive dependencies (`psycopg2-binary`, `rda-python-globus`, `unidecode`,
+`hvac`) automatically.
 
 For local development, clone this repo alongside your project and install it
 in editable mode so that changes are picked up without re-installing:
@@ -50,10 +50,13 @@ For a production install on a system that uses the published distribution:
 pip install rda_python_common
 ```
 
-The package brings in its own transitive dependencies (`psycopg2-binary`,
-`rda-python-globus`, `unidecode`, `hvac`).
+## Using rda-python-common in another RDA python repo
 
-### 2. Declare it as a dependency in your project
+`rda-python-common` is the foundation that every other `rda-python-*` repo
+builds on.  Once it is installed in the active environment, consuming it from
+a new or existing repo takes three short steps.
+
+### 1. Declare it as a dependency in your project
 
 Add `rda_python_common` to the `dependencies` list of your project's
 `pyproject.toml` so that downstream installs pull it in automatically:
@@ -72,9 +75,10 @@ This is the same pattern used by `rda-python-dsarch`, `rda-python-dsupdt`,
 `rda-python-dsrqst`, `rda-python-dscheck`, `rda-python-metrics`, and
 `rda-python-miscs`.
 
-### 3. Import the modules you need
+### 2. Import the modules you need
 
-Two import styles are supported (see [Usage examples](#usage-examples) below):
+Two import styles are supported (see [Usage examples](#usage-examples) below
+for fuller patterns):
 
 ```python
 # Preferred for new code -- import the class from the lower-case module
@@ -86,7 +90,7 @@ from rda_python_common import PgLOG, PgDBI
 PgLOG.pglog("hello", PgLOG.LOGWRN)
 ```
 
-### 4. Verify the install
+### 3. Verify the install
 
 ```bash
 python -c "import rda_python_common; print(rda_python_common.__version__)"
@@ -98,14 +102,14 @@ ran `pip install`.
 
 ## Modules
 
-All shared functionality lives under `src/rda_python_common/` and is organised as
-a single-inheritance class hierarchy.  Each module defines exactly one class;
-later classes extend earlier ones, so an application that instantiates the
-top-of-chain class (typically `PgOPT` or `PgCMD`) gets every helper through one
-object.
+All shared functionality lives under `src/rda_python_common/` and is organised
+as a (mostly) single-inheritance class hierarchy.  Each module defines exactly
+one class; later classes extend earlier ones, so an application that
+instantiates the top-of-chain class (typically `PgOPT` or `PgCMD`) gets every
+helper through one object.
 
-Inheritance tree (top-down; multi-inheritance shown as two arrows
-converging on the same child):
+The inheritance tree below is read top-down; the two multi-inheritance joins
+are shown as two arrows converging on the same child:
 
 ```
                           PgLOG
@@ -141,6 +145,8 @@ The tree is single inheritance everywhere except at two join points:
   (`PgUtil`) with the `pgadd`/`pgget`/`pgmget`/`pgupdt`/`pgdel` DB
   operations (`PgDBI`) it needs to keep the shared `wfile` table and the
   per-dataset `wfile_<dsid>` partitions in sync.
+
+Each class lives in its own module.  Walking the tree from the root:
 
 - **`pg_log.py`** — `PgLOG`.  Root of the hierarchy.  Provides the central
   logging facility (bit-mask `logact` flags such as `MSGLOG`, `WARNLG`,
@@ -200,9 +206,9 @@ The tree is single inheritance everywhere except at two join points:
 
 ## Usage examples
 
-Each class lives in its own submodule.  Import the class you need, then
-either instantiate it directly or subclass it to add application-specific
-state and methods.
+The patterns below show the typical ways the classes above are used in
+practice.  Import the class you need, then either instantiate it directly or
+subclass it to add application-specific state and methods.
 
 ### 1. Direct instantiation — use the helpers as-is
 
