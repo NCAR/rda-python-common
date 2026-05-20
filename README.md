@@ -2,6 +2,26 @@
 
 Python common library codes to be shared by other RDA python utility programs.
 
+## Environment setup
+
+### Option A — Python venv (DECS machines)
+
+```bash
+python3 -m venv $ENVHOME          # e.g. /glade/u/home/gdexdata/gdexmsenv
+source $ENVHOME/bin/activate
+pip install rda_python_common
+```
+
+### Option B — Conda (DAV/Casper)
+
+```bash
+conda create -n pg-gdex python=3.10
+conda activate pg-gdex            # e.g. /glade/work/gdexdata/conda-envs/pg-gdex
+pip install rda_python_common
+```
+
+The conda environment is typically at `/glade/work/gdexdata/conda-envs/pg-gdex`.
+
 ## Installing and using in another RDA python repo
 
 `rda-python-common` is the foundation that every other `rda-python-*` repo
