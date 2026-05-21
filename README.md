@@ -17,16 +17,14 @@ source $ENVHOME/bin/activate
 ### Option B — Conda (DAV/Casper)
 
 ```bash
-conda create -n pg-gdex python=3.12
-conda activate pg-gdex            # e.g. /glade/work/gdexdata/conda-envs/pg-gdex
+conda create --prefix $ENVHOME python=3.12   # e.g. /glade/work/gdexdata/conda-envs/pg-gdex
+conda activate $ENVHOME
 ```
-
-The conda environment is typically at `/glade/work/gdexdata/conda-envs/pg-gdex`.
 
 ## Installing rda-python-common
 
-Pick whichever install mode fits your workflow.  All three pull in the
-transitive dependencies (`psycopg2-binary`, `rda-python-globus`, `unidecode`,
+Pick whichever install mode fits your workflow.  All four pull in the
+transitive dependencies (`psycopg`, `rda-python-globus`, `unidecode`,
 `hvac`) automatically.
 
 For local development, clone this repo alongside your project and install it
@@ -57,6 +55,27 @@ For a production install on a system that uses the published distribution:
 
 ```bash
 pip install rda_python_common
+```
+
+### PostgreSQL driver: psycopg v3 (default) and psycopg2 (fallback)
+
+`rda-python-common` uses **psycopg v3** by default.  `pg_dbi.py`
+auto-detects which driver is installed at import time and prefers psycopg v3
+when both are present; no code changes are needed to switch drivers.
+
+The required dependency is the base `psycopg` package, which works whether
+psycopg was compiled from source or installed via a binary wheel.  If psycopg
+is not available on your system, install whichever driver works:
+
+```bash
+pip install psycopg || pip install psycopg2
+```
+
+To explicitly install the legacy psycopg2 driver:
+
+```bash
+pip install "rda_python_common[psycopg2]"          # build from source
+pip install "rda_python_common[psycopg2-binary]"   # pre-built wheel
 ```
 
 ## Using rda-python-common in another RDA python repo
@@ -105,7 +124,7 @@ PgLOG.pglog("hello", PgLOG.LOGWRN)
 python -c "import rda_python_common; print(rda_python_common.__version__)"
 ```
 
-You should see the installed version (currently `2.1.13`).  If the import
+You should see the installed version (currently `3.0.0`).  If the import
 fails, double-check that the active Python environment is the one where you
 ran `pip install`.
 

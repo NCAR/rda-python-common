@@ -18,7 +18,7 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
 ]
 dependencies = [
-  "psycopg[binary]",
+  "psycopg",
   "psutil",
   "rda-python-globus",
   "unidecode",
@@ -29,7 +29,8 @@ dependencies = [
 # Allow opting in to the legacy psycopg2 driver instead of psycopg (v3).
 # pg_dbi.py auto-detects which driver is installed and prefers psycopg (v3)
 # when both are available.
-psycopg2 = ["psycopg2-binary"]
+psycopg2        = ["psycopg2"]           # psycopg2 built from source
+psycopg2-binary = ["psycopg2-binary"]    # psycopg2 pre-built C extension
 
 [project.urls]
 "Homepage" = "https://github.com/NCAR/rda-python-common"
