@@ -1324,9 +1324,16 @@ class PgLOG:
                self.PGLOG['PGBATCH'] = ''
                self.PGLOG['CURBID'] = 0
 
-   @staticmethod
-   def get_command(cmdstr=None):
+   def get_command(self, cmdstr=None):
       """Return the base command name, stripping directory and ``.py``/``.pl`` extension.
+
+      When invoked via the pywrapper setuid C wrapper, ``sys.argv[0]`` is the
+      resolved Python script path (e.g. ``/.../setuid_rdacp``) rather than the
+      alias the user typed (e.g. ``rdacp``); the kernel discards argv[0] when
+      handling the script's shebang.  When the basename starts with
+      ``setuid_`` and the effective user equals ``self.PGLOG['GDEXUSER']``,
+      this process was started via pywrapper, so the ``setuid_`` prefix is
+      stripped to recover the logical command name.
 
       Args:
           cmdstr: Path string.  Defaults to ``sys.argv[0]``.
@@ -1336,6 +1343,10 @@ class PgLOG:
       """
       if not cmdstr: cmdstr = sys.argv[0]
       cmdstr = op.basename(cmdstr)
+      if cmdstr.startswith('setuid_'):
+         euser = pwd.getpwuid(os.geteuid()).pw_name
+         if euser == self.PGLOG['GDEXUSER']:
+            cmdstr = cmdstr[len('setuid_'):]
       ms = re.match(r'^(.+)\.(py|pl)$', cmdstr)
       if ms:
          return ms.group(1)

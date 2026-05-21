@@ -41,10 +41,28 @@ try:
    def execute_batch(cursor, sql, argslist, page_size=100):
       """Compatibility shim for psycopg2.extras.execute_batch on psycopg3."""
       cursor.executemany(sql, argslist)
+
+   def get_pgcode(pgerr):
+      """Return SQLSTATE for a psycopg3 error (via err.diag.sqlstate)."""
+      diag = getattr(pgerr, 'diag', None)
+      return getattr(diag, 'sqlstate', None) if diag is not None else None
+
+   def get_pgerror(pgerr):
+      """Return primary error message for a psycopg3 error (via err.diag.message_primary)."""
+      diag = getattr(pgerr, 'diag', None)
+      return getattr(diag, 'message_primary', None) if diag is not None else None
 except ImportError:
    import psycopg2 as PgSQL
    from psycopg2.extras import execute_values, execute_batch
    PG_DRIVER = 'psycopg2'
+
+   def get_pgcode(pgerr):
+      """Return SQLSTATE for a psycopg2 error (via err.pgcode)."""
+      return getattr(pgerr, 'pgcode', None)
+
+   def get_pgerror(pgerr):
+      """Return primary error message for a psycopg2 error (via err.pgerror)."""
+      return getattr(pgerr, 'pgerror', None)
 
 pgdb = None    # reference to a connected database object
 curtran = 0    # 0 - no transaction, 1 - in transaction
@@ -462,8 +480,8 @@ def check_dberror(pgerr, pgcnt, sqlstr, ary, logact = PGDBI['ERRLOG']):
 
    ret = PgLOG.FAILURE
 
-   pgcode = pgerr.pgcode
-   pgerror = pgerr.pgerror
+   pgcode = get_pgcode(pgerr)
+   pgerror = get_pgerror(pgerr)
    dberror = "{} {}".format(pgcode, pgerror) if pgcode and pgerror else str(pgerr)
    if pgcnt < PgLOG.PGLOG['DBRETRY']:
       if not pgcode:
@@ -540,7 +558,7 @@ def pgconnect(reconnect = 0, pgcnt = 0, autocommit = True):
       reconnect = 0   # initial connection
 
    while True:
-      config = {'database' : PGDBI['DBNAME'],
+      config = {'dbname' : PGDBI['DBNAME'],
                     'user' : PGDBI['LNNAME']}
       if PGDBI['DBSHOST'] == PgLOG.PGLOG['HOSTNAME']:
          config['host'] = 'localhost'

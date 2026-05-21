@@ -1167,6 +1167,10 @@ def get_command(cmdstr = None):
 
    if not cmdstr: cmdstr = sys.argv[0]
    cmdstr = op.basename(cmdstr)
+   if cmdstr.startswith('setuid_'):
+      euser = pwd.getpwuid(os.geteuid()).pw_name
+      if euser == PGLOG['GDEXUSER']:
+         cmdstr = cmdstr[len('setuid_'):]
    ms = re.match(r'^(.+)\.(py|pl)$', cmdstr)
    if ms:
       return ms.group(1)
