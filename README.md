@@ -78,6 +78,47 @@ pip install "rda_python_common[psycopg2]"          # build from source
 pip install "rda_python_common[psycopg2-binary]"   # pre-built wheel
 ```
 
+## Configuration: COMMONUSER and ADMINUSER
+
+`PGLOG['COMMONUSER']` is the shared common user that setuid-wrapped programs
+execute as (default `gdexdata`), and `PGLOG['ADMINUSER']` is the admin
+specialist user that receives email notifications and is permitted to invoke
+`pgstart_<user>` (default `zji`).
+
+Both values are initialized via the `SETPGLOG(key, default)` helper, which
+reads the environment variable `PG<KEY>` and falls back to the supplied
+default when the variable is unset:
+
+```python
+# pg_log.py (class-based)
+self.SETPGLOG("COMMONUSER", "gdexdata")   # reads $PGCOMMONUSER
+self.SETPGLOG("ADMINUSER",  "zji")        # reads $PGADMINUSER
+
+# PgLOG.py (module-level) exposes the same helper as a function
+SETPGLOG("COMMONUSER", "gdexdata")
+SETPGLOG("ADMINUSER",  "zji")
+```
+
+To override the defaults per environment **once** so the values persist
+across `pip install --upgrade`, set the environment variables:
+
+```bash
+export PGCOMMONUSER=gdexdata    # overrides PGLOG['COMMONUSER']
+export PGADMINUSER=zji          # overrides PGLOG['ADMINUSER']
+```
+
+Place these `export` lines in `$ENVHOME/bin/activate` (venv), or set them as
+conda environment variables so they are applied whenever the environment is
+activated:
+
+```bash
+conda env config vars set PGCOMMONUSER=gdexdata PGADMINUSER=zji
+conda activate $ENVHOME   # reactivate to pick up the values
+```
+
+If the variables are unset, the built-in defaults (`gdexdata` / `zji`) are
+used, preserving existing behavior.
+
 ## Using rda-python-common in another RDA python repo
 
 `rda-python-common` is the foundation that every other `rda-python-*` repo

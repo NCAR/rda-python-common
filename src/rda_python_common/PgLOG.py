@@ -100,8 +100,7 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'BACKROOT': "/DRDATA/DECS",  # backup path for desaster recovering tape on hpss
    'OLDAROOT': "/FS/DSS",       # old root path on hpss
    'OLDBROOT': "/DRDATA/DSS",   # old backup tape on hpss
-   'COMMONUSER' : "gdexdata",  # common gdex user name
-   'ADMINUSER' : "zji",    # specialist to receipt email intead of common gdex user name
+   # COMMONUSER and ADMINUSER are set below via SETPGLOG (env overrides PG<KEY>)
    'SUDOGDEX' : 0,          # 1 to allow sudo to PGLOG['COMMONUSER']
    'HOSTNAME' : '',        # current host name the process in running on
    'OBJCTSTR' : "object",
@@ -139,6 +138,15 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'EMLSRVR' : "ndir.ucar.edu",   # UCAR email server and port
    'EMLPORT' : 25
 }
+
+def SETPGLOG(key, default):
+   """Set ``PGLOG[key]`` from environment variable ``PG<key>`` or fall back
+   to ``default`` if the variable is unset.  Used to make per-environment
+   overrides (e.g. PGCOMMONUSER, PGADMINUSER) survive package upgrades."""
+   PGLOG[key] = os.environ.get('PG' + key, default)
+
+SETPGLOG("COMMONUSER", "gdexdata")
+SETPGLOG("ADMINUSER", "zji")
 
 PGLOG['RDAUSER'] = PGLOG['COMMONUSER']
 PGLOG['RDAGRP'] = PGLOG['GDEXGRP']
