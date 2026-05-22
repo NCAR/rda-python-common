@@ -14,6 +14,8 @@ import time
 import datetime
 import calendar
 import glob
+import bisect
+import functools
 from os import path as op
 from .pg_log import PgLOG
 
@@ -419,11 +421,7 @@ class PgUtil(PgLOG):
          list: Mixed int/str parts of the split datetime.
       """
       if not isinstance(sdt, str): sdt = str(sdt)
-      adt = re.split(sep, sdt)
-      acnt = len(adt)
-      for i in range(acnt):
-         if adt[i].isdigit(): adt[i] = int(adt[i])
-      return adt
+      return [int(x) if x.isdigit() else x for x in re.split(sep, sdt)]
 
    #    date: given date in format of fromfmt
    #   tofmt: date formats; ex. "Month D, YYYY"
@@ -547,14 +545,8 @@ class PgUtil(PgLOG):
       # adjust second/minute/hour values out of range
       for i in range(3):
          if tms[i] != None and tms[i+1] != None:
-            if tms[i] < 0:
-               while tms[i] < 0:
-                  tms[i] += ups[i]
-                  tms[i+1] -= 1
-            elif tms[i] >= ups[i]:
-               while tms[i] >= ups[i]:
-                  tms[i] -= ups[i]
-                  tms[i+1] += 1
+            carry, tms[i] = divmod(tms[i], ups[i])
+            tms[i+1] += carry
       sdt = self.fmtdate(yr, mn, dy, tofmt)
       # format second/minute/hour values
       for i in range(3):
@@ -592,14 +584,8 @@ class PgUtil(PgLOG):
       """
       if not tofmt: tofmt = "YYYY-MM-DD:HH"
       if hr != None and dy != None:   # adjust hour value out of range
-         if hr < 0:
-            while hr < 0:
-               hr += 24
-               dy -= 1
-         elif hr > 23:
-            while hr > 23:
-               hr -= 24
-               dy += 1
+         carry, hr = divmod(hr, 24)
+         dy += carry
       datehour = self.fmtdate(yr, mn, dy, tofmt)
       if hr != None:
          ms = re.search(self.DATEFMTS['H'], datehour, re.I)
@@ -733,9 +719,8 @@ class PgUtil(PgLOG):
       """
       if not sdt: return [None, None]
       if not isinstance(sdt, str): sdt = str(sdt)
-      adt = re.split(' ', sdt)
-      acnt = len(adt)
-      if acnt == 1: adt.append('00:00:00')
+      adt = sdt.split(' ')
+      if len(adt) == 1: adt.append('00:00:00')
       return adt
 
    # convert given date/time to unix epoch time; -1 if cannot
@@ -1209,10 +1194,8 @@ class PgUtil(PgLOG):
       cnt2 = len(lst2)
       if unique:
          for i in range(cnt2):
-            for j in range(cnt1):
-               if PgUtil.pgcmp(lst1[j], lst2[i]) != 0: break
-            if j >= cnt1:
-              lst1.append(lst2[i])
+            if lst2[i] not in lst1:
+               lst1.append(lst2[i])
       else:
          lst1.extend(lst2)
       return lst1
@@ -1312,7 +1295,8 @@ class PgUtil(PgLOG):
             rec.append(val)
          rec.append(i)   # add column to cache the row index
          srecs.append(rec)
-      srecs = self.quicksort(srecs, 0, count-1, desc, fcnt, nums)
+      srecs.sort(key=functools.cmp_to_key(
+         lambda a, b: PgUtil.cmp_records(a, b, desc, fcnt, nums)))
       # sort pgrecs according the cached row index column in ordered srecs
       rets = {}
       for fld in pgrecs:
@@ -1335,10 +1319,13 @@ class PgUtil(PgLOG):
       Returns:
          int: Positive when date1 > date2, negative when date1 < date2.
       """
-      ut1 = ut2 = 0
-      if date1: ut1 = PgUtil.unixtime(date1)
-      if date2: ut2 = PgUtil.unixtime(date2)
-      return round((ut1 - ut2)/86400)   # 24*60*60
+      epoch = datetime.date(1970, 1, 1)
+      def _to_date(d):
+         if not d: return epoch
+         ms = re.match(r'^(\d+)-(\d+)-(\d+)', str(d))
+         if not ms: return epoch
+         return datetime.date(int(ms.group(1)), int(ms.group(2)), int(ms.group(3)))
+      return (_to_date(date1) - _to_date(date2)).days
 
    # Return: the number of seconds bewteen time1 and time2
    @staticmethod
@@ -1557,15 +1544,10 @@ class PgUtil(PgLOG):
       if ms:
          (syr, smn) = ms.groups()
          nyr = int(syr) + yr
-         nmn = int(smn) + mn
-         if nmn < 0:
-            while nmn < 0:
-               nyr -= 1
-               nmn += 12
-         else:
-            while nmn > 12:
-               nyr += 1
-               nmn -= 12
+         nmn = int(smn) + mn - 1   # shift to 0-indexed for divmod
+         extra, nmn = divmod(nmn, 12)
+         nyr += extra
+         nmn += 1                  # back to 1-indexed
          ym = "{:04}{:02}".format(nyr, nmn)
       return ym
 
@@ -1729,14 +1711,7 @@ class PgUtil(PgLOG):
       if ms:
          shr = ms.group(1)
          hr = int(shr) + nhour
-         if hr < 0:
-            while hr < 0:
-               dy -= 1
-               hr += 24
-         else:
-            while hr > 23:
-               dy += 1
-               hr -= 24
+         dy, hr = divmod(hr, 24)
       shour = "{:02}".format(hr)
       if shr != shour: stime = re.sub(shr, shour, stime, 1)
       if dy: sdate = self.adddate(sdate, 0, 0, dy)
@@ -1765,14 +1740,8 @@ class PgUtil(PgLOG):
          if nhour != None:
             if isinstance(nhour, str): nhour = int(nhour)
             hr += nhour
-         if hr < 0:
-            while hr < 0:
-               dy -= 1
-               hr += 24
-         else:
-            while hr > 23:
-               dy += 1
-               hr -= 24
+         carry, hr = divmod(hr, 24)
+         dy += carry
          if nhour != None: nhour = hr
       if yr or mn or dy: sdate = self.adddate(sdate, yr, mn, dy)
       return [sdate, nhour]
@@ -1799,7 +1768,7 @@ class PgUtil(PgLOG):
          str: Resulting datetime string in 'YYYY-MM-DD HH:MM:SS' format.
       """
       if sdatetime and not isinstance(sdatetime, str): sdatetime = str(sdatetime)
-      (sdate, stime) = re.split(' ', sdatetime)
+      (sdate, stime) = sdatetime.split(' ', 1)
       if hh or nn or ss: (sdate, stime) = self.addtime(sdate, stime, hh, nn, ss)
       if nf:
          sdate = self.addmonth(sdate, mm, nf)
@@ -1837,14 +1806,8 @@ class PgUtil(PgLOG):
             tms[1] += int(ms.group(2))
             tms[0] += int(ms.group(3))
       for i in range(3):
-         if tms[i] < 0:
-            while tms[i] < 0:
-               tms[i] += ups[i]
-               tms[i+1] -= 1
-         elif tms[i] >= ups[i]:
-            while tms[i] >= ups[i]:
-               tms[i] -= ups[i]
-               tms[i+1] += 1
+         carry, tms[i] = divmod(tms[i], ups[i])
+         tms[i+1] += carry
       stime = "{:02}:{:02}:{:02}".format(tms[2], tms[1], tms[0])
       if tms[3]: sdate = self.adddate(sdate, 0, 0, tms[3])
       return [sdate, stime]
@@ -1985,7 +1948,7 @@ class PgUtil(PgLOG):
       """
       if sdatetime and not isinstance(sdatetime, str): sdatetime = str(sdatetime)
       if not (unit and unit in 'YMWDHNS'): return sdatetime
-      (sdate, stime) = re.split(' ', sdatetime)
+      (sdate, stime) = sdatetime.split(' ', 1)
       if unit in 'HNS':
          stime = self.endtime(stime, unit)
       else:
@@ -2011,7 +1974,7 @@ class PgUtil(PgLOG):
       for val in values:
          if val is None: continue
          sval = str(val)
-         if sval and not re.search(r'\n', sval):
+         if sval and '\n' not in sval:
             slen = len(sval)
             if slen > clen: clen = slen
       return clen
@@ -2199,21 +2162,8 @@ class PgUtil(PgLOG):
       Returns:
          int: Index of the matching element, or -1 when not found.
       """
-      ret = -1
-      if (hidx - lidx) < 11:   # use linear search for less than 11 items
-         for midx in range(lidx, hidx):
-            if key == list[midx]:
-               ret = midx
-               break
-      else:
-         midx = (lidx + hidx) // 2
-         if key == list[midx]:
-            ret = midx
-         elif key < list[midx]:
-            ret = PgUtil.asearch(lidx, midx, key, list)
-         else:
-            ret = PgUtil.asearch(midx + 1, hidx, key, list)
-      return ret
+      idx = bisect.bisect_left(list, key, lidx, hidx)
+      return idx if idx < hidx and list[idx] == key else -1
 
    #   lidx: lower index limit  (including)
    #   hidx: higher index limit (excluding)
@@ -2362,14 +2312,11 @@ class PgUtil(PgLOG):
             buffer = f.read(blocksize)
          # Check for null bytes (a strong indicator of a binary file)
          if not buffer or b'\0' in buffer: return 0
-         text_characters = (
+         text_set = frozenset(
             b'\t\n\r\f\v' +        # Whitespace characters
             bytes(range(32, 127))  # Printable ASCII characters
          )
-         non_text_count = 0
-         for byte in buffer:
-            if byte not in text_characters:
-               non_text_count += 1  # Count non-text characters
+         non_text_count = sum(b not in text_set for b in buffer)
          # If a significant portion of the buffer consists of non-text characters,
          # it's likely a binary file.
          return 1 if((non_text_count/len(buffer)) < threshhold) else 0
