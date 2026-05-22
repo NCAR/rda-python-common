@@ -1183,14 +1183,14 @@ class PgSIG(PgDBI):
       ms = re.match(r'^(\S+)', bcmd)
       aname = ms.group(1) if ms else bcmd
       curuid = self.PGLOG['CURUID']
-      gdexuser = self.PGLOG['GDEXUSER']
+      commonuser = self.PGLOG['COMMONUSER']
       for i in range(2):
          for proc in psutil.process_iter(['pid', 'ppid', 'username', 'cmdline']):
             try:
                info = proc.info
                if info.get('ppid') != 1: continue
                uid = info.get('username')
-               if uid != curuid and uid != gdexuser: continue
+               if uid != curuid and uid != commonuser: continue
                cmdline = info.get('cmdline') or []
                if not cmdline: continue
                line = ' '.join(cmdline)
@@ -1199,7 +1199,7 @@ class PgSIG(PgDBI):
                bid = info['pid']
                if bid in self.CBIDS: return -1
                acmd = line[idx+len(aname):]
-               if uid == gdexuser:
+               if uid == commonuser:
                   acmd = re.sub(r'^\.(pl|py)\s+', '', acmd, 1)
                if re.match(r'^{}{}'.format(aname, acmd), bcmd): continue
                self.CBIDS[bid] = bcmd

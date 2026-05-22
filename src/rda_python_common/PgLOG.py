@@ -60,7 +60,7 @@ MISLOG = (0x00811)   # cannot access logfile
 EMLSUM = (0x08000)   # record as email summary
 EMEROL = (0x10000)   # record error as email only
 EMLALL = (0x1D208)   # all email acts
-DOSUDO = (0x20000)   # add 'sudo -u PGLOG['GDEXUSER']'
+DOSUDO = (0x20000)   # add 'sudo -u PGLOG['COMMONUSER']'
 NOTLOG = (0x40000)   # do not log any thing
 OVRIDE = (0x80000)   # do override existing file or record
 NOWAIT = (0x100000)  # do not wait on globus task to finish
@@ -100,9 +100,9 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'BACKROOT': "/DRDATA/DECS",  # backup path for desaster recovering tape on hpss
    'OLDAROOT': "/FS/DSS",       # old root path on hpss
    'OLDBROOT': "/DRDATA/DSS",   # old backup tape on hpss
-   'GDEXUSER' : "gdexdata",  # common gdex user name
-   'GDEXEMAIL' : "zji",    # specialist to receipt email intead of common gdex user name
-   'SUDOGDEX' : 0,          # 1 to allow sudo to PGLOG['GDEXUSER']
+   'COMMONUSER' : "gdexdata",  # common gdex user name
+   'ADMINUSER' : "zji",    # specialist to receipt email intead of common gdex user name
+   'SUDOGDEX' : 0,          # 1 to allow sudo to PGLOG['COMMONUSER']
    'HOSTNAME' : '',        # current host name the process in running on
    'OBJCTSTR' : "object",
    'BACKUPNM' : "quasar",
@@ -140,10 +140,13 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'EMLPORT' : 25
 }
 
-PGLOG['RDAUSER'] = PGLOG['GDEXUSER']
+PGLOG['RDAUSER'] = PGLOG['COMMONUSER']
 PGLOG['RDAGRP'] = PGLOG['GDEXGRP']
-PGLOG['RDAEMAIL'] = PGLOG['GDEXEMAIL']
+PGLOG['RDAEMAIL'] = PGLOG['ADMINUSER']
 PGLOG['SUDORDA'] = PGLOG['SUDOGDEX']
+# backwards-compat aliases (deprecated: use COMMONUSER / ADMINUSER)
+PGLOG['GDEXUSER'] = PGLOG['COMMONUSER']
+PGLOG['GDEXEMAIL'] = PGLOG['ADMINUSER']
 
 HOSTTYPES = {
    'rda' : 'dsg_mach',
@@ -317,15 +320,15 @@ def send_python_email(subject = None, receiver = None, msg = None, sender = None
    docc = False if cc else True
    if not sender:
       sender = PGLOG['CURUID']
-      if sender != PGLOG['GDEXUSER']: docc = False
-   if sender == PGLOG['GDEXUSER']: sender = PGLOG['GDEXEMAIL']
+      if sender != PGLOG['COMMONUSER']: docc = False
+   if sender == PGLOG['COMMONUSER']: sender = PGLOG['ADMINUSER']
    if sender.find('@') == -1: sender += "@ucar.edu"
    if not receiver:
       receiver = PGLOG['EMLADDR'] if PGLOG['EMLADDR'] else PGLOG['CURUID']
-   if receiver == PGLOG['GDEXUSER']: receiver = PGLOG['GDEXEMAIL']
+   if receiver == PGLOG['COMMONUSER']: receiver = PGLOG['ADMINUSER']
    if receiver.find('@') == -1: receiver += "@ucar.edu"
 
-   if docc and not re.match(PGLOG['GDEXUSER'], sender): add_carbon_copy(sender, 1)
+   if docc and not re.match(PGLOG['COMMONUSER'], sender): add_carbon_copy(sender, 1)
    emlmsg = EmailMessage()
    emlmsg.set_content(msg)
    emlmsg['From'] = sender
@@ -1169,7 +1172,7 @@ def get_command(cmdstr = None):
    cmdstr = op.basename(cmdstr)
    if cmdstr.startswith('setuid_'):
       euser = pwd.getpwuid(os.geteuid()).pw_name
-      if euser == PGLOG['GDEXUSER']:
+      if euser == PGLOG['COMMONUSER']:
          cmdstr = cmdstr[len('setuid_'):]
    ms = re.match(r'^(.+)\.(py|pl)$', cmdstr)
    if ms:
@@ -1186,11 +1189,11 @@ def get_local_command(cmd, asuser = None):
    cuser = PGLOG['SETUID'] if PGLOG['SETUID'] else PGLOG['CURUID']
    if not asuser or cuser == asuser: return cmd
 
-   if cuser == PGLOG['GDEXUSER']:
+   if cuser == PGLOG['COMMONUSER']:
       wrapper = "pgstart_" + asuser
       if valid_command(wrapper): return "{} {}".format(wrapper, cmd)
-   elif PGLOG['SUDOGDEX'] and asuser == PGLOG['GDEXUSER']:
-      return "sudo -u {} {}".format(PGLOG['GDEXUSER'], cmd)    # sudo as user gdexdata
+   elif PGLOG['SUDOGDEX'] and asuser == PGLOG['COMMONUSER']:
+      return "sudo -u {} {}".format(PGLOG['COMMONUSER'], cmd)    # sudo as user gdexdata
 
    return cmd
 
@@ -1213,12 +1216,12 @@ def get_hpss_command(cmd, asuser = None, hcmd = None):
    if not hcmd: hcmd = 'hsi'
 
    if asuser and cuser != asuser:
-      if cuser == PGLOG['GDEXUSER']:
+      if cuser == PGLOG['COMMONUSER']:
          return "{} sudo -u {} {}".format(hcmd, asuser, cmd)      # setuid wrapper as user asuser
-      elif PGLOG['SUDOGDEX'] and asuser == PGLOG['GDEXUSER']:
-         return "sudo -u {} {} {}".format(PGLOG['GDEXUSER'], hcmd, cmd)    # sudo as user gdexdata
+      elif PGLOG['SUDOGDEX'] and asuser == PGLOG['COMMONUSER']:
+         return "sudo -u {} {} {}".format(PGLOG['COMMONUSER'], hcmd, cmd)    # sudo as user gdexdata
 
-   if cuser != PGLOG['GDEXUSER']:
+   if cuser != PGLOG['COMMONUSER']:
       if re.match(r'^ls ', cmd) and hcmd == 'hsi':
          return "hpss" + cmd    # use 'hpssls' instead of 'hsi ls'
       elif re.match(r'^htar -tvf', hcmd):
@@ -1235,8 +1238,8 @@ def get_sync_command(host, asuser = None):
 
    host = get_short_host(host)
 
-   if (not (PGLOG['SETUID'] and PGLOG['SETUID'] == PGLOG['GDEXUSER']) and
-      (not asuser or asuser == PGLOG['GDEXUSER'])):
+   if (not (PGLOG['SETUID'] and PGLOG['SETUID'] == PGLOG['COMMONUSER']) and
+      (not asuser or asuser == PGLOG['COMMONUSER'])):
       return "sync" + host
 
    return host + "-sync"
@@ -1250,7 +1253,7 @@ def set_suid(cuid = 0):
    if cuid != PGLOG['EUID'] or cuid != PGLOG['RUID']:
       os.setreuid(cuid, cuid)
       PGLOG['SETUID'] = pwd.getpwuid(cuid).pw_name
-      if not (PGLOG['SETUID'] == PGLOG['GDEXUSER'] or cuid == PGLOG['RUID']):
+      if not (PGLOG['SETUID'] == PGLOG['COMMONUSER'] or cuid == PGLOG['RUID']):
          set_specialist_environments(PGLOG['SETUID'])
          PGLOG['CURUID'] == PGLOG['SETUID']      # set CURUID to a specific specialist
 
@@ -1266,12 +1269,12 @@ def set_common_pglog():
    PGLOG['EUID'] = os.geteuid()
    PGLOG['CURUID'] = pwd.getpwuid(PGLOG['RUID']).pw_name
    try:
-      PGLOG['RDAUID'] = PGLOG['GDEXUID'] = pwd.getpwnam(PGLOG['GDEXUSER']).pw_uid
+      PGLOG['RDAUID'] = PGLOG['GDEXUID'] = pwd.getpwnam(PGLOG['COMMONUSER']).pw_uid
       PGLOG['RDAGID'] = PGLOG['GDEXGID'] = grp.getgrnam(PGLOG['GDEXGRP']).gr_gid
    except:
       PGLOG['RDAUID'] = PGLOG['GDEXUID'] = 0
       PGLOG['RDAGID'] = PGLOG['GDEXGID'] = 0
-   if PGLOG['CURUID'] == PGLOG['GDEXUSER']: PGLOG['SETUID'] = PGLOG['GDEXUSER']
+   if PGLOG['CURUID'] == PGLOG['COMMONUSER']: PGLOG['SETUID'] = PGLOG['COMMONUSER']
 
    PGLOG['HOSTNAME'] = get_host()
    for htype in HOSTTYPES:
