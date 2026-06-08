@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rda_python_common"
-version = "2.1.11"
+version = "3.0.0"
 authors = [
   { name="Zaihua Ji", email="zji@ucar.edu" },
 ]
@@ -18,12 +18,19 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
 ]
 dependencies = [
-  "psycopg2-binary",
+  "psycopg",
   "psutil",
   "rda-python-globus",
   "unidecode",
   "hvac"
 ]
+
+[project.optional-dependencies]
+# Allow opting in to the legacy psycopg2 driver instead of psycopg (v3).
+# pg_dbi.py auto-detects which driver is installed and prefers psycopg (v3)
+# when both are available.
+psycopg2        = ["psycopg2"]           # psycopg2 built from source
+psycopg2-binary = ["psycopg2-binary"]    # psycopg2 pre-built C extension
 
 [project.urls]
 "Homepage" = "https://github.com/NCAR/rda-python-common"

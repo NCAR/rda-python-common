@@ -788,7 +788,7 @@ def delete_backup_file(file, endpoint = None, logact = 0):
    return PgLOG.FAILURE
 
 #
-# reset local file/directory information to make them writable for PgLOG.PGLOG['GDEXUSER']
+# reset local file/directory information to make them writable for PgLOG.PGLOG['COMMONUSER']
 # file - file name (mandatory)
 # info - gathered file info with option 14, None means file not exists
 #

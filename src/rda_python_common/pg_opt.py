@@ -649,7 +649,7 @@ class PgOPT(PgFile):
          dataset in params), or logs a fatal error and exits.
       """
       if not logname: logname = (self.params['LN'] if 'LN' in self.params else self.PGLOG['CURUID'])
-      if logname == self.PGLOG['GDEXUSER']: return 1
+      if logname == self.PGLOG['COMMONUSER']: return 1
       dsids = {}
       if dsid:
          dsids[dsid] = 1
@@ -1847,7 +1847,7 @@ class PgOPT(PgFile):
       exclude = (einfo['SENDER'] if errmsg else einfo['RECEIVER'])
       if not errmsg and pgcntl and pgcntl['ccemail']:
          self.add_carbon_copy(pgcntl['ccemail'], 1, exclude, pgrqst['specialist'])
-      if self.PGLOG['CURUID'] != pgrqst['specialist'] and self.PGLOG['CURUID'] != self.PGLOG['GDEXUSER']:
+      if self.PGLOG['CURUID'] != pgrqst['specialist'] and self.PGLOG['CURUID'] != self.PGLOG['COMMONUSER']:
          self.add_carbon_copy(self.PGLOG['CURUID'], 1, exclude)
       if 'CC' in self.params: self.add_carbon_copy(self.params['CC'], 0, exclude)
       einfo['CCD'] = self.PGLOG['CCDADDR']

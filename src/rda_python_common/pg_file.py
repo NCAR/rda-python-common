@@ -987,7 +987,7 @@ class PgFile(PgUtil, PgSIG):
          return self.FINISH
       return self.FAILURE
 
-   # reset local file/directory information to make them writable for self.PGLOG['GDEXUSER']
+   # reset local file/directory information to make them writable for self.PGLOG['COMMONUSER']
    # file - file name (mandatory)
    # info - gathered file info with option 14, None means file not exists
    def reset_local_info(self, file, info = None, logact = 0):

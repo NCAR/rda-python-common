@@ -13,24 +13,75 @@ import re
 import time
 import hvac
 from datetime import datetime
-import psycopg2 as PgSQL
-from psycopg2.extras import execute_values
-from psycopg2.extras import execute_batch
 from os import path as op
 from .pg_log import PgLOG
+
+# Driver selection: prefer psycopg (v3) as the default driver; fall back to
+# psycopg2 when psycopg is not installed.  Both drivers share enough surface
+# (connect(**config), Error/OperationalError, cursor.execute/executemany/
+# fetchone/description, connection.commit/rollback/close/autocommit) for this
+# module to use either transparently.
+try:
+   import psycopg as PgSQL
+   PG_DRIVER = 'psycopg3'
+
+   # psycopg3 removed extras.execute_values / extras.execute_batch.
+   # cursor.executemany() in psycopg3 is efficient by default (it uses prepared
+   # statements internally), so the shims below provide matching signatures.
+
+   def execute_values(cursor, sql, argslist, page_size=100):
+      """Driver-neutral shim providing psycopg2.extras.execute_values() on psycopg3.
+
+      Replaces the single ``VALUES %s`` placeholder in ``sql`` (as expected by
+      psycopg2's execute_values) with a per-row ``VALUES (%s, %s, ...)`` tuple
+      built from the first row, then calls ``cursor.executemany()``.  Lets the
+      same call site work under either psycopg (v3) or psycopg2.
+      """
+      if not argslist: return
+      ncol = len(argslist[0])
+      row_ph = '(' + ','.join(['%s']*ncol) + ')'
+      new_sql = re.sub(r'(?i)\bVALUES\s+%s\b', 'VALUES ' + row_ph, sql, count=1)
+      cursor.executemany(new_sql, argslist)
+
+   def execute_batch(cursor, sql, argslist, page_size=100):
+      """Driver-neutral shim providing psycopg2.extras.execute_batch() on psycopg3."""
+      cursor.executemany(sql, argslist)
+
+   def get_pgcode(pgerr):
+      """Return the 5-char SQLSTATE code from a psycopg3 error, or None."""
+      diag = getattr(pgerr, 'diag', None)
+      return getattr(diag, 'sqlstate', None) if diag is not None else None
+
+   def get_pgerror(pgerr):
+      """Return the primary error message from a psycopg3 error, or None."""
+      diag = getattr(pgerr, 'diag', None)
+      return getattr(diag, 'message_primary', None) if diag is not None else None
+except ImportError:
+   import psycopg2 as PgSQL
+   from psycopg2.extras import execute_values, execute_batch
+   PG_DRIVER = 'psycopg2'
+
+   def get_pgcode(pgerr):
+      """Return the 5-char SQLSTATE code from a psycopg2 error, or None."""
+      return getattr(pgerr, 'pgcode', None)
+
+   def get_pgerror(pgerr):
+      """Return the server error message from a psycopg2 error, or None."""
+      return getattr(pgerr, 'pgerror', None)
 
 class PgDBI(PgLOG):
    """PostgreSQL Database Interface layer extending PgLOG.
 
    Provides a high-level API for connecting to and querying PostgreSQL databases
-   using psycopg2. Supports single and batch INSERT, SELECT, UPDATE, and DELETE
-   operations, transaction management, schema introspection, user lookups, usage
-   tracking, and credential retrieval from .pgpass or OpenBao.
+   using psycopg (v3) when available, falling back to psycopg2. Supports single
+   and batch INSERT, SELECT, UPDATE, and DELETE operations, transaction
+   management, schema introspection, user lookups, usage tracking, and
+   credential retrieval from .pgpass or OpenBao.
 
    Inherits all logging and utility helpers from PgLOG.
 
    Instance Attributes:
-      pgdb (connection | None): Active psycopg2 connection, or None when disconnected.
+      pgdb (connection | None): Active psycopg/psycopg2 connection, or None when disconnected.
       curtran (int): Transaction counter: 0 = idle, >0 = inside a transaction.
       NMISSES (list): Cached list of scientist IDs (userno) not found in the DB.
       LMISSES (list): Cached list of login names not found in the DB.
@@ -40,7 +91,8 @@ class PgDBI(PgLOG):
       SYSDOWN (dict): Cache of system-down status records keyed by hostname.
       PGDBI (dict): Active connection and configuration parameters.
       PGSIGNS (list): Special comparison sign tokens recognised by get_field_condition().
-      CHCODE (int): psycopg2 type code for CHAR columns (used to strip trailing spaces).
+      CHCODE (int): Driver type code for CHAR columns (used to strip trailing spaces);
+                    set from psycopg/psycopg2 depending on which driver is in use.
       DBPORTS (dict): Mapping of database names to non-default TCP port numbers.
       DBPASS (dict): Credentials loaded from .pgpass, keyed by (host, port, db, user).
       DBBAOS (dict): Credentials loaded from OpenBao, keyed by database name.
@@ -544,14 +596,15 @@ class PgDBI(PgLOG):
       return tbname
 
    def check_dberror(self, pgerr, pgcnt, sqlstr, ary, logact = None):
-      """Classify a psycopg2 error and decide whether to retry or abort.
+      """Classify a psycopg/psycopg2 error and decide whether to retry or abort.
 
       Handles connection errors (08xxx, 57xxx), lock errors (55xxx), aborted
       transactions (25P02), and missing-table errors (42P01 with ADDTBL flag).
       Retries up to PGLOG['DBRETRY'] times; exits after that threshold.
 
       Args:
-         pgerr (psycopg2.Error): The caught database exception.
+         pgerr (PgSQL.Error): The caught database exception
+                              (psycopg.Error or psycopg2.Error).
          pgcnt (int): Current retry count (0-based).
          sqlstr (str): SQL statement that caused the error, for logging.
          ary: Bound values that were passed to the statement, for logging.
@@ -562,8 +615,8 @@ class PgDBI(PgLOG):
       """
       if logact is None: logact = self.PGDBI['ERRLOG']
       ret = self.FAILURE
-      pgcode = pgerr.pgcode
-      pgerror = pgerr.pgerror
+      pgcode = get_pgcode(pgerr)
+      pgerror = get_pgerror(pgerr)
       dberror = "{} {}".format(pgcode, pgerror) if pgcode and pgerror else str(pgerr)
       if pgcnt < self.PGLOG['DBRETRY']:
          if not pgcode:
@@ -640,15 +693,15 @@ class PgDBI(PgLOG):
          autocommit (bool): Whether to enable autocommit on the new connection.
 
       Returns:
-         connection | int: psycopg2 connection on success, self.FAILURE on error.
+         connection | int: psycopg/psycopg2 connection on success, self.FAILURE on error.
       """
       if self.pgdb:
          if reconnect and not self.pgdb.closed: return self.pgdb    # no need reconnect
       elif reconnect:
          reconnect = 0   # initial connection
       while True:
-         config = {'database': self.PGDBI['DBNAME'],
-                       'user': self.PGDBI['LNNAME']}
+         config = {'dbname': self.PGDBI['DBNAME'],
+                      'user': self.PGDBI['LNNAME']}
          if self.PGDBI['DBSHOST'] == self.PGLOG['HOSTNAME']:
             config['host'] = 'localhost'
          else:
@@ -656,7 +709,7 @@ class PgDBI(PgLOG):
             if not self.PGDBI['DBPORT']: self.PGDBI['DBPORT'] = self.get_dbport(self.PGDBI['DBNAME'])
          if self.PGDBI['DBPORT']: config['port'] = self.PGDBI['DBPORT']
          config['password'] = '***'
-         sqlstr = "psycopg2.connect(**{})".format(config)
+         sqlstr = "{}.connect(**{})".format(PG_DRIVER, config)
          config['password'] = self.get_pgpass_password()
          if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, sqlstr)
          try:
@@ -675,7 +728,7 @@ class PgDBI(PgLOG):
       errors. The search path includes PGDBI['SCPATH'] when it differs from SCNAME.
 
       Returns:
-         cursor | int: psycopg2 cursor on success, self.FAILURE on error.
+         cursor | int: psycopg/psycopg2 cursor on success, self.FAILURE on error.
       """
       pgcur = None
       if not self.pgdb:
@@ -924,7 +977,8 @@ class PgDBI(PgLOG):
       """Insert multiple records into a database table efficiently.
 
       When getid is set, executes individual inserts to capture each returned ID.
-      Otherwise uses psycopg2 execute_values() for a single bulk INSERT.
+      Otherwise uses execute_values() (psycopg2's bulk helper, or the
+      executemany()-based shim on psycopg v3) for a single bulk INSERT.
 
       Args:
          tablename (str): Target table name.
@@ -1365,8 +1419,9 @@ class PgDBI(PgLOG):
    def pgmupdt(self, tablename, records, cnddicts, logact = None):
       """Update multiple rows using parallel value and condition dicts.
 
-      Uses psycopg2 execute_batch() for efficient bulk updates. The number of
-      values in records and cnddicts must match.
+      Uses execute_batch() (psycopg2's bulk helper, or the executemany()-based
+      shim on psycopg v3) for efficient bulk updates. The number of values in
+      records and cnddicts must match.
 
       Args:
          tablename (str): Target table name.
@@ -1508,7 +1563,8 @@ class PgDBI(PgLOG):
    def pgmdel(self, tablename, cnddicts, logact = None):
       """Delete multiple rows using a multi-value condition dict.
 
-      Uses psycopg2 execute_batch() for efficient bulk deletes.
+      Uses execute_batch() (psycopg2's bulk helper, or the executemany()-based
+      shim on psycopg v3) for efficient bulk deletes.
 
       Args:
          tablename (str): Target table name.

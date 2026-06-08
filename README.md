@@ -2,18 +2,45 @@
 
 Python common library codes to be shared by other RDA python utility programs.
 
-## Installing and using in another RDA python repo
+## Environment setup
 
-`rda-python-common` is the foundation that every other `rda-python-*` repo
-builds on.  To consume it from a new or existing repo, follow these steps.
+Create a Python environment first; the install command in the next section
+runs inside whichever environment you activate here.
 
-### 1. Install the package
+### Option A — Python venv (DECS machines)
+
+```bash
+python3 -m venv $ENVHOME          # e.g. /glade/u/home/gdexdata/gdexmsenv
+source $ENVHOME/bin/activate
+```
+
+### Option B — Conda (DAV/Casper)
+
+```bash
+conda create --prefix $ENVHOME python=3.12   # e.g. /glade/work/gdexdata/conda-envs/pg-gdex
+conda activate $ENVHOME
+```
+
+## Installing rda-python-common
+
+Pick whichever install mode fits your workflow.  All four pull in the
+transitive dependencies (`psycopg`, `rda-python-globus`, `unidecode`,
+`hvac`) automatically.
 
 For local development, clone this repo alongside your project and install it
 in editable mode so that changes are picked up without re-installing:
 
 ```bash
 git clone https://github.com/NCAR/rda-python-common.git
+cd rda-python-common
+pip install -e .
+```
+
+To test a specific branch (e.g. an in-progress feature or fix branch), pass
+`-b/--branch` to `git clone`:
+
+```bash
+git clone -b <branch-name> https://github.com/NCAR/rda-python-common.git
 cd rda-python-common
 pip install -e .
 ```
@@ -30,10 +57,75 @@ For a production install on a system that uses the published distribution:
 pip install rda_python_common
 ```
 
-The package brings in its own transitive dependencies (`psycopg2-binary`,
-`rda-python-globus`, `unidecode`, `hvac`).
+### PostgreSQL driver: psycopg v3 (default) and psycopg2 (fallback)
 
-### 2. Declare it as a dependency in your project
+`rda-python-common` uses **psycopg v3** by default.  `pg_dbi.py`
+auto-detects which driver is installed at import time and prefers psycopg v3
+when both are present; no code changes are needed to switch drivers.
+
+The required dependency is the base `psycopg` package, which works whether
+psycopg was compiled from source or installed via a binary wheel.  If psycopg
+is not available on your system, install whichever driver works:
+
+```bash
+pip install psycopg || pip install psycopg2
+```
+
+To explicitly install the legacy psycopg2 driver:
+
+```bash
+pip install "rda_python_common[psycopg2]"          # build from source
+pip install "rda_python_common[psycopg2-binary]"   # pre-built wheel
+```
+
+## Configuration: COMMONUSER and ADMINUSER
+
+`PGLOG['COMMONUSER']` is the shared common user that setuid-wrapped programs
+execute as (default `gdexdata`), and `PGLOG['ADMINUSER']` is the admin
+specialist user that receives email notifications and is permitted to invoke
+`pgstart_<user>` (default `zji`).
+
+Both values are initialized via the `SETPGLOG(key, default)` helper, which
+reads the environment variable `PG<KEY>` and falls back to the supplied
+default when the variable is unset:
+
+```python
+# pg_log.py (class-based)
+self.SETPGLOG("COMMONUSER", "gdexdata")   # reads $PGCOMMONUSER
+self.SETPGLOG("ADMINUSER",  "zji")        # reads $PGADMINUSER
+
+# PgLOG.py (module-level) exposes the same helper as a function
+SETPGLOG("COMMONUSER", "gdexdata")
+SETPGLOG("ADMINUSER",  "zji")
+```
+
+To override the defaults per environment **once** so the values persist
+across `pip install --upgrade`, set the environment variables:
+
+```bash
+export PGCOMMONUSER=gdexdata    # overrides PGLOG['COMMONUSER']
+export PGADMINUSER=zji          # overrides PGLOG['ADMINUSER']
+```
+
+Place these `export` lines in `$ENVHOME/bin/activate` (venv), or set them as
+conda environment variables so they are applied whenever the environment is
+activated:
+
+```bash
+conda env config vars set PGCOMMONUSER=gdexdata PGADMINUSER=zji
+conda activate $ENVHOME   # reactivate to pick up the values
+```
+
+If the variables are unset, the built-in defaults (`gdexdata` / `zji`) are
+used, preserving existing behavior.
+
+## Using rda-python-common in another RDA python repo
+
+`rda-python-common` is the foundation that every other `rda-python-*` repo
+builds on.  Once it is installed in the active environment, consuming it from
+a new or existing repo takes three short steps.
+
+### 1. Declare it as a dependency in your project
 
 Add `rda_python_common` to the `dependencies` list of your project's
 `pyproject.toml` so that downstream installs pull it in automatically:
@@ -52,9 +144,10 @@ This is the same pattern used by `rda-python-dsarch`, `rda-python-dsupdt`,
 `rda-python-dsrqst`, `rda-python-dscheck`, `rda-python-metrics`, and
 `rda-python-miscs`.
 
-### 3. Import the modules you need
+### 2. Import the modules you need
 
-Two import styles are supported (see [Usage examples](#usage-examples) below):
+Two import styles are supported (see [Usage examples](#usage-examples) below
+for fuller patterns):
 
 ```python
 # Preferred for new code -- import the class from the lower-case module
@@ -66,26 +159,26 @@ from rda_python_common import PgLOG, PgDBI
 PgLOG.pglog("hello", PgLOG.LOGWRN)
 ```
 
-### 4. Verify the install
+### 3. Verify the install
 
 ```bash
 python -c "import rda_python_common; print(rda_python_common.__version__)"
 ```
 
-You should see the installed version (currently `2.1.11`).  If the import
+You should see the installed version (currently `3.0.0`).  If the import
 fails, double-check that the active Python environment is the one where you
 ran `pip install`.
 
 ## Modules
 
-All shared functionality lives under `src/rda_python_common/` and is organised as
-a single-inheritance class hierarchy.  Each module defines exactly one class;
-later classes extend earlier ones, so an application that instantiates the
-top-of-chain class (typically `PgOPT` or `PgCMD`) gets every helper through one
-object.
+All shared functionality lives under `src/rda_python_common/` and is organised
+as a (mostly) single-inheritance class hierarchy.  Each module defines exactly
+one class; later classes extend earlier ones, so an application that
+instantiates the top-of-chain class (typically `PgOPT` or `PgCMD`) gets every
+helper through one object.
 
-Inheritance tree (top-down; multi-inheritance shown as two arrows
-converging on the same child):
+The inheritance tree below is read top-down; the two multi-inheritance joins
+are shown as two arrows converging on the same child:
 
 ```
                           PgLOG
@@ -122,6 +215,8 @@ The tree is single inheritance everywhere except at two join points:
   operations (`PgDBI`) it needs to keep the shared `wfile` table and the
   per-dataset `wfile_<dsid>` partitions in sync.
 
+Each class lives in its own module.  Walking the tree from the root:
+
 - **`pg_log.py`** — `PgLOG`.  Root of the hierarchy.  Provides the central
   logging facility (bit-mask `logact` flags such as `MSGLOG`, `WARNLG`,
   `ERRLOG`, `EXITLG`), e-mail dispatch, system-command execution, process
@@ -145,7 +240,8 @@ The tree is single inheritance everywhere except at two join points:
   long-running batch jobs coordinate cleanly.
 
 - **`pg_dbi.py`** — `PgDBI(PgLOG)`.  PostgreSQL database interface built on
-  `psycopg2`.  Wraps connection management, batch `INSERT`/`SELECT`/
+  `psycopg` (v3 by default, with `psycopg2` as an opt-in fallback).  Wraps
+  connection management, batch `INSERT`/`SELECT`/
   `UPDATE`/`DELETE`, transaction control, and credential lookup from
   `.pgpass` or OpenBao.  All RDA tools talk to the `rdadb` database through
   this class.
@@ -179,9 +275,9 @@ The tree is single inheritance everywhere except at two join points:
 
 ## Usage examples
 
-Each class lives in its own submodule.  Import the class you need, then
-either instantiate it directly or subclass it to add application-specific
-state and methods.
+The patterns below show the typical ways the classes above are used in
+practice.  Import the class you need, then either instantiate it directly or
+subclass it to add application-specific state and methods.
 
 ### 1. Direct instantiation — use the helpers as-is
 

@@ -81,7 +81,7 @@ class PgLOG:
    EMLSUM = (0x08000)   # record as email summary
    EMEROL = (0x10000)   # record error as email only
    EMLALL = (0x1D208)   # all email acts
-   DOSUDO = (0x20000)   # add 'sudo -u self.PGLOG['GDEXUSER']'
+   DOSUDO = (0x20000)   # add 'sudo -u self.PGLOG['COMMONUSER']'
    NOTLOG = (0x40000)   # do not log any thing
    OVRIDE = (0x80000)   # do override existing file or record
    NOWAIT = (0x100000)  # do not wait on globus task to finish
@@ -124,9 +124,8 @@ class PgLOG:
          'SETUID': '',         # the login name for suid if it is different to the CURUID
          'FILEMODE': 0o664,    # default 8-base file mode
          'EXECMODE': 0o775,    # default 8-base executable file mode or directory mode
-         'GDEXUSER': "gdexdata",  # common gdex user name
-         'GDEXEMAIL': "zji",    # specialist to receipt email intead of common gdex user name
-         'SUDOGDEX': 0,         # 1 to allow sudo to self.PGLOG['GDEXUSER']
+         # COMMONUSER and ADMINUSER are set below via SETPGLOG (env overrides PG<KEY>)
+         'SUDOGDEX': 0,         # 1 to allow sudo to self.PGLOG['COMMONUSER']
          'HOSTNAME': '',        # current host name the process in running on
          'OBJCTSTR': "object",
          'BACKUPNM': "quasar",
@@ -161,10 +160,6 @@ class PgLOG:
          'EMLSRVR': "ndir.ucar.edu",   # UCAR email server and port
          'EMLPORT': 25
       }
-      self.PGLOG['RDAUSER'] = self.PGLOG['GDEXUSER']
-      self.PGLOG['RDAGRP'] = self.PGLOG['GDEXGRP']
-      self.PGLOG['RDAEMAIL'] = self.PGLOG['GDEXEMAIL']
-      self.PGLOG['SUDORDA'] = self.PGLOG['SUDOGDEX']
       self.HOSTTYPES = {
          'rda': 'dsg_mach',
          'crlogin': 'dav',
@@ -187,6 +182,13 @@ class PgLOG:
       # set additional common PGLOG values
       self.set_common_pglog()
       self.OUTPUT = None
+
+   def SETPGLOG(self, key, default):
+      """Set ``self.PGLOG[key]`` from environment variable ``PG<key>`` or
+      fall back to ``default`` if the variable is unset.  Used to make
+      per-environment overrides (e.g. PGCOMMONUSER, PGADMINUSER) survive
+      package upgrades."""
+      self.PGLOG[key] = os.environ.get('PG' + key, default)
 
    def open_output(self, outfile=None):
       """Open the result output destination.
@@ -392,14 +394,14 @@ class PgLOG:
       docc = False if cc else True
       if not sender:
          sender = self.PGLOG['CURUID']
-         if sender != self.PGLOG['GDEXUSER']: docc = False
-      if sender == self.PGLOG['GDEXUSER']: sender = self.PGLOG['GDEXEMAIL']
+         if sender != self.PGLOG['COMMONUSER']: docc = False
+      if sender == self.PGLOG['COMMONUSER']: sender = self.PGLOG['ADMINUSER']
       if sender.find('@') == -1: sender += "@ucar.edu"
       if not receiver:
          receiver = self.PGLOG['EMLADDR'] if self.PGLOG['EMLADDR'] else self.PGLOG['CURUID']
-      if receiver == self.PGLOG['GDEXUSER']: receiver = self.PGLOG['GDEXEMAIL']
+      if receiver == self.PGLOG['COMMONUSER']: receiver = self.PGLOG['ADMINUSER']
       if receiver.find('@') == -1: receiver += "@ucar.edu"
-      if docc and not re.match(self.PGLOG['GDEXUSER'], sender): self.add_carbon_copy(sender, 1)
+      if docc and not re.match(self.PGLOG['COMMONUSER'], sender): self.add_carbon_copy(sender, 1)
       emlmsg = EmailMessage()
       emlmsg.set_content(msg)
       emlmsg['From'] = sender
@@ -1324,9 +1326,16 @@ class PgLOG:
                self.PGLOG['PGBATCH'] = ''
                self.PGLOG['CURBID'] = 0
 
-   @staticmethod
-   def get_command(cmdstr=None):
+   def get_command(self, cmdstr=None):
       """Return the base command name, stripping directory and ``.py``/``.pl`` extension.
+
+      When invoked via the pywrapper setuid C wrapper, ``sys.argv[0]`` is the
+      resolved Python script path (e.g. ``/.../setuid_rdacp``) rather than the
+      alias the user typed (e.g. ``rdacp``); the kernel discards argv[0] when
+      handling the script's shebang.  When the basename starts with
+      ``setuid_`` and the effective user equals ``self.PGLOG['COMMONUSER']``,
+      this process was started via pywrapper, so the ``setuid_`` prefix is
+      stripped to recover the logical command name.
 
       Args:
           cmdstr: Path string.  Defaults to ``sys.argv[0]``.
@@ -1336,6 +1345,10 @@ class PgLOG:
       """
       if not cmdstr: cmdstr = sys.argv[0]
       cmdstr = op.basename(cmdstr)
+      if cmdstr.startswith('setuid_'):
+         euser = pwd.getpwuid(os.geteuid()).pw_name
+         if euser == self.PGLOG['COMMONUSER']:
+            cmdstr = cmdstr[len('setuid_'):]
       ms = re.match(r'^(.+)\.(py|pl)$', cmdstr)
       if ms:
          return ms.group(1)
@@ -1358,11 +1371,11 @@ class PgLOG:
       """
       cuser = self.PGLOG['SETUID'] if self.PGLOG['SETUID'] else self.PGLOG['CURUID']
       if not asuser or cuser == asuser: return cmd
-      if cuser == self.PGLOG['GDEXUSER']:
+      if cuser == self.PGLOG['COMMONUSER']:
          wrapper = "pgstart_" + asuser
          if self.valid_command(wrapper): return "{} {}".format(wrapper, cmd)
-      elif self.PGLOG['SUDOGDEX'] and asuser == self.PGLOG['GDEXUSER']:
-         return "sudo -u {} {}".format(self.PGLOG['GDEXUSER'], cmd)    # sudo as user gdexdata
+      elif self.PGLOG['SUDOGDEX'] and asuser == self.PGLOG['COMMONUSER']:
+         return "sudo -u {} {}".format(self.PGLOG['COMMONUSER'], cmd)    # sudo as user gdexdata
       return cmd
 
    def get_remote_command(self, cmd, host, asuser=None):
@@ -1389,8 +1402,8 @@ class PgLOG:
           Sync command string (e.g. ``"synccasper"`` or ``"casper-sync"``).
       """
       host = self.get_short_host(host)
-      if (not (self.PGLOG['SETUID'] and self.PGLOG['SETUID'] == self.PGLOG['GDEXUSER']) and
-         (not asuser or asuser == self.PGLOG['GDEXUSER'])):
+      if (not (self.PGLOG['SETUID'] and self.PGLOG['SETUID'] == self.PGLOG['COMMONUSER']) and
+         (not asuser or asuser == self.PGLOG['COMMONUSER'])):
          return "sync" + host
       return host + "-sync"
 
@@ -1407,7 +1420,7 @@ class PgLOG:
       if cuid != self.PGLOG['EUID'] or cuid != self.PGLOG['RUID']:
          os.setreuid(cuid, cuid)
          self.PGLOG['SETUID'] = pwd.getpwuid(cuid).pw_name
-         if not (self.PGLOG['SETUID'] == self.PGLOG['GDEXUSER'] or cuid == self.PGLOG['RUID']):
+         if not (self.PGLOG['SETUID'] == self.PGLOG['COMMONUSER'] or cuid == self.PGLOG['RUID']):
             self.set_specialist_environments(self.PGLOG['SETUID'])
             self.PGLOG['CURUID'] == self.PGLOG['SETUID']      # set CURUID to a specific specialist
 
@@ -1421,18 +1434,28 @@ class PgLOG:
 
       Called automatically by :meth:`__init__`.
       """
-      self.PGLOG['CURDIR'] = os.getcwd()   
+      # resolve common/admin user from environment (PGCOMMONUSER / PGADMINUSER)
+      self.SETPGLOG("COMMONUSER", "gdexdata")
+      self.SETPGLOG("ADMINUSER", "zji")
+      self.PGLOG['RDAUSER'] = self.PGLOG['COMMONUSER']
+      self.PGLOG['RDAGRP'] = self.PGLOG['GDEXGRP']
+      self.PGLOG['RDAEMAIL'] = self.PGLOG['ADMINUSER']
+      self.PGLOG['SUDORDA'] = self.PGLOG['SUDOGDEX']
+      # backwards-compat aliases (deprecated: use COMMONUSER / ADMINUSER)
+      self.PGLOG['GDEXUSER'] = self.PGLOG['COMMONUSER']
+      self.PGLOG['GDEXEMAIL'] = self.PGLOG['ADMINUSER']
+      self.PGLOG['CURDIR'] = os.getcwd()
       # set current user id
       self.PGLOG['RUID'] = os.getuid()
       self.PGLOG['EUID'] = os.geteuid()
       self.PGLOG['CURUID'] = pwd.getpwuid(self.PGLOG['RUID']).pw_name
       try:
-         self.PGLOG['RDAUID'] = self.PGLOG['GDEXUID'] = pwd.getpwnam(self.PGLOG['GDEXUSER']).pw_uid
+         self.PGLOG['RDAUID'] = self.PGLOG['GDEXUID'] = pwd.getpwnam(self.PGLOG['COMMONUSER']).pw_uid
          self.PGLOG['RDAGID'] = self.PGLOG['GDEXGID'] = grp.getgrnam(self.PGLOG['GDEXGRP']).gr_gid
       except KeyError:
          self.PGLOG['RDAUID'] = self.PGLOG['GDEXUID'] = 0
          self.PGLOG['RDAGID'] = self.PGLOG['GDEXGID'] = 0
-      if self.PGLOG['CURUID'] == self.PGLOG['GDEXUSER']: self.PGLOG['SETUID'] = self.PGLOG['GDEXUSER']   
+      if self.PGLOG['CURUID'] == self.PGLOG['COMMONUSER']: self.PGLOG['SETUID'] = self.PGLOG['COMMONUSER']   
       self.PGLOG['HOSTNAME'] = self.get_host()
       for htype in self.HOSTTYPES:
          ms = re.match(r'^{}(-|\d|$)'.format(htype), self.PGLOG['HOSTNAME'])
