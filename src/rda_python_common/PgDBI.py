@@ -328,8 +328,12 @@ def starttran():
       pgconnect(0, 0, False)
    else:
       try:
-         pgdb.isolation_level
-      except PgSQL.OperationalError as e:
+         # Liveness probe: psycopg2's isolation_level getter could raise on a
+         # dead connection, but psycopg3's is a cached attribute that never
+         # touches the server.  A trivial round-trip detects a broken
+         # connection under either driver.
+         pgdb.cursor().execute("SELECT 1")
+      except PgSQL.Error as e:
          pgconnect(0, 0, False)
       if pgdb.closed:
          pgconnect(0, 0, False)
