@@ -410,8 +410,12 @@ class PgDBI(PgLOG):
          self.pgconnect(0, 0, False)
       else:
          try:
-            self.pgdb.isolation_level
-         except PgSQL.OperationalError as e:
+            # Liveness probe: psycopg2's isolation_level getter could raise on a
+            # dead connection, but psycopg3's is a cached attribute that never
+            # touches the server.  A trivial round-trip detects a broken
+            # connection under either driver.
+            self.pgdb.cursor().execute("SELECT 1")
+         except PgSQL.Error as e:
             self.pgconnect(0, 0, False)
          if self.pgdb.closed:
             self.pgconnect(0, 0, False)
@@ -533,7 +537,11 @@ class PgDBI(PgLOG):
          dberror (str): Full database error string to inspect.
          logact (int): Logging action flags forwarded to add_new_table().
       """
-      ms = re.match(r'^42P01 ERROR:  relation "(.+)" does not exist', dberror)
+      # The caller (check_dberror) only invokes this after pgcode == '42P01', so
+      # match just the relation message.  psycopg2's pgerror includes the
+      # 'ERROR:  ' severity prefix while psycopg3's message_primary does not, so
+      # anchoring on that prefix only matched under psycopg2.
+      ms = re.search(r'relation "(.+)" does not exist', dberror)
       if ms:
          tname = ms.group(1)
          self.add_new_table(tname, logact = logact)
