@@ -1719,25 +1719,6 @@ def reset_rdadb_version(dsid):
    pgexec("UPDATE dataset SET version = version + 1 WHERE dsid = '{}'".format(dsid), PGDBI['ERRLOG'])
 
 #
-# check the use rdadb flag in table dataset for a given dataset and given values
-#
-def use_rdadb(dsid, logact = 0, vals = None):
-
-   ret = ''   # default to empty in case dataset not in RDADB
-   if dsid:
-      pgrec = pgget("dataset", "use_rdadb", "dsid = '{}'".format(dsid), PGDBI['EXITLG'])
-      if pgrec:
-         ret = 'N'   # default to 'N' if dataset record in RDADB already
-         if pgrec['use_rdadb']:
-            if not vals: vals = "IPYMW"  # default to Internal; Publishable; Yes RDADB
-            if vals.find(pgrec['use_rdadb']) > -1:
-               ret = pgrec['use_rdadb']
-      elif logact:
-         PgLOG.pglog("Dataset '{}' is not in RDADB!".format(dsid), logact)
-
-   return ret
-
-#
 #   fld: field name for querry condition
 #  vals: reference to aaray of values
 # isstr: 1 for string values requires quotes and support wildcard

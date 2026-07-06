@@ -1994,32 +1994,6 @@ class PgDBI(PgLOG):
       """
       self.pgexec("UPDATE dataset SET version = version + 1 WHERE dsid = '{}'".format(dsid), self.PGDBI['ERRLOG'])
    
-   def use_rdadb(self, dsid, logact = 0, vals = None):
-      """Return the use_rdadb flag for a dataset if it matches an allowed set.
-
-      Args:
-         dsid (str | None): Dataset ID to query.
-         logact (int): Logging action flags for missing-dataset warnings; default 0.
-         vals (str | None): Accepted flag characters; defaults to 'IPYMW' when None.
-
-      Returns:
-         str: The use_rdadb flag character when found and in vals; 'N' when the
-              dataset exists but the flag is not in vals; '' when dsid is falsy
-              or the dataset is not in RDADB.
-      """
-      ret = ''   # default to empty in case dataset not in RDADB
-      if dsid:
-         pgrec = self.pgget("dataset", "use_rdadb", "dsid = '{}'".format(dsid), self.PGDBI['EXITLG'])
-         if pgrec:
-            ret = 'N'   # default to 'N' if dataset record in RDADB already
-            if pgrec['use_rdadb']:
-               if not vals: vals = "IPYMW"  # default to Internal; Publishable; Yes RDADB
-               if vals.find(pgrec['use_rdadb']) > -1:
-                  ret = pgrec['use_rdadb']
-         elif logact:
-            self.pglog("Dataset '{}' is not in RDADB!".format(dsid), logact)
-      return ret
-
    def get_field_condition(self, fld, vals, isstr = 0, noand = 0):
       """Build a SQL condition fragment for a field given a list of values.
 
