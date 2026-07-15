@@ -262,22 +262,23 @@ class PgLOG:
                   msg += " with 1 Error:\n"
                else:
                   msg += " with {} Errors:\n".format(self.PGLOG['ERRCNT'])
+               msg += "\nERROR MESSAGE:\n"
                msg +=  self.break_long_string(self.PGLOG['ERRMSG'], 512, None, self.PGLOG['EMLMAX']/2, None, 50, 25)
                self.PGLOG['ERRCNT'] = 0
                self.PGLOG['ERRMSG'] = ''
             if self.PGLOG['SUMMSG']:
-               msg += self.PGLOG['SEPLINE']
-               if self.PGLOG['SUMMSG']: msg += "Summary:\n"
+               msg += "\nSUMMARY:\n"
                msg += self.break_long_string(self.PGLOG['SUMMSG'], 512, None, self.PGLOG['EMLMAX']/2, None, 50, 25)
             if self.PGLOG['EMLMSG']:
-               msg += self.PGLOG['SEPLINE']
-               if self.PGLOG['SUMMSG']: msg += "Detail Information:\n"
+               msg += "\nDETAIL INFORMATION:\n"
             self.PGLOG['EMLMSG'] = msg + self.break_long_string(self.PGLOG['EMLMSG'], 512, None, self.PGLOG['EMLMAX'], None, 50, 40)
             self.PGLOG['SUMMSG'] = ""   # in case not
          else:
             if logact&self.ERRLOG:      # record error for email summary
                self.PGLOG['ERRCNT'] += 1
-               if logact&self.BRKLIN: self.PGLOG['ERRMSG'] += "\n"
+               if self.PGLOG['ERRMSG']:      # blank line between consecutive errors
+                  if not self.PGLOG['ERRMSG'].endswith('\n'): self.PGLOG['ERRMSG'] += "\n"
+                  self.PGLOG['ERRMSG'] += "\n"
                self.PGLOG['ERRMSG'] += "{}. {}".format(self.PGLOG['ERRCNT'], msg)
             elif logact&self.EMLSUM:
                if self.PGLOG['SUMMSG']:
