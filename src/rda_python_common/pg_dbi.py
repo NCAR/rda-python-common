@@ -2624,15 +2624,17 @@ class PgDBI(PgLOG):
    def get_pgpass_password(self):
       """Return the database password for the current connection settings.
 
-      Checks PGDBI['PWNAME'] first, then tries OpenBao (get_baopassword()), and
-      finally falls back to the .pgpass file (get_pgpassword()).
+      Checks PGDBI['PWNAME'] first, then tries the .pgpass file (get_pgpassword()),
+      and finally falls back to OpenBao (get_baopassword()).
 
       Returns:
          str | None: Password string, or None when no credential is found.
       """
       if self.PGDBI['PWNAME']: return self.PGDBI['PWNAME']
-      pwname = self.get_baopassword()
-      if not pwname: pwname = self.get_pgpassword()
+      pwname = self.get_pgpassword()
+      if not pwname: pwname = self.get_baopassword()
+      if not pwname:
+         self.pglog("Unable to find password for {} in .pgpass or OpenBao".format(self.PGDBI['DBNAME']), self.PGDBI['ERRLOG'])
       return pwname
 
    def get_pgpassword(self):
@@ -2677,8 +2679,8 @@ class PgDBI(PgLOG):
                if not line or line.startswith("#"): continue
                dbhost, dbport, dbname, lnname, pwname = line.split(":")
                self.DBPASS[(dbhost, dbport, dbname, lnname)] = pwname
-      except Exception as e:
-          self.pglog(str(e), self.PGDBI['ERRLOG'])
+      except Exception:
+          pass
 
    def read_openbao(self):
       """Read OpenBao secrets and populate DBBAOS with credentials for DBNAME.
@@ -2703,8 +2705,8 @@ class PgDBI(PgLOG):
              mount_point='kv',
              raise_on_deleted_version=False
          )
-      except Exception as e:
-         return self.pglog(str(e), self.PGDBI['ERRLOG'])
+      except Exception:
+         return
       baos = read_response['data']['data']
       for key in baos:
          ms = re.match(r'^(\w*)pass(\w*)$', key)
