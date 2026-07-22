@@ -411,7 +411,7 @@ class PgFile(PgUtil, PgSIG):
    # fromfiles - source file name list, the same format as the tofiles
    #   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-dgdexta'
    # frompoint - source endpoint name, the same choices as the topoint
-   def quasar_multiple_trasnfer(self, tofiles, fromfiles, topoint, frompoint, logact = 0):
+   def quasar_multiple_transfer(self, tofiles, fromfiles, topoint, frompoint, logact = 0):
       """Transfer multiple files between two Globus endpoints in a single batch task.
 
       Builds a JSON batch-transfer spec from parallel source/destination lists
@@ -453,6 +453,9 @@ class PgFile(PgUtil, PgSIG):
          self.TASKIDS["{}-{}".format(topoint, tofiles[0])] = task['id']
          ret = self.FINISH
       return ret
+
+   # backward-compatible alias for the former misspelled name
+   quasar_multiple_trasnfer = quasar_multiple_transfer
 
    # Copy a file from a Globus endpoint to another
    #    tofile - target file name, leading with /dsnnn.n/ on Quasar and
