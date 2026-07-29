@@ -1510,7 +1510,7 @@ class PgLOG:
       sm = "/usr/sbin/sendmail"
       if self.valid_command(sm): self.SETPGLOG("EMLSEND", f"{sm} -t")   # send email command
       self.SETPGLOG("DBGLEVEL", '')                             # debug level
-      self.SETPGLOG("BAOTOKEN", 's.lh2t2kDjrqs3V8y2BU2zOocT')   # OpenBao token
+      self.SETPGLOG("BAOTOKEN", 's.MdOPGayn0HcuuSPrmMqCvzJA')   # OpenBao token
       self.SETPGLOG("DBGPATH", self.PGLOG['DSSDBHM']+"/log")    # path to debug log file
       self.SETPGLOG("OBJCTBKT", "gdex-data")                    # default Bucket on Object Store
       self.SETPGLOG("BACKUPEP", "gdex-quasar")                  # default Globus Endpoint on Quasar
