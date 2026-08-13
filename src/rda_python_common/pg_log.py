@@ -124,7 +124,8 @@ class PgLOG:
          'SETUID': '',         # the login name for suid if it is different to the CURUID
          'FILEMODE': 0o664,    # default 8-base file mode
          'EXECMODE': 0o775,    # default 8-base executable file mode or directory mode
-         # COMMONUSER and ADMINUSER are set below via SETPGLOG (env overrides PG<KEY>)
+         # COMMONUSER and ADMINUSER are set in set_common_pglog() via SETPGLOG,
+         # which lets environment variables COMMONUSER/ADMINUSER override the defaults
          'SUDOGDEX': 0,         # 1 to allow sudo to self.PGLOG['COMMONUSER']
          'HOSTNAME': '',        # current host name the process in running on
          'OBJCTSTR': "object",
@@ -182,13 +183,6 @@ class PgLOG:
       # set additional common PGLOG values
       self.set_common_pglog()
       self.OUTPUT = None
-
-   def SETPGLOG(self, key, default):
-      """Set ``self.PGLOG[key]`` from environment variable ``PG<key>`` or
-      fall back to ``default`` if the variable is unset.  Used to make
-      per-environment overrides (e.g. PGCOMMONUSER, PGADMINUSER) survive
-      package upgrades."""
-      self.PGLOG[key] = os.environ.get('PG' + key, default)
 
    def open_output(self, outfile=None):
       """Open the result output destination.
@@ -1435,7 +1429,7 @@ class PgLOG:
 
       Called automatically by :meth:`__init__`.
       """
-      # resolve common/admin user from environment (PGCOMMONUSER / PGADMINUSER)
+      # resolve common/admin user from environment (COMMONUSER / ADMINUSER)
       self.SETPGLOG("COMMONUSER", "gdexdata")
       self.SETPGLOG("ADMINUSER", "zji")
       self.PGLOG['RDAUSER'] = self.PGLOG['COMMONUSER']
