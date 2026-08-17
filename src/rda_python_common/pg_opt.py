@@ -577,9 +577,9 @@ class PgOPT(PgFile):
       if 'LN' not in self.params: self.pglog("Could not get user login name", self.PGOPT['extlog'])
       self.validate_dataset()
       if self.OPTS[self.PGOPT['CACT']][2] > 0: self.validate_dsowner(aname)
-      pgrec = self.pgget("dssdb.user", "uid", "logname = '{}' AND until_date IS NULL".format(self.params['LN']), self.PGOPT['extlog'])
-      if not pgrec: self.pglog("Could not get user.uid for " + self.params['LN'], self.PGOPT['extlog'])
-      self.PGOPT['UID'] = pgrec['uid']
+      uid = self.get_user_uid(self.params['LN'])
+      if not uid: self.pglog("Could not get user.uid for " + self.params['LN'], self.PGOPT['extlog'])
+      self.PGOPT['UID'] = uid
       self.open_output(self.params['OF'] if 'OF' in self.params else None)
 
    def set_sudo_uid(self, aname, uid):

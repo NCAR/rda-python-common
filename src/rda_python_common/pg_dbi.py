@@ -85,6 +85,7 @@ class PgDBI(PgLOG):
       curtran (int): Transaction counter: 0 = idle, >0 = inside a transaction.
       NMISSES (list): Cached list of scientist IDs (userno) not found in the DB.
       LMISSES (list): Cached list of login names not found in the DB.
+      USRWARN (int): Set to 1 once the 'run filluser' reminder has been logged.
       TABLES (dict): Cache of table-field default info keyed by table name.
       SEQUENCES (dict): Cache of sequence field names keyed by table name.
       SPECIALIST (dict): Cache of specialist records keyed by dataset ID.
@@ -125,6 +126,7 @@ class PgDBI(PgLOG):
       self.curtran = 0    # 0 - no transaction, 1 - in transaction
       self.NMISSES = []   # array of mising userno
       self.LMISSES = []   # array of mising logname
+      self.USRWARN = 0    # 1 - reminder for incomplete user records given already
       self.TABLES = {}      # record table field information
       self.SEQUENCES = {}   # record table sequence fielnames
       self.SPECIALIST = {}  # hash array refrences to specialist info of dsids
@@ -1699,6 +1701,83 @@ class PgDBI(PgLOG):
       ret = self.pgget('information_schema.tables', None, condition, logact)
       return (self.SUCCESS if ret else self.FAILURE)
 
+   def dssgrp_user_info(self, userno, logname = None):
+      """Build a partial dssdb.user record from dssdb.dssgrp.
+
+      Fallback for when the UCAR People API is unreachable, so a usable user record
+      can still be added for a DECS group member. Fields absent from dssgrp are set
+      to the values implied by DECS membership; the record is marked stat_flag 'M'
+      so that 'filluser -i' completes it once the People API is available again.
+
+      Args:
+         userno (int): Scientist number; pass 0 to look up by logname instead.
+         logname (str | None): UCAR login name; used when userno is 0.
+
+      Returns:
+         dict | None: Partial mapping of column_name → value suitable for
+                      pgadd('dssdb.user'), or None when not in dssgrp.
+      """
+      cond = "userno = {}".format(userno) if userno else "logname = '{}'".format(logname)
+      pgrec = self.pgget("dssgrp", "logname, userno, lstname, fstname, midinit, phoneno", cond, self.PGDBI['ERRLOG'])
+      if not pgrec: return None
+      if not pgrec['userno']: del pgrec['userno']   # leave NULL; 0 is never looked up
+      email = pgrec['logname'] + '@ucar.edu'
+      pgrec['org_type'] = 'DSS'
+      pgrec['org_name'] = 'NCAR'
+      pgrec['country'] = 'UNITED.STATES'
+      pgrec['email'] = pgrec['ucaremail'] = email
+      pgrec['stat_flag'] = 'M'
+      return pgrec
+
+   def add_missed_user(self, userno, logname = None):
+      """Add a dssdb.user record for a user missing from the table.
+
+      Tries the UCAR People API first, then dssgrp, and finally falls back to a bare
+      stub. A reminder to run filluser is logged once per process whenever the added
+      record is incomplete (stat_flag 'M').
+
+      Args:
+         userno (int): Scientist number; pass 0 to add by logname instead.
+         logname (str | None): UCAR login name; used when userno is 0.
+
+      Returns:
+         int: The new user.uid, or 0 if the insert fails.
+      """
+      pgrec = self.ucar_user_info(userno, logname)
+      if not pgrec: pgrec = self.dssgrp_user_info(userno, logname)
+      if not pgrec:
+         pgrec = {'userno': userno} if userno else {'logname': logname}
+         pgrec['stat_flag'] = 'M'
+      if pgrec['stat_flag'] == 'M': self.incomplete_user_warning()
+      return self.pgadd("dssdb.user", pgrec, (self.PGDBI['EXITLG']|self.AUTOID))
+
+   def incomplete_user_warning(self):
+      """Log a one-time reminder to run filluser for incomplete dssdb.user records."""
+      if self.USRWARN: return
+      self.USRWARN = 1
+      self.pglog("Incomplete record in dssdb.user; run 'filluser -i' later to complete it", self.LGWNEM)
+
+   def reopen_user_record(self, pgrec):
+      """Reactivate a closed dssdb.user record and return its uid.
+
+      Clears until_date and marks the record incomplete (stat_flag 'M') so that
+      'filluser -i' refreshes it. Records that are not closed are returned as is.
+      Only call this for a present-day lookup; reopening on a historical lookup
+      would wrongly reactivate a user who has since left.
+
+      Args:
+         pgrec (dict): Record holding at least 'uid' and 'until_date'.
+
+      Returns:
+         int: The uid of the record.
+      """
+      if pgrec['until_date']:
+         record = {'until_date': None, 'stat_flag': 'M'}
+         self.pgupdt("dssdb.user", record, "uid = {}".format(pgrec['uid']), self.PGDBI['ERRLOG'])
+         self.pglog("Closed user.uid = {} is reopened".format(pgrec['uid']), self.LGWNEM)
+         self.incomplete_user_warning()
+      return pgrec['uid']
+
    def check_user_uid(self, userno, date = None):
       """Return the user.uid for a scientist ID, adding a record if missing.
 
@@ -1716,6 +1795,7 @@ class PgDBI(PgLOG):
       """
       if not userno: return 0
       if type(userno) is str: userno = int(userno)
+      istoday = (date is None)
       if date is None:
          datecond = "until_date IS NULL"
          date = 'today'
@@ -1727,11 +1807,9 @@ class PgDBI(PgLOG):
          self.pglog("{}: Scientist ID NOT on file for {}".format(userno, date), self.LGWNEM)
          self.NMISSES.append(userno)
       # check again if a user is on file with different date range
-      pgrec = self.pgget("dssdb.user", "uid", "userno = {}".format(userno), self.PGDBI['ERRLOG'])
-      if pgrec: return pgrec['uid']
-      pgrec = self.ucar_user_info(userno)
-      if not pgrec: pgrec = {'userno': userno, 'stat_flag': 'M'}
-      uid = self.pgadd("dssdb.user", pgrec, (self.PGDBI['EXITLG']|self.AUTOID))
+      pgrec = self.pgget("dssdb.user", "uid, until_date", "userno = {}".format(userno), self.PGDBI['ERRLOG'])
+      if pgrec: return self.reopen_user_record(pgrec) if istoday else pgrec['uid']
+      uid = self.add_missed_user(userno)
       if uid: self.pglog("{}: Scientist ID Added as user.uid = {}".format(userno, uid), self.LGWNEM)
       return uid
 
@@ -1748,6 +1826,7 @@ class PgDBI(PgLOG):
          int: user.uid on success, 0 if logname is falsy or insert fails.
       """
       if not logname: return 0
+      istoday = (not date)
       if not date:
          date = 'today'
          datecond = "until_date IS NULL"
@@ -1759,11 +1838,9 @@ class PgDBI(PgLOG):
          self.pglog("{}: UCAR Login Name NOT on file for {}".format(logname, date), self.LGWNEM)
          self.LMISSES.append(logname)
       # check again if a user is on file with different date range
-      pgrec = self.pgget("dssdb.user", "uid", "logname = '{}'".format(logname), self.PGDBI['ERRLOG'])
-      if pgrec: return pgrec['uid']
-      pgrec = self.ucar_user_info(0, logname)
-      if not pgrec: pgrec = {'logname': logname, 'stat_flag': 'M'}
-      uid = self.pgadd("dssdb.user", pgrec, (self.PGDBI['EXITLG']|self.AUTOID))
+      pgrec = self.pgget("dssdb.user", "uid, until_date", "logname = '{}'".format(logname), self.PGDBI['ERRLOG'])
+      if pgrec: return self.reopen_user_record(pgrec) if istoday else pgrec['uid']
+      uid = self.add_missed_user(0, logname)
       if uid: self.pglog("{}: UCAR Login Name Added as user.uid = {}".format(logname, uid), self.LGWNEM)
       return uid
 
@@ -1796,6 +1873,9 @@ class PgDBI(PgLOG):
          'email': "ucaremail",
          'phone': "phoneno"
       }
+      # pgperson/pgusername are installed by rda_python_metrics; skip quietly when the
+      # commands are not on this host so that callers can fall back to dssgrp
+      if not self.valid_command("pgperson"): return None
       buf = self.pgsystem("pgperson " + ("-uid {}".format(userno) if userno else "-username {}".format(logname)), self.LOGWRN, 20)
       if not buf: return None
       pgrec = {}
@@ -1807,23 +1887,24 @@ class PgDBI(PgLOG):
                if key == 'upid' and 'upid' in pgrec: break  # get one record only
                pgrec[matches[key]] = val   
       if not pgrec: return None
+      # the People API omits keys it has no value for, so read them defensively
       if userno:
          pgrec['userno'] = userno
-      elif pgrec['userno']:
+      elif pgrec.get('userno'):
          pgrec['userno'] = userno = int(pgrec['userno'])
-      if pgrec['upid']: pgrec['upid'] = int(pgrec['upid'])
-      if pgrec['stat_flag']: pgrec['stat_flag'] = 'A' if pgrec['stat_flag'] == "True" else 'C'
-      if pgrec['email'] and re.search(r'(@|\.)ucar\.edu$', pgrec['email'], re.I):
-         pgrec['email'] = pgrec['ucaremail']
+      if pgrec.get('upid'): pgrec['upid'] = int(pgrec['upid'])
+      if pgrec.get('stat_flag'): pgrec['stat_flag'] = 'A' if pgrec['stat_flag'] == "True" else 'C'
+      email = pgrec.get('email')
+      if email and re.search(r'(@|\.)ucar\.edu$', email, re.I):
+         email = pgrec['email'] = pgrec.get('ucaremail')
          pgrec['org_name'] = 'NCAR'
-      country = pgrec['country'] if 'country' in pgrec else None
-      pgrec['country'] = self.set_country_code(pgrec['email'], country)
-      if pgrec['division']:
-         val = "NCAR"
-      else:
-         val = None
-      pgrec['org_type'] = self.get_org_type(val, pgrec['email'])
-      buf = self.pgsystem("pgusername {}".format(pgrec['logname']), self.LOGWRN, 20)
+      country = pgrec.get('country')
+      if email or country: pgrec['country'] = self.set_country_code(email, country)
+      val = "NCAR" if pgrec.get('division') else None
+      pgrec['org_type'] = self.get_org_type(val, email)
+      logname = pgrec.get('logname')
+      if not logname or not self.valid_command("pgusername"): return pgrec
+      buf = self.pgsystem("pgusername {}".format(logname), self.LOGWRN, 20)
       if not buf: return pgrec
       for line in buf.split('\n'):
          ms = re.match(r'^(.+)<=>(.*)$', line)
