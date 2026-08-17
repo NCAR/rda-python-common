@@ -1775,7 +1775,6 @@ class PgDBI(PgLOG):
          record = {'until_date': None, 'stat_flag': 'M'}
          self.pgupdt("dssdb.user", record, "uid = {}".format(pgrec['uid']), self.PGDBI['ERRLOG'])
          self.pglog("Closed user.uid = {} is reopened".format(pgrec['uid']), self.LGWNEM)
-         self.incomplete_user_warning()
       return pgrec['uid']
 
    def check_user_uid(self, userno, date = None):
