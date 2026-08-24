@@ -233,9 +233,9 @@ class PgFile(PgUtil, PgSIG):
          if self.pgcmp(thost, self.OHOST, 1) == 0:
             return self.local_copy_object(tofile, fromfile, None, None, logact)
          elif self.pgcmp(thost, self.BHOST, 1) == 0:
-            return self.local_copy_backup(tofile, fromfile, self.QPOINTS['B'], logact)
+            return self.wait_copy_backup(tofile, fromfile, self.QPOINTS['B'], logact)
          elif self.pgcmp(thost, self.DHOST, 1) == 0:
-            return self.local_copy_backup(tofile, fromfile, self.QPOINTS['D'], logact)
+            return self.wait_copy_backup(tofile, fromfile, self.QPOINTS['D'], logact)
          else:
             return self.local_copy_remote(tofile, fromfile, tohost, logact)
       elif self.pgcmp(thost, self.LHOST, 1) == 0:
@@ -664,12 +664,34 @@ class PgFile(PgUtil, PgSIG):
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
       return self.endpoint_copy_endpoint(tofile, fromfile, endpoint, 'gdex-glade', logact)
 
+   # Copy a local file to Quasar backup tape system and wait until the Globus task is done
+   # for callers that cannot handle a self.FINISH return
+   def wait_copy_backup(self, tofile, fromfile, endpoint = None, logact = 0):
+      """Copy a local GLADE file to the Quasar backup endpoint and wait for completion.
+
+      Args:
+         tofile (str): Destination path on the backup endpoint (leading '/dsNNN.N/').
+         fromfile (str): Source local path (leading '/data/' or '/decsdata/').
+         endpoint (str | None): Globus endpoint name; defaults to PGLOG['BACKUPEP'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS or self.FAILURE.
+      """
+      if not endpoint: endpoint = self.PGLOG['BACKUPEP']
+      ret = self.local_copy_backup(tofile, fromfile, endpoint, logact)
+      if ret == self.FINISH: ret = self.check_globus_finished(tofile, endpoint, logact)
+      return ret
+
    # Copy a  Quasar backup file to local Globus endpoint
    #   tofile - target file name, leading with /data/ or /decsdata/
    # fromfile - source file name, leading with /dsnnn.n/
    # endpoint - endpoint name on Quasar Backup Server
    def backup_copy_local(self, tofile, fromfile, endpoint = None, logact = 0):
       """Copy a file from the Quasar backup endpoint to a local GLADE path via Globus.
+
+      Waits for the Globus task to finish before returning, so the local file is
+      complete for the caller.
 
       Args:
          tofile (str): Destination local path (leading '/data/' or '/decsdata/').
@@ -678,10 +700,12 @@ class PgFile(PgUtil, PgSIG):
          logact (int): Logging action flags; default 0.
 
       Returns:
-         int: self.SUCCESS, self.FAILURE, or self.FINISH.
+         int: self.SUCCESS or self.FAILURE.
       """
       if not endpoint: endpoint = self.PGLOG['BACKUPEP']
-      return self.endpoint_copy_endpoint(tofile, fromfile, 'gdex-glade', endpoint, logact)
+      ret = self.endpoint_copy_endpoint(tofile, fromfile, 'gdex-glade', endpoint, logact)
+      if ret == self.FINISH: ret = self.check_globus_finished(tofile, 'gdex-glade', logact)
+      return ret
 
    # Copy a remote file to local
    #   tofile - target file name
