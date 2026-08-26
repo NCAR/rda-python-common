@@ -1635,11 +1635,23 @@ class PgFile(PgUtil, PgSIG):
       if not (omode and logname):
          info = self.check_local_file(file, 6)
          if not info:
-            if info != None: return self.FAILURE 
-            return self.lmsg(file, "{} to set mode({})".format(self.PGLOG['MISSFILE'], self.int2base(nmode, 8)), logact)   
+            if info != None: return self.FAILURE
+            return self.lmsg(file, "{} to set mode({})".format(self.PGLOG['MISSFILE'], self.int2base(nmode, 8)), logact)
          omode = info['mode']
          logname = info['logname']
       if nmode == omode: return self.SUCCESS
+      if logact and logact&self.EXITLG: logact &= ~self.EXITLG
+      euid = os.geteuid()
+      if euid and logname and pwd.getpwnam(logname).pw_uid != euid:
+         # only the file owner (or root) can chmod; try the pgstart_<owner> setuid wrapper
+         cmd = "chmod {} {}".format(self.int2base(nmode, 8), file)
+         wcmd = self.get_local_command(cmd, logname)
+         msg = "{}: Cannot set mode({}) for file owned by {}".format(file, self.int2base(nmode, 8), logname)
+         if wcmd != cmd:
+            if self.pgsystem(wcmd, logact, 257): return self.SUCCESS
+            if self.PGLOG['SYSERR']: msg += "\n" + self.PGLOG['SYSERR']
+         self.pglog(msg, self.LOGWRN)
+         return self.SUCCESS
       try:
          os.chmod(file, nmode)
       except Exception as e:
