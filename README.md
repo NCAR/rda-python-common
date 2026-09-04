@@ -165,7 +165,7 @@ PgLOG.pglog("hello", PgLOG.LOGWRN)
 python -c "import rda_python_common; print(rda_python_common.__version__)"
 ```
 
-You should see the installed version (currently `3.0.13`).  If the import
+You should see the installed version (currently `3.0.14`).  If the import
 fails, double-check that the active Python environment is the one where you
 ran `pip install`.
 

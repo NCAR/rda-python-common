@@ -1001,14 +1001,14 @@ class PgLOG:
          msg = "0S"
       return msg
 
-   def tosystem(self, cmd, timeout=0, logact=0, cmdopt=5, instr=None):
+   def tosystem(self, cmd, timeout=0, logact=None, cmdopt=5, instr=None):
       """Run a system command with a timeout via :meth:`pgsystem`.
 
       Args:
           cmd:     Command string or list (passed to :meth:`pgsystem`).
           timeout: Seconds before the command is killed.  Uses
                    ``PGLOG['TIMEOUT']`` when 0.
-          logact:  Logging action flags.
+          logact:  Logging action flags; defaults to ``LOGWRN``.
           cmdopt:  Command option bitfield (see :meth:`pgsystem`).
           instr:   String passed to the command via stdin.
 

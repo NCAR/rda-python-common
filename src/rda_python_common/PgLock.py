@@ -419,12 +419,11 @@ def lock_host_update_control(cidx, pid, host, logact = 0):
 #
 # return lock information of a locked process
 #
-def lock_process_info(pid, lockhost, runhost = None, pcnt = 0):
-
+def lock_process_info(pid, lockhost, runhost=None, pcnt=0):
    retstr = " {}<{}".format(lockhost, pid)
    if pcnt: retstr += "/{}".format(pcnt)
    retstr += ">"
-   if runhost and runhost != lockhost: retstr += '/' + runhost
+   if runhost is not None and runhost != lockhost: retstr += '/' + runhost
    return retstr
 
 #
@@ -544,9 +543,8 @@ def lock_host_partition(pidx, pid, host, logact = 0):
 # update dsrqst lock info for given partition lock status
 # Return None if all is fine; error message otherwise
 #
-def update_partition_lock(ridx, ptrec, logact = 0):
-
-   if not ridx: return 0
+def update_partition_lock(ridx, ptrec, logact=0):
+   if not ridx: return None
    if logact:
       logerr = logact|PgLOG.ERRLOG
       logout = logact&(~PgLOG.EXITLG)
@@ -558,27 +556,26 @@ def update_partition_lock(ridx, ptrec, logact = 0):
    cnd = "rindex = {}".format(ridx)
    pgrec = PgDBI.pgget(table, "pid, lockhost", cnd, logact|PgLOG.DOLOCK)
    if not pgrec: return "Error get Rqst{} record".format(ridx)   # should not happen
-
    if pgrec['pid'] > 0 and pgrec['lockhost'] != lockhost:
-      return "Rqst{} locked by non-lockhost process ({}/{})".format(ridx, pgrec['pid'], pgrec['lockhost'])      
-
+      return "Rqst{} locked by non-lockhost process ({}/{})".format(ridx, pgrec['pid'], pgrec['lockhost'])
    record = {}
-   if ptrec['pid'] > 0:
+   if ptrec.get('pid', 0) > 0:
+      # Locking a partition: increment the dsrqst pid counter.
       record['pid'] = pgrec['pid'] + 1
       record['lockhost'] = lockhost
       record['locktime'] = ptrec['locktime']
    else:
+      # Unlocking a partition: decrement the counter, but never below 0.
       if pgrec['pid'] > 1:
          pcnt = PgDBI.pgget('ptrqst', '', cnd + " AND pid > 0")
          if pgrec['pid'] > pcnt: pgrec['pid'] = pcnt
-         record['pid'] = pgrec['pid'] - 1
+         record['pid'] = max(0, pgrec['pid'] - 1)
          record['lockhost'] = lockhost
       else:
          record['pid'] = 0
          record['lockhost'] = ''
    if not PgDBI.pgupdt(table, record, cnd, logact):
       return "Error update Rqst{} lock".format(ridx)
-
    return None
 
 #

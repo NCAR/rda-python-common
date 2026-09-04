@@ -21,6 +21,7 @@ import pwd
 import grp
 import shlex
 import smtplib
+import subprocess
 from email.message import EmailMessage
 from subprocess import Popen, PIPE
 from os import path as op
@@ -95,19 +96,14 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'SETUID'  : '',         # the login name for suid if it is different to the CURUID
    'FILEMODE': 0o664,      # default 8-base file mode
    'EXECMODE': 0o775,      # default 8-base executable file mode or directory mode
-   'ARCHHOST': "hpss",     # change to hpss from mss
-   'ARCHROOT': "/FS/DECS",      # root path for segregated tape on hpss
-   'BACKROOT': "/DRDATA/DECS",  # backup path for desaster recovering tape on hpss
-   'OLDAROOT': "/FS/DSS",       # old root path on hpss
-   'OLDBROOT': "/DRDATA/DSS",   # old backup tape on hpss
-   # COMMONUSER and ADMINUSER are set below via SETPGLOG (env overrides PG<KEY>)
+   # COMMONUSER and ADMINUSER are set in set_common_pglog() (env overrides)
    'SUDOGDEX' : 0,          # 1 to allow sudo to PGLOG['COMMONUSER']
    'HOSTNAME' : '',        # current host name the process in running on
    'OBJCTSTR' : "object",
    'BACKUPNM' : "quasar",
    'DRDATANM' : "drdata",
+   'TACCNAME' : "tacc",
    'GPFSNAME' : "glade",
-   'SLMNAME' : "SLURM",
    'PBSNAME' : "PBS",
    'DSIDCHRS' : "d",
    'DOSHELL' : False,
@@ -116,16 +112,14 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'BCHHOSTS' : "PBS",
    'HOSTTYPE' : 'dav',    # default HOSTTYPE
    'EMLMAX' : 256,       # up limit of email line count
-   'PGBATCH' : '',       # current batch service name, SLURM or PBS
+   'PGBATCH' : '',       # current batch service name, PBS
    'PGBINDIR' : '',
-   'SLMTIME' : 604800,   # max runtime for SLURM bath job, (7x24x60x60 seconds)
    'PBSTIME' : 86400,    # max runtime for PBS bath job, (24x60x60 seconds)
    'MSSGRP'  : None,     # set if set to different HPSS group
    'GDEXGRP'  : "decs",
    'EMLSEND' : None,     # path to sendmail, None if not exists
    'DSCHECK' : None,     # carry some cached dscheck information
    'PGDBBUF' : None,      # reference to a connected database object
-   'HPSSLMT' : 10,       # up limit of HPSS streams
    'NOQUIT'  : 0,        # do not quit if this flag is set for daemons
    'DBRETRY' : 2,        # db retry count after error
    'TIMEOUT' : 15,       # default timeout (in seconds) for tosystem()
@@ -139,30 +133,12 @@ PGLOG = {   # more defined in untaint_suid() with environment variables
    'EMLPORT' : 25
 }
 
-def SETPGLOG(key, default):
-   """Set ``PGLOG[key]`` from environment variable ``PG<key>`` or fall back
-   to ``default`` if the variable is unset.  Used to make per-environment
-   overrides (e.g. PGCOMMONUSER, PGADMINUSER) survive package upgrades."""
-   PGLOG[key] = os.environ.get('PG' + key, default)
-
-SETPGLOG("COMMONUSER", "gdexdata")
-SETPGLOG("ADMINUSER", "zji")
-
-PGLOG['RDAUSER'] = PGLOG['COMMONUSER']
-PGLOG['RDAGRP'] = PGLOG['GDEXGRP']
-PGLOG['RDAEMAIL'] = PGLOG['ADMINUSER']
-PGLOG['SUDORDA'] = PGLOG['SUDOGDEX']
-# backwards-compat aliases (deprecated: use COMMONUSER / ADMINUSER)
-PGLOG['GDEXUSER'] = PGLOG['COMMONUSER']
-PGLOG['GDEXEMAIL'] = PGLOG['ADMINUSER']
-
 HOSTTYPES = {
    'rda' : 'dsg_mach',
+   'crlogin' : 'dav',
    'casper' : 'dav',
    'crhtc' : 'dav',
    'cron' : 'dav',
-   'cheyenne' : 'ch',
-   'chadmin'  : 'ch'
 }
 
 CPID = {
@@ -172,25 +148,21 @@ CPID = {
    'CPID' : "",
 }
 
-BCHCMDS = {'PBS' : 'qsub', 'SLURM' : 'sbatch'}
+BCHCMDS = {'PBS' : 'qsub'}
 
 # global dists to cashe information
 COMMANDS = {}
-SLMHOSTS = []
-SLMSTATS = {}
+CMDPATHS = {}    # cache of bare command name -> full path (or '' if not found)
 PBSHOSTS = []
 PBSSTATS = {}
+OUTPUT = None    # result output destination, opened via PgOPT.open_output()
 
 #
 # get time string in format YYMMDDHHNNSS for given ctime; or current time if ctime is 0
 #
-def current_datetime(ctime = 0):
-
-   if PGLOG['GMTZ']:
-      dt = time.gmtime(ctime) if ctime else time.gmtime()
-   else:
-      dt = time.localtime(ctime) if ctime else time.localtime()
-
+def current_datetime(ctime=0):
+   get_time = time.gmtime if PGLOG['GMTZ'] else time.localtime
+   dt = get_time(ctime) if ctime else get_time()
    return "{:02}{:02}{:02}{:02}{:02}{:02}".format(dt[0], dt[1], dt[2], dt[3], dt[4], dt[5])
 
 #
@@ -207,46 +179,42 @@ def get_environment(name, default = None, logact = 0):
 #
 # cache the msg string to global email entries for later call of send_email()
 #
-def set_email(msg, logact = 0):
-
+def set_email(msg, logact=0):
    if logact and msg:
       if logact&EMLTOP:
          if PGLOG['PRGMSG']:
             msg = PGLOG['PRGMSG'] + "\n" + msg
             PGLOG['PRGMSG'] = ""
          if PGLOG['ERRCNT'] == 0:
-            if not re.search(r'\n$', msg): msg += "!\n"
+            if not msg.endswith('\n'): msg += "!\n"
          else:
             if PGLOG['ERRCNT'] == 1:
                msg += " with 1 Error:\n"
             else:
                msg += " with {} Errors:\n".format(PGLOG['ERRCNT'])
+            msg += "\nERROR MESSAGE:\n"
             msg +=  break_long_string(PGLOG['ERRMSG'], 512, None, PGLOG['EMLMAX']/2, None, 50, 25)
             PGLOG['ERRCNT'] = 0
             PGLOG['ERRMSG'] = ''
-
          if PGLOG['SUMMSG']:
-            msg += PGLOG['SEPLINE']
-            if PGLOG['SUMMSG']: msg += "Summary:\n"
+            msg += "\nSUMMARY:\n"
             msg += break_long_string(PGLOG['SUMMSG'], 512, None, PGLOG['EMLMAX']/2, None, 50, 25)
-
          if PGLOG['EMLMSG']:
-            msg += PGLOG['SEPLINE']
-            if PGLOG['SUMMSG']: msg += "Detail Information:\n"
-
+            msg += "\nDETAIL INFORMATION:\n"
          PGLOG['EMLMSG'] = msg + break_long_string(PGLOG['EMLMSG'], 512, None, PGLOG['EMLMAX'], None, 50, 40)
          PGLOG['SUMMSG'] = ""   # in case not
       else:
          if logact&ERRLOG:      # record error for email summary
             PGLOG['ERRCNT'] += 1
-            if logact&BRKLIN: PGLOG['ERRMSG'] += "\n"
+            if PGLOG['ERRMSG']:      # blank line between consecutive errors
+               if not PGLOG['ERRMSG'].endswith('\n'): PGLOG['ERRMSG'] += "\n"
+               PGLOG['ERRMSG'] += "\n"
             PGLOG['ERRMSG'] += "{}. {}".format(PGLOG['ERRCNT'], msg)
          elif logact&EMLSUM:
             if PGLOG['SUMMSG']:
                if logact&BRKLIN: PGLOG['SUMMSG'] += "\n"
                if logact&SEPLIN: PGLOG['SUMMSG'] += PGLOG['SEPLINE']
             PGLOG['SUMMSG'] += msg    # append
-
          if logact&EMLLOG:
             if PGLOG['EMLMSG']:
                if logact&BRKLIN: PGLOG['EMLMSG'] += "\n"
@@ -264,15 +232,14 @@ def get_email():
 #
 #  send a customized email with all entries included
 #
-def send_customized_email(logmsg, emlmsg, logact = LOGWRN):
-
+def send_customized_email(logmsg, emlmsg, logact=None):
+   if logact is None: logact = LOGWRN
    entries = {
-      'fr' : ["From",    1, None],
-      'to' : ["To",      1, None],
-      'cc' : ["Cc",      0, ''],
-      'sb' : ["Subject", 1, None]
+      'fr': ["From",    1, None],
+      'to': ["To",      1, None],
+      'cc': ["Cc",      0, ''],
+      'sb': ["Subject", 1, None]
    }
-
    if logmsg:
       logmsg += ': '
    else:
@@ -287,10 +254,8 @@ def send_customized_email(logmsg, emlmsg, logact = LOGWRN):
          if vals[2]: entries[ekey][2] = vals[2]
       elif entries[ekey][1]:
          return pglog("{}Missing Entry '{}' for sending email".format(logmsg, entry), logact|ERRLOG)
-
    ret = send_python_email(entries['sb'][2], entries['to'][2], msg, entries['fr'][2], entries['cc'][2], logact)
-   if ret == SUCCESS or not PGLOG['EMLSEND']: return ret
-
+   if ret == SUCCESS or not PGLOG['EMLSEND']: return ret   
    # try commandline sendmail
    ret = pgsystem(PGLOG['EMLSEND'], logact, 4, emlmsg)
    logmsg += "Email " + entries['to'][2]
@@ -302,29 +267,27 @@ def send_customized_email(logmsg, emlmsg, logact = LOGWRN):
    else:
       errmsg = "Error sending email: " + logmsg
       pglog(errmsg, (logact|ERRLOG)&~EXITLG)
-
    return ret
 
 #
 #  send an email; if empty msg send email message saved in PGLOG['EMLMSG'] instead
 #
-def send_email(subject = None, receiver = None, msg = None, sender = None, logact = LOGWRN):
-
+def send_email(subject=None, receiver=None, msg=None, sender=None, logact=None):
+   if logact is None: logact = LOGWRN
    return send_python_email(subject, receiver, msg, sender, None, logact)
 
 #
 #  send an email via python module smtplib; if empty msg send email message saved
 #  in PGLOG['EMLMSG'] instead. pass cc = '' for skipping 'Cc: '
 #
-def send_python_email(subject = None, receiver = None, msg = None, sender = None, cc = None, logact = LOGWRN):
-
+def send_python_email(subject=None, receiver=None, msg=None, sender=None, cc=None, logact=None):
+   if logact is None: logact = LOGWRN
    if not msg:
       if PGLOG['EMLMSG']:
          msg = PGLOG['EMLMSG']
          PGLOG['EMLMSG'] = ''
       else:
          return ''
-
    docc = False if cc else True
    if not sender:
       sender = PGLOG['CURUID']
@@ -335,7 +298,6 @@ def send_python_email(subject = None, receiver = None, msg = None, sender = None
       receiver = PGLOG['EMLADDR'] if PGLOG['EMLADDR'] else PGLOG['CURUID']
    if receiver == PGLOG['COMMONUSER']: receiver = PGLOG['ADMINUSER']
    if receiver.find('@') == -1: receiver += "@ucar.edu"
-
    if docc and not re.match(PGLOG['COMMONUSER'], sender): add_carbon_copy(sender, 1)
    emlmsg = EmailMessage()
    emlmsg.set_content(msg)
@@ -351,6 +313,7 @@ def send_python_email(subject = None, receiver = None, msg = None, sender = None
    emlmsg['Subject'] = subject
    if CPID['CPID']: logmsg += " in " + CPID['CPID']
    logmsg += ", Subject: {}\n".format(subject)
+   eml = None
    try:
       eml = smtplib.SMTP(PGLOG['EMLSRVR'], PGLOG['EMLPORT'])
       eml.send_message(emlmsg)
@@ -358,25 +321,25 @@ def send_python_email(subject = None, receiver = None, msg = None, sender = None
       errmsg = f"Error sending email:\n{err}\n{logmsg}"
       return pglog(errmsg, (logact|ERRLOG)&~EXITLG)
    finally:
-      eml.quit()
-      log_email(str(emlmsg))
-      pglog(logmsg, logact&~EXITLG)
-      return SUCCESS
+      if eml is not None:
+         eml.quit()
+   log_email(str(emlmsg))
+   pglog(logmsg, logact&~EXITLG)
+   return SUCCESS
 
 #
 # log email sent
 #
 def log_email(emlmsg):
-
-   if not CPID['PID']: CPID['PID'] =  "{}-{}-{}".format(PGLOG['HOSTNAME'], get_command(), PGLOG['CURUID'])
+   if not CPID['PID']:
+      CPID['PID'] = "{}-{}-{}".format(PGLOG['HOSTNAME'], get_command(), PGLOG['CURUID'])
    cmdstr = "{} {} at {}\n".format(CPID['PID'], break_long_string(CPID['CMD'], 40, "...", 1), current_datetime())
    fn = "{}/{}".format(PGLOG['LOGPATH'], PGLOG['EMLFILE'])
    try:
-      f = open(fn, 'a')
-      f.write(cmdstr + emlmsg)
-      f.close()
+      with open(fn, 'a') as f:
+         f.write(cmdstr + emlmsg)
    except FileNotFoundError as e:
-       print(e)
+      print(e)
 
 #
 # Function: cmdlog(cmdline)
@@ -416,8 +379,8 @@ def cmdlog(cmdline = None, ctime = 0, logact = None):
 #
 # log and display message/error and exit program according logact value
 #
-def pglog(msg, logact = MSGLOG):
-
+def pglog(msg, logact=None):
+   if logact is None: logact = MSGLOG  
    retmsg = None
    logact &= PGLOG['LOGMASK']   # filtering the log actions
    if logact&RCDMSG: logact |= MSGLOG
@@ -425,16 +388,14 @@ def pglog(msg, logact = MSGLOG):
    if logact&EMEROL:
       if logact&EMLLOG: logact &= ~EMLLOG
       if not logact&ERRLOG: logact &= ~EMEROL
-
    msg = msg.lstrip() if msg else ''  # remove leading whitespaces for logging message
    if logact&EXITLG:
       ext = "Exit 1 in {}\n".format(os.getcwd())
       if msg: msg = msg.rstrip() + "; "
       msg += ext
    else:
-      if msg and not re.search(r'(\n|\r)$', msg): msg += "\n"
+      if msg and not msg.endswith(('\n', '\r')): msg += "\n"
       if logact&RETMSG: retmsg = msg
-
    if logact&EMLALL:
       if logact&SNDEML or not msg:
          title = (msg if msg else "Message from {}-{}".format(PGLOG['HOSTNAME'], get_command()))
@@ -442,22 +403,18 @@ def pglog(msg, logact = MSGLOG):
          send_email(title.rstrip())
       elif msg:
          set_email(msg, logact)
-
    if not msg: return (retmsg if retmsg else FAILURE)
-
    if logact&EXITLG and (PGLOG['EMLMSG'] or PGLOG['SUMMSG'] or PGLOG['ERRMSG'] or PGLOG['PRGMSG']):
       if not logact&EMLALL: set_email(msg, logact)
       title = "ABORTS {}-{}".format(PGLOG['HOSTNAME'], get_command())
       set_email((("ABORTS " + CPID['PID']) if CPID['PID'] else title), EMLTOP)
       msg = title + '\n' + msg
-      send_email(title)
-
+      send_email(title)   
    if logact&LOGERR: # make sure error is always logged
       msg = break_long_string(msg)
       if logact&(ERRLOG|EXITLG):
          cmdstr = get_error_command(int(time.time()), logact)
          msg = cmdstr + msg
-
       if not logact&NOTLOG:
          if logact&ERRLOG:
             if not PGLOG['ERRFILE']: PGLOG['ERRFILE'] = re.sub(r'.log$', '.err', PGLOG['LOGFILE'])
@@ -466,7 +423,6 @@ def pglog(msg, logact = MSGLOG):
                write_message(cmdstr, f"{PGLOG['LOGPATH']}/{PGLOG['LOGFILE']}", logact)
          else:
             write_message(msg, f"{PGLOG['LOGPATH']}/{PGLOG['LOGFILE']}", logact)
-
    if not PGLOG['BCKGRND'] and logact&(ERRLOG|WARNLG):
       write_message(msg, None, logact)
 
@@ -500,9 +456,9 @@ def write_message(msg, file, logact):
 #
 # check and disconnet database before exit
 #
-def pgexit(stat = 0):
-
+def pgexit(stat=0):
    if PGLOG['PGDBBUF']: PGLOG['PGDBBUF'].close()
+   if OUTPUT and OUTPUT != sys.stdout: OUTPUT.close()
    sys.exit(stat)
 
 #
@@ -521,18 +477,16 @@ def get_error_command(ctime, logact):
 #
 # get call trace track
 #
-def get_call_trace(cut = 1):
-
+def get_call_trace(cut=1):
    t = traceback.extract_stack()
    n = len(t) - cut
-   str = ''
+   trace = ''
    sep = 'Trace: '
    for i in range(n):
-     tc = t[i]
-     str += "{}{}({}){}".format(sep, tc[0], tc[1], ("" if tc[2] == '<module>' else "{%s()}" % tc[2]))
-     if i == 0: sep = '=>'
-
-   return str + "\n" if str else ""
+      tc = t[i]
+      trace += "{}{}({}){}".format(sep, tc[0], tc[1], ("" if tc[2] == '<module>' else "{%s()}" % tc[2]))
+      if i == 0: sep = '=>'
+   return trace + "\n" if trace else ""
 
 #
 # get caller file name
@@ -544,14 +498,11 @@ def get_caller_file(cidx = 0):
 #
 # log message, msg, for degugging processes according to the debug level
 #
-def pgdbg(level, msg = None, do_trace = True):
-
+def pgdbg(level, msg=None, do_trace=True):
    if not PGLOG['DBGLEVEL']: return     # no further action
-
    if not isinstance(level, int):
       ms = re.match(r'^(\d+)', level)
       level = int(ms.group(1)) if ms else 0
-
    levels = [0, 0]
    if isinstance(PGLOG['DBGLEVEL'], int):
       levels[1] = PGLOG['DBGLEVEL']
@@ -564,9 +515,7 @@ def pgdbg(level, msg = None, do_trace = True):
          if ms:
             levels[0] = int(ms.group(1)) if ms.group(1) else 0
             levels[1] = int(ms.group(2)) if ms.group(2) else 9999
-
    if level > levels[1] or level < levels[0]: return   # debug level is out of range
-
    if 'DBGPATH' in PGLOG:
       dfile = PGLOG['DBGPATH'] + '/' + PGLOG['DBGFILE']
    else:
@@ -576,12 +525,10 @@ def pgdbg(level, msg = None, do_trace = True):
       msg = "DEBUG for " + CPID['PID'] + " "
       if CPID['CPID']: msg += CPID['CPID'] + " <= "
       msg += break_long_string(CPID['CMD'], 40, "...", 1)
-
    # logging debug info
-   DBG = open(dfile, 'a')
-   DBG.write("{}:{}\n".format(level, msg))
-   if do_trace: DBG.write(get_call_trace())
-   DBG.close()
+   with open(dfile, 'a') as DBG:
+      DBG.write("{}:{}\n".format(level, msg))
+      if do_trace: DBG.write(get_call_trace())
 
 #
 # return trimed string (strip leading and trailling spaces); remove comments led by '#' if rmcmt > 0
@@ -616,13 +563,10 @@ def set_help_path(progfile):
 # show program usage in file "PGLOG['PUSGDIR']/progname.usg" on screen with unix
 # system function 'pg', exit program when done.
 #
-def show_usage(progname, opts = None):
-
+def show_usage(progname, opts=None):
    if PGLOG['PUSGDIR'] is None: set_help_path(get_caller_file(1))
    usgname = join_paths(PGLOG['PUSGDIR'], progname + '.usg')
-
-   if opts:
-      # show usage for individual option of dsarch
+   if opts:   # show usage for individual option of dsarch
       for opt in opts:
          if opts[opt][0] == 0:
             msg = "Mode"
@@ -632,26 +576,23 @@ def show_usage(progname, opts = None):
             msg = "Multi-Value Information"
          else:
             msg = "Action"
-
          sys.stdout.write("\nDescription of {} Option -{}:\n".format(msg, opt))
-         IN = open(usgname, 'r')
          nilcnt = begin = 0
-         for line in IN:
-            if begin == 0:
-               rx = "  -{} or -".format(opt)
-               if re.match(rx, line): begin = 1
-            elif re.match(r'^\s*$', line):
-               if nilcnt: break
-               nilcnt = 1
-            else:
-               if re.match(r'\d[\.\s\d]', line): break    # section title
-               if nilcnt and re.match(r'  -\w\w or -', line): break
-               nilcnt = 0
-            if begin: sys.stdout.write(line)
-         IN.close()
+         with open(usgname, 'r') as IN:
+            for line in IN:
+               if begin == 0:
+                  rx = "  -{} or -".format(opt)
+                  if re.match(rx, line): begin = 1
+               elif re.match(r'^\s*$', line):
+                  if nilcnt: break
+                  nilcnt = 1
+               else:
+                  if re.match(r'\d[\.\s\d]', line): break    # section title
+                  if nilcnt and re.match(r'  -\w\w or -', line): break
+                  nilcnt = 0
+               if begin: sys.stdout.write(line)
    else:
-      os.system("more " + usgname)
-
+      subprocess.run(['more', usgname])
    pgexit(0)
 
 #
@@ -695,28 +636,24 @@ def std2err(line):
 # instr   - input string passing to the command via stdin if not None
 # seconds - number of seconds to wait for a timeout process if > 0
 #
-def pgsystem(pgcmd, logact = LOGWRN, cmdopt = 5, instr = None, seconds = 0):
-
+def pgsystem(pgcmd, logact=None, cmdopt=5, instr=None, seconds=0):
+   if logact is None: logact = LOGWRN
    ret = SUCCESS
    if not pgcmd: return ret  # empty command
-
    act = logact&~EXITLG
    if act&ERRLOG:
       act &= ~ERRLOG
       act |= WARNLG
-
    if act&MSGLOG: act |= FRCLOG   # make sure system calls always logged
    cmdact = act if cmdopt&1 else 0
    doshell = True if cmdopt&1024 else PGLOG['DOSHELL']
-
    if isinstance(pgcmd, str):
       cmdstr = pgcmd
       if not doshell and re.search(r'[*?<>|;]', pgcmd): doshell = True
       execmd = pgcmd if doshell else shlex.split(pgcmd)
    else:
       cmdstr = shlex.join(pgcmd)
-      execmd = cmdstr if doshell else pgcmd
-
+      execmd = cmdstr if doshell else pgcmd   
    if cmdact:
       if cmdopt&8:
          cmdlog("starts '{}'".format(cmdstr), None, cmdact)
@@ -757,13 +694,11 @@ def pgsystem(pgcmd, logact = LOGWRN, cmdopt = 5, instr = None, seconds = 0):
       else:
          ret = FAILURE if FD.returncode else SUCCESS
          if isinstance(outbuf, bytes): outbuf = str(outbuf, errors='replace')
-         if isinstance(errbuf, bytes): errbuf = str(errbuf, errors='replace')
-
+         if isinstance(errbuf, bytes): errbuf = str(errbuf, errors='replace')   
       if errbuf and cmdopt&32:
          outbuf += errbuf
          if cmdopt&256: PGLOG['SYSERR'] = errbuf
          errbuf = ''
-
       if outbuf:
          lines = outbuf.split('\n')
          for line in lines:
@@ -779,7 +714,6 @@ def pgsystem(pgcmd, logact = LOGWRN, cmdopt = 5, instr = None, seconds = 0):
                elif stdlog:
                   pglog(line, stdlog)
                if cmdopt&16: retbuf += line + "\n"
-
       if errbuf:
          lines = errbuf.split('\n')
          for line in lines:
@@ -791,36 +725,30 @@ def pgsystem(pgcmd, logact = LOGWRN, cmdopt = 5, instr = None, seconds = 0):
             else:
                if cmdopt&260: error += line + "\n"
                if abort == -1 and re.match('ABORTS ', line): abort = 1
-
       if ret == SUCCESS and abort == 1: ret = FAILURE
       end = time.time()
       last = end - last
-
       if error:
+         cmdpstr = command_path(cmdstr)
          if ret == FAILURE:
-            error = "Error Execute: {}\n{}".format(cmdstr, error)
+            error = "Error Execute: {}\n{}".format(cmdpstr, error)
          else:
-            error = "Error From: {}\n{}".format(cmdstr, error)
-
+            error = "Error From: {}\n{}".format(cmdpstr, error)
          if loop > 1: error = "Retry "
          if cmdopt&256: PGLOG['SYSERR'] += error
          if cmdopt&4:
             errlog = (act|ERRLOG)
             if ret == FAILURE and loop >= loops: errlog |= logact
             pglog(error, errlog)
-
       if last > PGLOG['CMDTIME'] and not re.search(r'(^|/|\s)(dsarch|dsupdt|dsrqst)\s', cmdstr):
          cmdstr = "> {} Ends By {}".format(break_long_string(cmdstr, 100, "...", 1), current_datetime())
          cmd_execute_time(cmdstr, last, cmdact)
-
       if ret == SUCCESS or loop >= loops: break
       time.sleep(6)
-
    if ret == FAILURE and retbuf and cmdopt&272 == 272:
       if PGLOG['SYSERR']: PGLOG['SYSERR'] += '\n'
       PGLOG['SYSERR'] += retbuf
       retbuf = ''
-
    return (retbuf if cmdopt&16 else ret)
 
 #
@@ -854,35 +782,27 @@ def cmd_execute_time(cmdstr, last, logact = None):
 #
 # convert given seconds to string time with units of S-Second,M-Minute,H-Hour,D-Day
 #
-def seconds_to_string_time(seconds, showzero = 0):
-
+def seconds_to_string_time(seconds, showzero=0):
    msg = ''
-   s = m = h = 0
-
    if seconds > 0:
-      s = seconds%60                  # seconds (0-59)
-      minutes = int(seconds/60)       # total minutes
-      m = minutes%60                  # minutes (0-59)
-      if minutes >= 60:
-         hours = int(minutes/60)      # total hours
-         h = hours%24                 # hours (0-23)
-         if hours >= 24:
-            msg += "{}D".format(int(hours/24))   # days
-         if h: msg += "{}H".format(h)
-      if m: msg += "{}M".format(m)
+      minutes, s = divmod(seconds, 60)
+      hours, m = divmod(int(minutes), 60)
+      days, h = divmod(hours, 24)
+      if days: msg += "{}D".format(days)
+      if h: msg += "{}H".format(h)
+      if m: msg += "{}M".format(int(m))
       if s:
-         msg += "%dS"%(s) if isinstance(s, int) else "{:.3f}S".format(s)
+         msg += "%dS" % s if isinstance(s, int) else "{:.3f}S".format(s)
    elif showzero:
       msg = "0S"
-
    return msg
 
 #
 #  wrap function to call pgsystem() with a timeout control
 #  return FAILURE if error eval or time out
 #
-def tosystem(cmd, timeout = 0, logact = LOGWRN, cmdopt = 5, instr = None):
-
+def tosystem(cmd, timeout=0, logact=None, cmdopt=5, instr=None):
+   if logact is None: logact = LOGWRN
    if not timeout: timeout = PGLOG['TIMEOUT']   # set default timeout if missed
    return pgsystem(cmd, logact, cmdopt, instr, timeout)
 
@@ -1018,8 +938,7 @@ def valid_batch_host(host, logact = 0):
 #
 # Return the full command path if valid; '' if not
 #
-def valid_command(cmd, logact = 0):
-
+def valid_command(cmd, logact=0):
    ms = re.match(r'^(\S+)( .*)$', cmd)
    if ms:
       option = ms.group(2)
@@ -1029,13 +948,29 @@ def valid_command(cmd, logact = 0):
    if cmd not in COMMANDS:
       buf = shutil.which(cmd)
       if buf is None:
-         if logact: pglog(cmd + ": executable command not found", logact)
+         if logact: pglog("{}: executable command not found in\n{}".format(cmd, os.environ.get("PATH")), logact)
          buf = ''
       elif option:
          buf += option
       COMMANDS[cmd] = buf
-
    return COMMANDS[cmd]
+
+#
+# expand the leading bare command name of a command string to its full path
+#
+# Return the command string unchanged if the command cannot be located
+#
+def command_path(cmdstr):
+   if not cmdstr: return ''
+   sp = cmdstr.find(' ')
+   cmd = cmdstr if sp < 0 else cmdstr[:sp]
+   if '/' in cmd or '\\' in cmd: return cmdstr
+   pcmd = CMDPATHS.get(cmd)
+   if pcmd is None:
+      pcmd = shutil.which(cmd) or ''
+      CMDPATHS[cmd] = pcmd
+   if not pcmd: return cmdstr
+   return pcmd if sp < 0 else pcmd + cmdstr[sp:]
 
 #
 # add carbon copies to PGLOG['CCDADDR']
@@ -1089,61 +1024,23 @@ def get_short_host(host):
    return host
 
 #
-# get a live SLURM host name
-#
-def get_slurm_host():
-
-   global SLMHOSTS
-
-   if not SLMSTATS and PGLOG['SLMHOSTS']:
-      SLMHOSTS = PGLOG['SLMHOSTS'].split(':')
-      for host in SLMHOSTS:
-         SLMSTATS[host] = 1
-
-   for host in SLMHOSTS:
-      if host in SLMSTATS and SLMSTATS[host]: return host
-
-   return None
-
-#
 # get a live PBS host name
 #
 def get_pbs_host():
-
    global PBSHOSTS
-
    if not PBSSTATS and PGLOG['PBSHOSTS']:
       PBSHOSTS = PGLOG['PBSHOSTS'].split(':')
       for host in PBSHOSTS:
          PBSSTATS[host] = 1
-
    for host in PBSHOSTS:
       if host in PBSSTATS and PBSSTATS[host]: return host
-
    return None
-
-#
-# set host status, 0 dead & 1 live, for one or all avalaible slurm hosts
-#
-def set_slurm_host(host = None, stat = 0):
-
-   global SLMHOSTS
-
-   if host:
-      SLMSTATS[host] = stat
-   else:
-      if not SLMHOSTS and PGLOG['SLMHOSTS']:
-         SLMHOSTS = PGLOG['SLMHOSTS'].split(':')
-      for host in SLMHOSTS:
-         SLMSTATS[host] = stat
 
 #
 # set host status, 0 dead & 1 live, for one or all avalaible pbs hosts
 #
-def set_pbs_host(host = None, stat = 0):
-
+def set_pbs_host(host=None, stat=0):
    global PBSHOSTS
-
    if host:
       PBSSTATS[host] = stat
    else:
@@ -1155,17 +1052,16 @@ def set_pbs_host(host = None, stat = 0):
 #
 #  reset the batch host name in case was not set properly
 #
-def reset_batch_host(bhost, logact = LOGWRN):
-
-   BCHHOST = bhost.upper()
-
-   if BCHHOST != PGLOG['PGBATCH']:
+def reset_batch_host(bhost, logact=None):
+   if logact is None: logact = LOGWRN
+   bchhost = bhost.upper()
+   if bchhost != PGLOG['PGBATCH']:
       if PGLOG['CURBID'] > 0:
-         pglog("{}-{}: Batch ID is set, cannot change Batch host to {}".format(PGLOG['PGBATCH'], PGLOG['CURBID'], BCHHOST) , logact)
+         pglog("{}-{}: Batch ID is set, cannot change Batch host to {}".format(PGLOG['PGBATCH'], PGLOG['CURBID'], bchhost) , logact)
       else:
-         ms = re.search(r'(^|:){}(:|$)'.format(BCHHOST), PGLOG['BCHHOSTS'])
+         ms = re.search(r'(^|:){}(:|$)'.format(bchhost), PGLOG['BCHHOSTS'])
          if ms:
-            PGLOG['PGBATCH'] = BCHHOST
+            PGLOG['PGBATCH'] = bchhost
             if PGLOG['CURBID'] == 0: PGLOG['CURBID'] = -1
          elif PGLOG['PGBATCH']:
             PGLOG['PGBATCH'] = ''
@@ -1215,31 +1111,6 @@ def get_remote_command(cmd, host, asuser = None):
    return get_local_command(cmd, asuser)
 
 #
-# wrap a given hpss command cmd with sudo either before his of after hsi
-# to run as user asuser
-#
-def get_hpss_command(cmd, asuser = None, hcmd = None):
-
-   cuser = PGLOG['SETUID'] if PGLOG['SETUID'] else PGLOG['CURUID']
-   if not hcmd: hcmd = 'hsi'
-
-   if asuser and cuser != asuser:
-      if cuser == PGLOG['COMMONUSER']:
-         return "{} sudo -u {} {}".format(hcmd, asuser, cmd)      # setuid wrapper as user asuser
-      elif PGLOG['SUDOGDEX'] and asuser == PGLOG['COMMONUSER']:
-         return "sudo -u {} {} {}".format(PGLOG['COMMONUSER'], hcmd, cmd)    # sudo as user gdexdata
-
-   if cuser != PGLOG['COMMONUSER']:
-      if re.match(r'^ls ', cmd) and hcmd == 'hsi':
-         return "hpss" + cmd    # use 'hpssls' instead of 'hsi ls'
-      elif re.match(r'^htar -tvf', hcmd):
-         hcmd.replace('htar -tvf', 'htarmember', 1)    # use 'htarmember' instead of 'htar -tvf'
-      elif re.match(r'^hsi ls', hcmd):
-         hcmd.replce('hsi ls', 'hpssls', 1)    # use 'hpssls' instead of 'hsi ls'
-
-   return "{} {}".format(hcmd, cmd)
-
-#
 # wrap a given sync command for given host name with/without sudo
 #
 def get_sync_command(host, asuser = None):
@@ -1269,9 +1140,17 @@ def set_suid(cuid = 0):
 # set comman pglog
 #
 def set_common_pglog():
-
+   # resolve common/admin user from environment (COMMONUSER / ADMINUSER)
+   SETPGLOG("COMMONUSER", "gdexdata")
+   SETPGLOG("ADMINUSER", "zji")
+   PGLOG['RDAUSER'] = PGLOG['COMMONUSER']
+   PGLOG['RDAGRP'] = PGLOG['GDEXGRP']
+   PGLOG['RDAEMAIL'] = PGLOG['ADMINUSER']
+   PGLOG['SUDORDA'] = PGLOG['SUDOGDEX']
+   # backwards-compat aliases (deprecated: use COMMONUSER / ADMINUSER)
+   PGLOG['GDEXUSER'] = PGLOG['COMMONUSER']
+   PGLOG['GDEXEMAIL'] = PGLOG['ADMINUSER']
    PGLOG['CURDIR'] = os.getcwd()
-
    # set current user id
    PGLOG['RUID'] = os.getuid()
    PGLOG['EUID'] = os.geteuid()
@@ -1279,11 +1158,10 @@ def set_common_pglog():
    try:
       PGLOG['RDAUID'] = PGLOG['GDEXUID'] = pwd.getpwnam(PGLOG['COMMONUSER']).pw_uid
       PGLOG['RDAGID'] = PGLOG['GDEXGID'] = grp.getgrnam(PGLOG['GDEXGRP']).gr_gid
-   except:
+   except KeyError:
       PGLOG['RDAUID'] = PGLOG['GDEXUID'] = 0
       PGLOG['RDAGID'] = PGLOG['GDEXGID'] = 0
-   if PGLOG['CURUID'] == PGLOG['COMMONUSER']: PGLOG['SETUID'] = PGLOG['COMMONUSER']
-
+   if PGLOG['CURUID'] == PGLOG['COMMONUSER']: PGLOG['SETUID'] = PGLOG['COMMONUSER']   
    PGLOG['HOSTNAME'] = get_host()
    for htype in HOSTTYPES:
       ms = re.match(r'^{}(-|\d|$)'.format(htype), PGLOG['HOSTNAME'])
@@ -1291,26 +1169,18 @@ def set_common_pglog():
          PGLOG['HOSTTYPE'] = HOSTTYPES[htype]
          break
    PGLOG['DEFDSID'] = 'd000000' if PGLOG['NEWDSID'] else 'ds000.0'
-   PGLOG['NOTAROOT'] = '|'.join([PGLOG['OLDAROOT'], PGLOG['OLDBROOT'], PGLOG['BACKROOT']])
-   PGLOG['NOTBROOT'] = '|'.join([PGLOG['OLDAROOT'], PGLOG['OLDBROOT'], PGLOG['ARCHROOT']])
-   PGLOG['ALLROOTS'] = '|'.join([PGLOG['OLDAROOT'], PGLOG['OLDBROOT'], PGLOG['ARCHROOT'], PGLOG['BACKROOT']])
    SETPGLOG("USRHOME", "/glade/u/home")
    SETPGLOG("DSSHOME", "/glade/u/home/gdexdata")
    SETPGLOG("GDEXHOME", "/data/local")
    SETPGLOG("ADDPATH", "")
    SETPGLOG("ADDLIB",  "")
    SETPGLOG("OTHPATH", "")
-   SETPGLOG("PSQLHOME", "/usr/pgsql-15")
+   SETPGLOG("PSQLHOME", "")
    SETPGLOG("DSGHOSTS", "")
    SETPGLOG("DSIDCHRS", "d")
-
    if not os.getenv('HOME'): os.environ['HOME'] = "{}/{}".format(PGLOG['USRHOME'], PGLOG['CURUID'])
    SETPGLOG("HOMEBIN", os.environ.get('HOME') + "/bin")
-
-   if 'SLURM_JOBID' in os.environ:
-      PGLOG['CURBID'] = int(os.getenv('SLURM_JOBID'))
-      PGLOG['PGBATCH'] = PGLOG['SLMNAME']
-   elif 'PBS_JOBID' in os.environ:
+   if 'PBS_JOBID' in os.environ:
       sbid = os.getenv('PBS_JOBID')
       ms = re.match(r'^(\d+)', sbid)
       PGLOG['CURBID'] = int(ms.group(1)) if ms else -1
@@ -1318,7 +1188,6 @@ def set_common_pglog():
    else:
       PGLOG['CURBID'] = 0
       PGLOG['PGBATCH'] = ''
-
    pgpath = PGLOG['HOMEBIN']
    PGLOG['LOCHOME'] = "/ncar/gdex/setuid"
    if not op.isdir(PGLOG['LOCHOME']): PGLOG['LOCHOME'] = "/usr/local/decs"
@@ -1335,7 +1204,6 @@ def set_common_pglog():
       pgpath = add_local_path(PGLOG['OTHPATH'], pgpath, 1)
    if PGLOG['ADDPATH']: pgpath = add_local_path(PGLOG['ADDPATH'], pgpath, 1)
    pgpath = add_local_path("/bin:/usr/bin:/usr/local/bin:/usr/sbin", pgpath, 1)
-
    os.environ['PATH'] = pgpath
    os.environ['SHELL'] = '/bin/sh'
    # set PGLOG values with environments and defaults
@@ -1347,11 +1215,12 @@ def set_common_pglog():
    sm = "/usr/sbin/sendmail"
    if valid_command(sm): SETPGLOG("EMLSEND", f"{sm} -t")   # send email command
    SETPGLOG("DBGLEVEL", '')                             # debug level
-   SETPGLOG("BAOTOKEN", 's.lh2t2kDjrqs3V8y2BU2zOocT')   # OpenBao token
-   SETPGLOG("DBGPATH", PGLOG['DSSDBHM']+"/log")         # path to debug log file
-   SETPGLOG("OBJCTBKT", "gdex-data")                     # default Bucket on Object Store
-   SETPGLOG("BACKUPEP", "gdex-quasar")                   # default Globus Endpoint on Quasar
-   SETPGLOG("DRDATAEP", "gdex-quasar-drdata")            # DRDATA Globus Endpoint on Quasar
+   SETPGLOG("BAOTOKEN", 's.MdOPGayn0HcuuSPrmMqCvzJA')   # OpenBao token
+   SETPGLOG("DBGPATH", PGLOG['DSSDBHM']+"/log")    # path to debug log file
+   SETPGLOG("OBJCTBKT", "gdex-data")                    # default Bucket on Object Store
+   SETPGLOG("BACKUPEP", "gdex-quasar")                  # default Globus Endpoint on Quasar
+   SETPGLOG("DRDATAEP", "gdex-quasar-drdata")           # DRDATA Globus Endpoint on Quasar
+   SETPGLOG("TACCEP", "gdex-tacc")                      # default Globus Endpoint on TACC
    SETPGLOG("DBGFILE", "pgdss.dbg")                     # debug file name
    SETPGLOG("CNFPATH", PGLOG['DSSHOME']+"/config")      # path to configuration files
    SETPGLOG("DSSURL",  "https://gdex.ucar.edu")          # current dss web URL
@@ -1360,48 +1229,40 @@ def set_common_pglog():
    PGLOG['WEBHOSTS'] = PGLOG['WEBSERVERS'].split(':') if PGLOG['WEBSERVERS'] else []
    SETPGLOG("DBMODULE", '')
    SETPGLOG("LOCDATA", "/data")
-
    # set dss web homedir
    SETPGLOG("DSSWEB",  PGLOG['LOCDATA']+"/web")
    SETPGLOG("DSWHOME", PGLOG['DSSWEB']+"/datasets")     # datast web root path
    PGLOG['HOMEROOTS'] = "{}|{}".format(PGLOG['DSSHOME'], PGLOG['DSWHOME'])
-   SETPGLOG("DSSDATA", "/glade/campaign/collections/gdex")  # dss data root path
+   SETPGLOG("DSSDATA", "/glade/campaign/collections/gdex")   # dss data root path
    SETPGLOG("DSDHOME", PGLOG['DSSDATA']+"/data")        # dataset data root path
    SETPGLOG("DECSHOME", PGLOG['DSSDATA']+"/decsdata")   # dataset decsdata root path
    SETPGLOG("DSHHOME", PGLOG['DECSHOME']+"/helpfiles")  # dataset help root path
-   SETPGLOG("GDEXWORK", "/lustre/desc1/gdex/work")      # gdex work path
+   SETPGLOG("GDEXWORK", "/lustre/desc1/gdex/work")           # gdex work path
    SETPGLOG("UPDTWKP", PGLOG['GDEXWORK'])               # dsupdt work root path
-   SETPGLOG("TRANSFER", "/lustre/desc1/gdex/transfer")  # gdex transfer path
+   SETPGLOG("TRANSFER", "/lustre/desc1/gdex/transfer")       # gdex transfer path
    SETPGLOG("RQSTHOME", PGLOG['TRANSFER']+"/dsrqst")    # dsrqst home
-   SETPGLOG("DSAHOME",  "")                   # dataset data alternate root path
-   SETPGLOG("RQSTALTH", "")                   # alternate dsrqst path
-   SETPGLOG("GPFSHOST", "")                   # empty if writable to glade
-   SETPGLOG("PSQLHOST", "rda-db.ucar.edu")    # host name for postgresql server
-   SETPGLOG("SLMHOSTS", "cheyenne:casper")    # host names for SLURM server
-   SETPGLOG("PBSHOSTS", "cron:casper")        # host names for PBS server
-   SETPGLOG("CHKHOSTS", "")                   # host names for dscheck daemon
+   SETPGLOG("DSAHOME",  "")                     # dataset data alternate root path
+   SETPGLOG("RQSTALTH", "")                     # alternate dsrqst path
+   SETPGLOG("GPFSHOST", "")                     # empty if writable to glade
+   SETPGLOG("PSQLHOST", "rda-db.ucar.edu")      # host name for postgresql server
+   SETPGLOG("PBSHOSTS", "cron:casper:crlogin")  # host names for PBS server
+   SETPGLOG("CHKHOSTS", "")                     # host names for dscheck daemon
    SETPGLOG("PVIEWHOST", "pgdb02.k8s.ucar.edu")             # host name for view only postgresql server
    SETPGLOG("PMISCHOST", "pgdb03.k8s.ucar.edu")             # host name for misc postgresql server
-   SETPGLOG("FTPUPLD",  PGLOG['TRANSFER']+"/rossby")    # ftp upload path
+   SETPGLOG("FTPUPLD",  PGLOG['TRANSFER']+"/rossby")   # ftp upload path
    PGLOG['GPFSROOTS'] = "{}|{}|{}".format(PGLOG['DSDHOME'], PGLOG['UPDTWKP'], PGLOG['RQSTHOME'])
-
    if 'ECCODES_DEFINITION_PATH' not in os.environ:
       os.environ['ECCODES_DEFINITION_PATH'] = "/usr/local/share/eccodes/definitions"
    os.environ['history'] = '0'
-
    # set tmp dir
    SETPGLOG("TMPPATH", PGLOG['GDEXWORK'] + "/ptmp")
    if not PGLOG['TMPPATH']: PGLOG['TMPPATH'] = "/data/ptmp"
-
    SETPGLOG("TMPDIR", '')
    if not PGLOG['TMPDIR']:
       PGLOG['TMPDIR'] = "/lustre/desc1/scratch/" + PGLOG['CURUID']
       os.environ['TMPDIR'] = PGLOG['TMPDIR']
-
    # empty diretory for HOST-sync
-
-   PGLOG['TMPSYNC'] = PGLOG['DSSDBHM'] + "/tmp/.syncdir"
-
+   PGLOG['TMPSYNC'] = PGLOG['DSSDBHM'] + "/tmp/.syncdir"   
    os.umask(2)
 
 #
@@ -1447,42 +1308,33 @@ def SETPGLOG(name, value = ''):
 # set specialist home and return the default shell
 #
 def set_specialist_home(specialist):
-
    if specialist == PGLOG['CURUID']: return   # no need reset
    if 'MAIL' in os.environ and re.search(PGLOG['CURUID'], os.environ['MAIL']):
-      os.environ['MAIL'] = re.sub(PGLOG['CURUID'], specialist, os.environ['MAIL'])
-
+      os.environ['MAIL'] = re.sub(PGLOG['CURUID'], specialist, os.environ['MAIL'])   
    home = "{}/{}".format(PGLOG['USRHOME'], specialist)
    shell = "tcsh"
-   buf = pgsystem("grep ^{}: /etc/passwd".format(specialist), LOGWRN, 20)
-   if buf:
-      lines = buf.split('\n')
-      for line in lines:
-         ms = re.search(r':(/.+):(/.+)', line)
-         if ms:
-            home = ms.group(1)
-            shell = op.basename(ms.group(2))
-            break
-
+   try:
+      pwent = pwd.getpwnam(specialist)
+      home = pwent.pw_dir
+      shell = op.basename(pwent.pw_shell)
+   except KeyError:
+      pass
    if home != os.environ['HOME'] and op.exists(home):
       os.environ['HOME'] = home
-
    return shell
 
 #
 #  set environments for a specified specialist
 #
 def set_specialist_environments(specialist):
-
    shell = set_specialist_home(specialist)
    resource = os.environ['HOME'] + "/.tcshrc"
    checkif = 0   # 0 outside of if; 1 start if, 2 check envs, -1 checked already
    missthen = 0
    try:
       rf = open(resource, 'r')
-   except:
+   except OSError:
       return   # skip if cannot open
-
    nline = rf.readline()
    while nline:
       line = pgtrim(nline)
@@ -1495,15 +1347,14 @@ def set_specialist_environments(specialist):
          missthen = 0
          if re.match(r'^then$', line): continue   # then on next line
          checkif = 0   # end of inline if
-      elif re.match(r'^endif', line):
+      elif line.startswith('endif'):
          checkif = 0   # end of if
          continue
       elif checkif == -1:   # skip the line
          continue
-      elif checkif == 2 and re.match(r'^else', line):
+      elif checkif == 2 and line.startswith('else'):
          checkif = -1   # done check envs in if
          continue
-
       if checkif == 1:
          if line == 'else':
             checkif = 2
@@ -1519,12 +1370,9 @@ def set_specialist_environments(specialist):
                if checkif == 1: continue
          else:
             continue
-
       ms = re.match(r'^setenv\s+(.*)', line)
       if ms: one_specialist_environment(ms.group(1))
-
    rf.close()
-
    SETPGLOG("HOMEBIN", PGLOG['PGBINDIR'])
    os.environ['PATH'] = add_local_path(PGLOG['HOMEBIN'], os.environ['PATH'], 0)
 
@@ -1642,43 +1490,36 @@ def argv_to_string(argv = None, quote = 1, action = None):
 # convert an integer to non-10 based string
 #
 def int2base(x, base):
-
    if x == 0: return '0'
    negative = 0
    if x < 0:
       negative = 1
       x = -x
-
    dgts = []
    while x:
-      dgts.append(str(int(x%base)))
-      x = int(x/base)
+      dgts.append(str(x % base))
+      x //= base
    if negative: dgts.append('-')
    dgts.reverse()
-
    return ''.join(dgts)
 
 #
 # convert a non-10 based string to an integer
 #
 def base2int(x, base):
-
    if not isinstance(x, int): x = int(x)
    if x == 0: return 0
-
    negative = 0
    if x < 0:
       negative = 1
       x = -x
-
    num = 0
    fact = 1
    while x:
-      num += (x%10)*fact
+      num += (x % 10) * fact
       fact *= base
-      x = int(x/10)
+      x //= 10
    if negative: num = -num
-
    return num
 
 #
