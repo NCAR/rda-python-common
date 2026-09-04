@@ -1919,7 +1919,7 @@ class PgUtil(PgLOG):
       if stime and not isinstance(stime, str): stime = str(stime)
       if not (unit and unit in 'HNS'): return stime  
       if stime:
-         tm = self.split_datetime(stime, 'T')
+         tm = self.split_datetime(stime)   # split on non-digits to get [HH, MM, SS]
       else:
          tm = [0, 0, 0]
       if unit == 'H':

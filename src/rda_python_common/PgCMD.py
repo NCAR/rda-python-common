@@ -133,26 +133,21 @@ def get_delay_options(doptions, cmd):
 #
 # find an existing dscheck record from the cached command argument; create and initialize one if not exist
 #
-def init_dscheck(oindex, otype, cmd, dsid, action, workdir = None, specialist = None, doptions = None, logact = 0):
-
+def init_dscheck(oindex, otype, cmd, dsid, action, workdir=None, specialist=None, doptions=None, logact=0):
    cidx = 0
    argv = PgLOG.argv_to_string(sys.argv[1:], 0, "Process in Delayed Mode")
    argextra = None
-
    if not logact: logact = PgLOG.LGEREX
    if not workdir: workdir = os.getcwd()
    if not specialist: specialist = PgLOG.PGLOG['CURUID']
-
    (mcount, hosts) = get_delay_options(doptions, cmd)
-
    if len(argv) > 100:
       argextra = argv[100:]
       argv = argv[0:100]
-
    bck = PgLOG.PGLOG['BCKGRND']
    PgLOG.PGLOG['BCKGRND'] = 0
    cinfo = "{}-{}-Chk".format(PgLOG.PGLOG['HOSTNAME'], PgLOG.current_datetime())
-   pgrec = get_dscheck(cmd, argv, workdir, specialist, argextra, logact)   
+   pgrec = get_dscheck(cmd, argv, workdir, specialist, argextra, logact)
    if pgrec:  # found existing dscheck record
       cidx = pgrec['cindex']
       cmsg = "{}{}: {} batch process ".format(cinfo, cidx, get_command_info(pgrec))
@@ -171,10 +166,9 @@ def init_dscheck(oindex, otype, cmd, dsid, action, workdir = None, specialist = 
             PgLOG.pglog("{}is {}".format(cmsg, ('Done' if pgrec['status'] == 'D' else 'Finished')), PgLOG.LOGWRN)
             PgLock.lock_dscheck(cidx, 0, logact)
             sys.exit(0)
-
    if not cidx:  # add new dscheck record
       record = {}
-      if hosts and re.match(r'^(ds\d|\d)\d\d.\d$', hosts):
+      if hosts and re.match(r'^\w\d\d\d\d\d\d$', hosts):
          PgLOG.pglog(hosts + ": Cannot pass DSID for hostname to submit batch process", PgLOG.LGEREX)
       if oindex: set_command_control(oindex, otype, cmd, logact)
       record['oindex'] = oindex
@@ -219,7 +213,6 @@ def init_dscheck(oindex, otype, cmd, dsid, action, workdir = None, specialist = 
    if pgrec['command'] == "dsrqst" and pgrec['oindex']:
       (record['fcount'], record['dcount'], record['size']) = get_dsrqst_counts(pgrec, logact)
    PgDBI.pgupdt("dscheck", record, DSCHK['chkcnd'], logact)
-
    DSCHK['dcount'] = pgrec['dcount']
    DSCHK['fcount'] = pgrec['fcount']
    DSCHK['size'] = pgrec['size']
@@ -234,7 +227,6 @@ def init_dscheck(oindex, otype, cmd, dsid, action, workdir = None, specialist = 
    if rhost != chost: pstr += "/{}<{}>".format(rhost, rpid)
    PgLOG.pglog("{}Starts {} ({})".format(cmsg, tstr, pstr), PgLOG.LOGWRN)
    PgLOG.PGLOG['BCKGRND'] = bck
-
    return cidx
 
 #
@@ -318,17 +310,17 @@ def get_partition_control(pgpart, pgrqst = None, pgctl = None, logact = 0):
 #
 # build the dynamic options
 #
-def get_dynamic_options(cmd, oindex, otype):
-
-   if oindex: cmd +=  " {}".format(oindex)
-   if otype: cmd +=  ' ' + otype
+def get_dynamic_options(cmd, oindex, otype, hostname=None):
+   if oindex: cmd += " {}".format(oindex)
+   if otype: cmd += ' ' + otype
+   if hostname: cmd = "ssh {} {}".format(hostname, PgLOG.command_path(cmd))
    ret = options = ''
    for loop in range(3):
-      ret = PgLOG.pgsystem(cmd, PgLOG.LOGWRN, 279)  # 1+2+4+16+256
+      ret = PgLOG.pgsystem(cmd, PgLOG.LOGWRN, 1299)  # 1+2+16+256+1024
       if loop < 2 and PgLOG.PGLOG['SYSERR'] and 'Connection timed out' in PgLOG.PGLOG['SYSERR']:
          time.sleep(PgSIG.PGSIG['ETIME'])
       else:
-         break   
+         break
    if ret:
       ret = ret.strip()
       ms = re.match(r'^(-.+)/(-.+)$', ret)
@@ -337,8 +329,8 @@ def get_dynamic_options(cmd, oindex, otype):
       elif re.match(r'^(-.+)$', ret):
          options = ret
    if not options:
-      if ret: PgLOG.PGLOG['SYSERR'] += ret
-      PgLOG.PGLOG['SYSERR'] += " for {}".format(cmd)
+      if ret: PgLOG.PGLOG['SYSERR'] = (PgLOG.PGLOG['SYSERR'] or '') + ret
+      PgLOG.PGLOG['SYSERR'] = (PgLOG.PGLOG['SYSERR'] or '') + " for {}".format(cmd)
 
    return options
 

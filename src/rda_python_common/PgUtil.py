@@ -18,6 +18,8 @@ import time
 import datetime
 import calendar
 import glob
+import bisect
+import functools
 from os import path as op
 from . import PgLOG
 
@@ -61,25 +63,23 @@ def get_weekday(date = None):
 # Return: numeric Month if not fmt (default); three-charater or full month names for given fmt
 #
 def get_month(mn, fmt = None):
-
    if not isinstance(mn, int):
-      if re.match(r'^\d+$', mn):
+      if mn.isdigit():
          mn = int(mn)
       else:
          for m in range(12):
             if re.match(mn, MONTHS[m], re.I):
                mn = m + 1
                break
-
-   if fmt and mn > 0 and mn < 13:
+   if fmt and 0 < mn < 13:
       slen = len(fmt)
       if slen == 2:
          smn = "{:02}".format(mn)
-      elif re.match(r'^mon', fmt, re.I):
+      elif fmt[:3].lower() == 'mon':
          smn = MNS[mn-1] if slen == 3 else MONTHS[mn-1]
-         if re.match(r'^Mon', fmt):
+         if fmt.startswith('Mon'):
             smn = smn.capitalize()
-         elif re.match(r'^MON', fmt):
+         elif fmt.startswith('MON'):
             smn = smn.upper()
       else:
          smn = str(mn)
@@ -92,29 +92,27 @@ def get_month(mn, fmt = None):
 # Return: numeric Weekday if !fmt (default); three-charater or full week name for given fmt
 #
 def get_wday(wday, fmt = None):
-
    if not isinstance(wday, int):
-      if re.match(r'^\d+$', wday):
+      if wday.isdigit():
          wday = int(wday)
       else:
          for w in range(7):
             if re.match(wday, WDAYS[w], re.I):
                wday = w
                break
-
-   if fmt and wday >= 0 and wday <= 6:
+   if fmt and 0 <= wday <= 6:
       slen = len(fmt)
       if slen == 4:
-         swday = WDAYS[w]
-         if re.match(r'^We', fmt):
+         swday = WDAYS[wday]
+         if fmt.startswith('We'):
             swday = swday.capitalize()
-         elif re.match(r'^WE', fmt):
+         elif fmt.startswith('WE'):
             swday = swday.upper()
       elif slen == 3:
          swday = WDS[wday]
-         if re.match(r'^Ww', fmt):
+         if fmt.startswith('Ww'):
             swday = swday.capitalize()
-         elif re.match(r'^WW', fmt):
+         elif fmt.startswith('WW'):
             swday = swday.upper()
       else:
          swday = str(wday)
@@ -127,19 +125,13 @@ def get_wday(wday, fmt = None):
 # Return: type if given file name is a valid online file; '' otherwise
 #
 def valid_online_file(file, type = None, exists = None):
-
    if exists is None or exists:
       if not op.exists(file): return ''    # file does not exist
-
    bname = op.basename(file)
-   if re.match(r'^,.*', bname): return ''       # hidden file
-
+   if bname.startswith(','): return ''       # hidden file
    if re.search(r'index\.(htm|html|shtml)$', bname, re.I): return ''   # index file
-
    if  type and type != 'D': return type
-
    if re.search(r'\.(doc|php|html|shtml)(\.|$)', bname, re.I): return ''    # file with special extention
-
    return 'D'
 
 #
@@ -176,9 +168,8 @@ def curdatehour(fmt = None):
 # Return: current date and time strings
 #
 def get_date_time(tm = None):
-
    act = ct = None
-   if tm == None:
+   if tm is None:
       ct = time.gmtime() if PgLOG.PGLOG['GMTZ'] else time.localtime()
    elif isinstance(tm, str):
       act = tm.split(' ')
@@ -190,8 +181,7 @@ def get_date_time(tm = None):
       act = [str(tm), '00:00:00']
    elif isinstance(tm, datetime.time):
       act = [None, str(tm)]
-
-   if ct == None:
+   if ct is None:
       return act if act else None
    else:
       return [time.strftime("%Y-%m-%d", ct), time.strftime("%H:%M:%S", ct)]
@@ -201,8 +191,7 @@ def get_date_time(tm = None):
 # Return: current datetime strings
 #
 def get_datetime(tm = None):
-
-   if tm == None:
+   if tm is None:
       ct = time.gmtime() if PgLOG.PGLOG['GMTZ'] else time.localtime()
       return time.strftime("%Y-%m-%d %H:%M:%S", ct)
    elif isinstance(tm, str):
@@ -214,7 +203,6 @@ def get_datetime(tm = None):
       return str(tm)
    elif isinstance(tm, datetime.date):
       return (str(tm) + ' 00:00:00')
-
    return tm
 
 
@@ -237,11 +225,9 @@ def timestamp(file = None):
 # check date/time and set to default one if empty date
 #
 def check_datetime(date, default):
-
    if not date: return default
    if not isinstance(date, str): date = str(date)
-   if re.match(r'^0000', date): return default
-
+   if date.startswith('0000'): return default
    return date
 
 #
@@ -315,13 +301,8 @@ def format_datehour(date, hour, tofmt = None, fromfmt = None):
 # the sep value; str to int for digital values
 #
 def split_datetime(sdt, sep = r'\D'):
-
    if not isinstance(sdt, str): sdt = str(sdt)
-   adt = re.split(sep, sdt)
-   acnt = len(adt)
-   for i in range(acnt):
-      if re.match(r'^\d+$', adt[i]): adt[i] = int(adt[i])
-   return adt
+   return [int(x) if x.isdigit() else x for x in re.split(sep, sdt)]
 
 #
 #    date: given date in format of fromfmt
@@ -330,7 +311,6 @@ def split_datetime(sdt, sep = r'\D'):
 #  Return: new formated date string according to tofmt
 #
 def format_date(cdate, tofmt = None, fromfmt = None):
-
    if not cdate: return cdate
    if not isinstance(cdate, str): cdate = str(cdate)
    dates = [None, None, None]
@@ -340,7 +320,6 @@ def format_date(cdate, tofmt = None, fromfmt = None):
    mkeys = ['D', 'M', 'Q', 'Y', 'C', 'H']
    PATTERNS = [r'(\d\d\d\d)', r'(\d+)', r'(\d\d)',
                r'(\d\d\d)', '(' + mns + ')', '(' + months + ')']
-
    if not fromfmt:
       if not tofmt:
          if re.match(r'^\d\d\d\d-\d\d-\d\d$', cdate): return cdate   # no need formatting
@@ -349,7 +328,6 @@ def format_date(cdate, tofmt = None, fromfmt = None):
          fromfmt = "Y" + ms.group(1) + "M" + ms.group(2) + "D"
       else:
          PgLOG.pglog(cdate + ": Invalid date, should be in format YYYY-MM-DD", PgLOG.LGEREX)
-
    pattern = fromfmt
    fmts = {}
    formats = {}
@@ -358,7 +336,6 @@ def format_date(cdate, tofmt = None, fromfmt = None):
       if ms:
          fmts[mkey] = ms.group(1)
          pattern = re.sub(fmts[mkey], '', pattern)
-
    cnt = 0
    for mkey in fmts:
       fmt = fmts[mkey]
@@ -371,8 +348,7 @@ def format_date(cdate, tofmt = None, fromfmt = None):
          if i == 4: i = 0
       formats[fromfmt.find(fmt)] = fmt
       fromfmt = fromfmt.replace(fmt, PATTERNS[i])
-      cnt += 1
-
+      cnt += 1   
    ms = re.findall(fromfmt, cdate)
    mcnt = len(ms[0]) if ms else 0
    i = 0
@@ -380,29 +356,28 @@ def format_date(cdate, tofmt = None, fromfmt = None):
       if i >= mcnt: break
       fmt = formats[k]
       val = ms[0][i]
-      if re.match(r'^Y', fmt, re.I):
+      head = fmt[:1].upper()
+      if head == 'Y':
          dates[0] = int(val)
          if len(fmt) == 3: dates[0] *= 10
-      elif re.match(r'^C', fmt, re.I):
+      elif head == 'C':
          dates[0] = 100 * int(val)      # year at end of century
-      elif re.match(r'^M', fmt, re.I):
-         if re.match(r'^Mon', fmt, re.I):
+      elif head == 'M':
+         if fmt[:3].upper() == 'MON':
             dates[1] = get_month(val)
          else:
             dates[1] = int(val)
-      elif re.match(r'^Q', fmt, re.I):
+      elif head == 'Q':
          dates[1] = 3 * int(val)        # month at end of quarter
-      elif re.match(r'^H', fmt, re.I):  # hour
+      elif head == 'H':  # hour
          dates.append(int(val))
       else:    # day
          dates[2] = int(val)
-      i += 1
-
+      i += 1 
    if len(dates) > 3:
       cdate = fmtdatehour(dates[0], dates[1], dates[2], dates[3], tofmt)
    else:
       cdate = fmtdate(dates[0], dates[1], dates[2], tofmt)
-
    return cdate
 
 #
@@ -416,27 +391,16 @@ def format_date(cdate, tofmt = None, fromfmt = None):
 # Return: new formated datehour string
 #
 def fmtdatetime(yr, mn, dy, hr = None, nn = None, ss = None, tofmt = None):
-
    if not tofmt: tofmt = "YYYY-MM-DD HH:NN:SS"
-
    tms = [ss, nn, hr, dy]
    fks = ['S', 'N', 'H']
    ups = [60, 60, 24]
-
    # adjust second/minute/hour values out of range
    for i in range(3):
       if tms[i] != None and tms[i+1] != None:
-         if tms[i] < 0:
-            while tms[i] < 0:
-               tms[i] += ups[i]
-               tms[i+1] -= 1
-         elif tms[i] >= ups[i]:
-            while tms[i] >= ups[i]:
-               tms[i] -= ups[i]
-               tms[i+1] += 1
-
+         carry, tms[i] = divmod(tms[i], ups[i])
+         tms[i+1] += carry
    sdt = fmtdate(yr, mn, dy, tofmt)
-
    # format second/minute/hour values
    for i in range(3):
       if tms[i] != None:
@@ -444,11 +408,10 @@ def fmtdatetime(yr, mn, dy, hr = None, nn = None, ss = None, tofmt = None):
          if ms:
             fmt = ms.group(1)
             if len(fmt) == 2:
-               str = "{:02}".format(tms[i])
+               sval = "{:02}".format(tms[i])
             else:
-               str = str(tms[i])
-         sdt = re.sub(fmt, str, sdt, 1)
-
+               sval = str(tms[i])
+         sdt = re.sub(fmt, sval, sdt, 1)   
    return sdt
 
 #
@@ -460,21 +423,11 @@ def fmtdatetime(yr, mn, dy, hr = None, nn = None, ss = None, tofmt = None):
 # Return: new formated datehour string
 #
 def fmtdatehour(yr, mn, dy, hr, tofmt = None):
-
    if not tofmt: tofmt = "YYYY-MM-DD:HH"
-
    if hr != None and dy != None:   # adjust hour value out of range
-      if hr < 0:
-         while hr < 0:
-            hr += 24
-            dy -= 1
-      elif hr > 23:
-         while hr > 23:
-            hr -= 24
-            dy += 1
-
+      carry, hr = divmod(hr, 24)
+      dy += carry
    datehour = fmtdate(yr, mn, dy, tofmt)
-
    if hr != None:
       ms = re.search(DATEFMTS['H'], datehour, re.I)
       if ms:
@@ -484,7 +437,6 @@ def fmtdatehour(yr, mn, dy, hr, tofmt = None):
          else:
             shr = str(hr)
          datehour = re.sub(fmt, shr, datehour, 1)
-
    return datehour
 
 #
@@ -495,10 +447,8 @@ def fmtdatehour(yr, mn, dy, hr, tofmt = None):
 # Return: new formated date string
 #
 def fmtdate(yr, mn, dy, tofmt = None):
-
    (y, m, d) = adjust_ymd(yr, mn, dy)
    if not tofmt or tofmt == 'YYYY-MM-DD': return "{}-{:02}-{:02}".format(y, m, d)
-
    if dy != None:
       md = re.search(DATEFMTS['D'], tofmt, re.I)
       if md:
@@ -512,7 +462,6 @@ def fmtdate(yr, mn, dy, tofmt = None):
          else:
             sdy = str(d)
          tofmt = re.sub(fmt, sdy, tofmt, 1)
-
    if mn != None:
       md = re.search(DATEFMTS['M'], tofmt, re.I)
       if md:
@@ -520,11 +469,11 @@ def fmtdate(yr, mn, dy, tofmt = None):
          slen = len(fmt)
          if slen == 2:
             smn = "{:02}".format(m)
-         elif re.match(r'^mon', fmt, re.I):
+         elif fmt[:3].lower() == 'mon':
             smn = MNS[m-1] if slen == 3 else MONTHS[m-1]
-            if re.match(r'^Mo', fmt):
+            if fmt.startswith('Mo'):
                smn = smn.capitalize()
-            elif re.match(r'^MO', fmt):
+            elif fmt.startswith('MO'):
                smn = smn.upper()
          else:
             smn = str(m)
@@ -536,7 +485,6 @@ def fmtdate(yr, mn, dy, tofmt = None):
             m = int((m+2)/3)
             smn = "{:02}".format(m) if len(fmt) == 2 else str(m)
             tofmt = re.sub(fmt, smn, tofmt, 1)
-
    if yr != None:
       md = re.search(DATEFMTS['Y'], tofmt, re.I)
       if md:
@@ -562,7 +510,6 @@ def fmtdate(yr, mn, dy, tofmt = None):
                y = 1 + int(yr/10)
             syr = "{:02}".format(y)
             tofmt = re.sub(fmt, syr, tofmt, 1)
-
    return tofmt
 
 #
@@ -584,12 +531,10 @@ fmttime = join_datetime
 # split a date or datetime into an array of [date, time]
 #
 def date_and_time(sdt):
-
    if not sdt: return [None, None]
    if not isinstance(sdt, str): sdt = str(sdt)
-   adt = re.split(' ', sdt)
-   acnt = len(adt)
-   if acnt == 1: adt.append('00:00:00')
+   adt = sdt.split(' ')
+   if len(adt) == 1: adt.append('00:00:00')
    return adt
 
 #
@@ -707,8 +652,9 @@ def format_period(sdate, edate, fmt = None):
 # newid: True to format a new dsid; defaults to False for now
 # returns a new or old dsid according to the newid option
 #
-def format_dataset_id(dsid, newid = PgLOG.PGLOG['NEWDSID'], logact = PgLOG.LGEREX):
-
+def format_dataset_id(dsid, newid = None, logact = None):
+   if newid is None: newid = PgLOG.PGLOG['NEWDSID']
+   if logact is None: logact = PgLOG.LGEREX
    dsid = str(dsid)
    ms = re.match(r'^([a-z])(\d\d\d)(\d\d\d)$', dsid)
    if ms:
@@ -721,7 +667,6 @@ def format_dataset_id(dsid, newid = PgLOG.PGLOG['NEWDSID'], logact = PgLOG.LGERE
          if logact: PgLOG.pglog(dsid + ": Cannot convert new dsid to old format", logact)
          return dsid
       return 'ds{}.{}'.format(ids[1], ids[2][2])
-
    ms = re.match(r'^ds(\d\d\d)(\.|)(\d)$', dsid, re.I)
    if not ms: ms = re.match(r'^(\d\d\d)(\.)(\d)$', dsid)
    if ms:
@@ -729,7 +674,6 @@ def format_dataset_id(dsid, newid = PgLOG.PGLOG['NEWDSID'], logact = PgLOG.LGERE
          return "d{}00{}".format(ms.group(1), ms.group(3))
       else:
          return 'ds{}.{}'.format(ms.group(1), ms.group(3))
-
    if logact: PgLOG.pglog(dsid + ": invalid dataset id", logact)
    return dsid
 
@@ -738,8 +682,9 @@ def format_dataset_id(dsid, newid = PgLOG.PGLOG['NEWDSID'], logact = PgLOG.LGERE
 # newid: True to format a new dsid; defaults to False for now
 # returns a new or old metadata dsid according to the newid option
 #
-def metadata_dataset_id(dsid, newid = PgLOG.PGLOG['NEWDSID'], logact = PgLOG.LGEREX):
-
+def metadata_dataset_id(dsid, newid = None, logact = None):
+   if newid is None: newid = PgLOG.PGLOG['NEWDSID']
+   if logact is None: logact = PgLOG.LGEREX
    ms = re.match(r'^([a-z])(\d\d\d)(\d\d\d)$', dsid)
    if ms:
       ids = list(ms.groups())
@@ -751,7 +696,6 @@ def metadata_dataset_id(dsid, newid = PgLOG.PGLOG['NEWDSID'], logact = PgLOG.LGE
          if logact: PgLOG.pglog(dsid + ": Cannot convert new dsid to old format", logact)
          return dsid
       return '{}.{}'.format(ids[1], ids[2][2])
-
    ms = re.match(r'^ds(\d\d\d)(\.|)(\d)$', dsid)
    if not ms: ms = re.match(r'^(\d\d\d)(\.)(\d)$', dsid)
    if ms:
@@ -759,7 +703,6 @@ def metadata_dataset_id(dsid, newid = PgLOG.PGLOG['NEWDSID'], logact = PgLOG.LGE
          return "d{}00{}".format(ms.group(1), ms.group(3))
       else:
          return '{}.{}'.format(ms.group(1), ms.group(3))
-
    if logact: PgLOG.pglog(dsid + ": invalid dataset id", logact)
    return dsid
 
@@ -770,7 +713,6 @@ def metadata_dataset_id(dsid, newid = PgLOG.PGLOG['NEWDSID'], logact = PgLOG.LGE
 # returns dsid if found in given id string; None otherwise
 #
 def find_dataset_id(idstr, flag = 'B', logact = 0):
-
    if flag in 'NB':
       ms = re.search(r'(^|\W)(([a-z])\d{6})($|\D)', idstr)
       if ms and ms.group(3) in PgLOG.PGLOG['DSIDCHRS']: return ms.group(2)
@@ -778,16 +720,15 @@ def find_dataset_id(idstr, flag = 'B', logact = 0):
       ms = re.search(r'(^|\W)(ds\d\d\d(\.|)\d)($|\D)', idstr)
       if not ms: ms = re.search(r'(^|\W)(\d\d\d\.\d)($|\D)', idstr)
       if ms: return ms.group(2)
-
-   if logact: PgLOG.pglog("{} : No valid dsid found for flag {}".format(idstr, flag), logact)
+   if logact: PgLOG.pglog("{}: No valid dsid found for flag {}".format(idstr, flag), logact)
    return None
 
 #
 # find and convert all found dsids according to old/new dsids
 # for newid = False/True
 #
-def convert_dataset_ids(idstr, newid = PgLOG.PGLOG['NEWDSID'], logact = 0):
-
+def convert_dataset_ids(idstr, newid = None, logact = 0):
+   if newid is None: newid = PgLOG.PGLOG['NEWDSID']
    flag = 'O' if newid else 'N'
    cnt = 0
    if idstr:
@@ -797,7 +738,6 @@ def convert_dataset_ids(idstr, newid = PgLOG.PGLOG['NEWDSID'], logact = 0):
          ndsid = format_dataset_id(dsid, newid = newid, logact = logact)
          if ndsid != dsid: idstr = idstr.replace(dsid, ndsid)
          cnt += 1
-
    return (idstr, cnt)
 
 #
@@ -950,22 +890,16 @@ def joinhash(adict, bdict, default = None, unique = None):
 # Return: the joined list
 #
 def joinarray(lst1, lst2, unique = None):
-
    if not lst2: return lst1
    if not lst1: return lst2
-
    cnt1 = len(lst1)
    cnt2 = len(lst2)
-
    if unique:
-      for i in (cnt2):
-         for j in (cnt1):
-            if pgcmp(lst1[j], lst2[i]) != 0: break
-         if j >= cnt1:
-           lst1.append(lst2[i])
+      for i in range(cnt2):
+         if lst2[i] not in lst1:
+            lst1.append(lst2[i])
    else:
       lst1.extend(lst2)
-
    return lst1
 
 #
@@ -1008,9 +942,7 @@ def strip_field(field):
 #   Return: a sorted dict list
 #
 def sorthash(pgrecs, flds, hash, patterns = None):
-
    fcnt = len(flds)    # count of fields to be sorted on
-
    # set sorting order, descenting (-1) or ascenting (1)
    # get the full field names to be sorted on
    desc = [1]*fcnt
@@ -1020,12 +952,9 @@ def sorthash(pgrecs, flds, hash, patterns = None):
       if flds[i].islower(): desc[i] = -1
       fld = strip_field(hash[flds[i].upper()][1])
       fields.append(fld)
-
    count = len(pgrecs[fields[0]])    # row count of pgrecs
-
    if count < 2: return pgrecs       # no need of sording
    pcnt = len(patterns) if patterns else 0
-
    # prepare the dict list for sortting
    srecs = []
    for i in range(count):
@@ -1038,35 +967,33 @@ def sorthash(pgrecs, flds, hash, patterns = None):
          else:
             # sort on the whole value if no pattern given
             val = pgrec[fields[j]]
-
          if nums[j]: nums[j] = pgnum(val)
          rec.append(val)
       rec.append(i)   # add column to cache the row index
       srecs.append(rec)
-
-   srecs = quicksort(srecs, 0, count-1, desc, fcnt, nums)
-
+   srecs.sort(key=functools.cmp_to_key(
+      lambda a, b: cmp_records(a, b, desc, fcnt, nums)))
    # sort pgrecs according the cached row index column in ordered srecs
    rets = {}
    for fld in pgrecs:
       rets[fld] = []
-
    for i in range(count):
       pgrec = onerecord(pgrecs, srecs[i][fcnt])
       for fld in pgrecs:
          rets[fld].append(pgrec[fld])
-
    return rets
 
 #
 # Return: the number of days bewteen date1 and date2
 #
 def diffdate(date1, date2):
-
-   ut1 = ut2 = 0
-   if date1: ut1 = unixtime(date1)
-   if date2: ut2 = unixtime(date2)
-   return round((ut1 - ut2)/86400)   # 24*60*60
+   epoch = datetime.date(1970, 1, 1)
+   def _to_date(d):
+      if not d: return epoch
+      ms = re.match(r'^(\d+)-(\d+)-(\d+)', str(d))
+      if not ms: return epoch
+      return datetime.date(int(ms.group(1)), int(ms.group(2)), int(ms.group(3)))
+   return (_to_date(date1) - _to_date(date2)).days
 
 #
 # Return: the number of seconds bewteen time1 and time2
@@ -1212,26 +1139,17 @@ def addmonth(cdate, mf, nf = 1):
 
 # add yr years & mn months to yearmonth ym in format YYYYMM
 def addyearmonth(ym, yr, mn):
-
-   if yr == None: yr = 0
-   if mn == None: mn = 0
-
+   if yr is None: yr = 0
+   if mn is None: mn = 0
    ms =re.match(r'^(\d\d\d\d)(\d\d)$', ym)
    if ms:
       (syr, smn) = ms.groups()
-      yr = int(syr)
-      mn = int(smn)
-      if mn < 0:
-         while mn < 0:
-            yr -= 1
-            mn += 12
-      else:
-         while mn > 12:
-            yr += 1
-            mn -= 12
-
-      ym = "{:04}{:02}".format(yr, mn)
-
+      nyr = int(syr) + yr
+      nmn = int(smn) + mn - 1   # shift to 0-indexed for divmod
+      extra, nmn = divmod(nmn, 12)
+      nyr += extra
+      nmn += 1                  # back to 1-indexed
+      ym = "{:04}{:02}".format(nyr, nmn)
    return ym
 
 #
@@ -1354,54 +1272,34 @@ def adddate(cdate, yr, mn = 0, dy = 0, tofmt = None):
 # add given hours to the initial date and time
 #
 def addhour(sdate, stime, nhour):
-
    if nhour and isinstance(nhour, str): nhour = int(nhour)
    if sdate and not isinstance(sdate, str): sdate = str(sdate)
    if stime and not isinstance(stime, str): stime = str(stime)
    if not nhour: return [sdate, stime]
-
    hr = dy = 0
    ms = re.match(r'^(\d+)', stime)
    if ms:
       shr = ms.group(1)
       hr = int(shr) + nhour
-      if hr < 0:
-         while hr < 0:
-            dy -= 1
-            hr += 24
-      else:
-         while hr > 23:
-            dy += 1
-            hr -= 24
-
+      dy, hr = divmod(hr, 24)
    shour = "{:02}".format(hr)
    if shr != shour: stime = re.sub(shr, shour, stime, 1)
    if dy: sdate = adddate(sdate, 0, 0, dy)
-
    return [sdate, stime]
 
 #
 # add given years, months, days and hours to the initial date and hour
 #
 def adddatehour(sdate, nhour, yr, mn, dy, hr = 0):
-
    if sdate and not isinstance(sdate, str): sdate = str(sdate)
    if hr:
       if nhour != None:
          if isinstance(nhour, str): nhour = int(nhour)
          hr += nhour
-      if hr < 0:
-         while hr < 0:
-            dy -= 1
-            hr += 24
-      else:
-         while hr > 23:
-            dy += 1
-            hr -= 24
+      carry, hr = divmod(hr, 24)
+      dy += carry
       if nhour != None: nhour = hr
-
    if yr or mn or dy: sdate = adddate(sdate, yr, mn, dy)
-
    return [sdate, nhour]
 
 #
@@ -1426,28 +1324,23 @@ def adddatetime(sdatetime, yy, mm, dd, hh, nn, ss, nf = 0):
 # if nf, add fraction of month only
 #
 def adddatetime(sdatetime, yy, mm, dd, hh, nn, ss, nf = 0):
-
    if sdatetime and not isinstance(sdatetime, str): sdatetime = str(sdatetime)
-   (sdate, stime) = re.split(' ', sdatetime)
-
+   (sdate, stime) = sdatetime.split(' ', 1)
    if hh or nn or ss: (sdate, stime) = addtime(sdate, stime, hh, nn, ss)
    if nf:
       sdate = addmonth(sdate, mm, nf)
       mm = 0
    if yy or mm or dd: sdate = adddate(sdate, yy, mm, dd)
-
    return "{} {}".format(sdate, stime)
 
 #
 # add given hours, minutes and seconds to the initial date and time
 #
 def addtime(sdate, stime, h, m, s):
-
    if sdate and not isinstance(sdate, str): sdate = str(sdate)
-   if stime and not isinstance(stime, str): sdate = str(stime)
+   if stime and not isinstance(stime, str): stime = str(stime)
    ups = (60, 60, 24)
    tms = [0, 0, 0, 0]   # (sec, min, hour, day)
-
    if s: tms[0] += s
    if m: tms[1] += m
    if h: tms[2] += h
@@ -1457,20 +1350,11 @@ def addtime(sdate, stime, h, m, s):
          tms[2] += int(ms.group(1))
          tms[1] += int(ms.group(2))
          tms[0] += int(ms.group(3))
-
    for i in range(3):
-      if tms[i] < 0:
-         while tms[i] < 0:
-            tms[i] += ups[i]
-            tms[i+1] -= 1
-      elif tms[i] >= ups[i]:
-         while tms[i] >= ups[i]:
-            tms[i] -= ups[i]
-            tms[i+1] += 1
-
+      carry, tms[i] = divmod(tms[i], ups[i])
+      tms[i+1] += carry
    stime = "{:02}:{:02}:{:02}".format(tms[2], tms[1], tms[0])
    if tms[3]: sdate = adddate(sdate, 0, 0, tms[3])
-
    return [sdate, stime]
 
 #
@@ -1559,15 +1443,12 @@ def enddate(sdate, days, unit, nf = 0):
 # adjust end time to the specified h/n/s for frequency of hour/mimute/second
 #
 def endtime(stime, unit):
-
    if stime and not isinstance(stime, str): stime = str(stime)
-   if not (unit and unit in 'HNS'): return stime
-
+   if not (unit and unit in 'HNS'): return stime  
    if stime:
-      tm = split_datetime(stime, 'T')
+      tm = split_datetime(stime)   # split on non-digits to get [HH, MM, SS]
    else:
       tm = [0, 0, 0]
-
    if unit == 'H':
       tm[1] = tm[2] = 59
    elif unit == 'N':
@@ -1575,18 +1456,15 @@ def endtime(stime, unit):
    elif unit != 'S':
       tm[0] = 23
       tm[1] = tm[2] = 59
-
-   return "{:02}:{:02}:{:02}".format(tm[0], tm[1]. tm[2])
+   return "{:02}:{:02}:{:02}".format(tm[0], tm[1], tm[2])
 
 #
 # adjust end time to the specified h/n/s for frequency of year/month/week/day/hour/mimute/second
 #
 def enddatetime(sdatetime, unit, days = 0, nf = 0):
-
    if sdatetime and not isinstance(sdatetime, str): sdatetime = str(sdatetime)
    if not (unit and unit in 'YMWDHNS'): return sdatetime
-   (sdate, stime) = re.split(' ', sdatetime)
-
+   (sdate, stime) = sdatetime.split(' ', 1)
    if unit in 'HNS':
       stime = endtime(stime, unit)
    else:
@@ -1597,16 +1475,13 @@ def enddatetime(sdatetime, unit, days = 0, nf = 0):
 # get the string length dynamically
 #
 def get_column_length(colname, values):
-
    clen = len(colname) if colname else 2  # initial column length as the length of column title
-
    for val in values:
       if val is None: continue
       sval = str(val)
-      if sval and not re.search(r'\n', sval):
+      if sval and '\n' not in sval:
          slen = len(sval)
          if slen > clen: clen = slen
-
    return clen
 
 #
@@ -1740,23 +1615,8 @@ def recursive_files(infiles):
 # Return: index if found; -1 otherwise
 #
 def asearch(lidx, hidx, key, list):
-
-   ret = -1
-   if (hidx - lidx) < 11:   # use linear search for less than 11 items
-      for midx in range(lidx, hidx):
-         if key == list[midx]:
-            ret = midx
-            break
-   else:
-      midx = (lidx + hidx)/2
-      if key == list[midx]:
-         ret = midx
-      elif key < list[midx]:
-         ret = asearch(lidx, midx, key, list)
-      else:
-         ret = asearch(midx + 1, hidx, key, list)
-
-   return ret
+   idx = bisect.bisect_left(list, key, lidx, hidx)
+   return idx if idx < hidx and list[idx] == key else -1
 
 #
 #   lidx: lower index limit  (including)
@@ -1844,11 +1704,23 @@ def format_float_value(val, precision = 2):
 # check a file is a ASCII text one
 # return 1 if yes, 0 if not; or -1 if file not exists
 #
-def is_text_file(fname):
-
-   ret = -1
-   if op.isfile(fname):
-      buf = PgLOG.pgsystem("file -b " + fname, PgLOG.LOGWRN, 20)
-      ret = 1 if buf and re.search(r'(^|\s)(text|script|data)', buf) else 0
-
-   return ret
+def is_text_file(fname, blocksize = 256, threshhold = 0.1):
+   # File doesn't exist or is not a regular file
+   if not op.exists(fname) or not op.isfile(fname): return -1
+   if op.getsize(fname) == 0: return 1  # Empty files are considered text
+   try:
+      buffer = None
+      with open(fname, 'rb') as f:
+         buffer = f.read(blocksize)
+      # Check for null bytes (a strong indicator of a binary file)
+      if not buffer or b'\0' in buffer: return 0
+      text_set = frozenset(
+         b'\t\n\r\f\v' +        # Whitespace characters
+         bytes(range(32, 127))  # Printable ASCII characters
+      )
+      non_text_count = sum(b not in text_set for b in buffer)
+      # If a significant portion of the buffer consists of non-text characters,
+      # it's likely a binary file.
+      return 1 if((non_text_count/len(buffer)) < threshhold) else 0
+   except IOError:
+      return -1   # Handle cases where the file cannot be opened or read

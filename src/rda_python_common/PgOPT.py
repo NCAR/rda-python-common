@@ -287,6 +287,10 @@ def get_default_info(opt):
 #
 # set output file name handler now
 #
+# Kept in this module (instead of PgLOG, where the class version now lives)
+# because applications reference PgOPT.OUTPUT directly; PgLOG.OUTPUT is kept in
+# sync so PgLOG.pgexit() can close it.
+#
 def open_output(outfile = None):
 
    global OUTPUT
@@ -297,7 +301,9 @@ def open_output(outfile = None):
       except Exception as e:
          PgLOG.pglog("{}: Error open file to write - {}".format(outfile, str(e)), PGOPT['extlog'])
    else:                               # result to STDOUT
+      if OUTPUT and OUTPUT != sys.stdout: OUTPUT.close()
       OUTPUT = sys.stdout
+   PgLOG.OUTPUT = OUTPUT
 
 #
 # return 1 if valid infile names; sys.exit(1) otherwise
@@ -316,15 +322,12 @@ def validate_infile_names(dsid):
 # validate an input filename against dsid
 #
 def validate_one_infile(infile, dsid):
-
    ndsid = PgUtil.find_dataset_id(infile)
-   if ndsid == None:
+   if ndsid is None:
       return PgLOG.pglog("{}: No dsid identified in Input file name {}!".format(dsid, infile), PGOPT['extlog'])
-
    fdsid = PgUtil.format_dataset_id(ndsid)
    if fdsid != dsid:
       return PgLOG.pglog("{}: Different dsid {} found in Input file name {}!".format(dsid, fdsid, infile), PGOPT['extlog'])
-
    return PgLOG.SUCCESS
 
 #
@@ -546,9 +549,7 @@ def build_record(flds, pgrec, tname, idx = 0):
 # set global variable PGOPT['UID'] with value of user.uid, fatal if unsuccessful
 #
 def set_uid(aname):
-   
    set_email_logact()
- 
    if 'LN' not in params:
       params['LN'] = PgLOG.PGLOG['CURUID']
    elif params['LN'] != PgLOG.PGLOG['CURUID']:
@@ -560,32 +561,25 @@ def set_uid(aname):
          msg = "'{}' runs '{} -{}' as '{}'!".format(PgLOG.PGLOG['CURUID'], aname, PGOPT['CACT'], params['LN'])
       PgLOG.pglog(msg,  PGOPT['wrnlog'])
       PgLOG.set_specialist_environments(params['LN'])
-
    if 'LN' not in params: PgLOG.pglog("Could not get user login name", PGOPT['extlog'])
-
    validate_dataset()
    if OPTS[PGOPT['CACT']][2] > 0: validate_dsowner(aname)
-   
-   pgrec = PgDBI.pgget("dssdb.user", "uid", "logname = '{}' AND until_date IS NULL".format(params['LN']), PGOPT['extlog'])
-   if not pgrec: PgLOG.pglog("Could not get user.uid for " + params['LN'], PGOPT['extlog'])
-   PGOPT['UID'] = pgrec['uid']
-
-   open_output(params['OF'] if 'OF' in params else None)
+   uid = PgDBI.get_user_uid(params['LN'])
+   if not uid: PgLOG.pglog("Could not get user.uid for " + params['LN'], PGOPT['extlog'])
+   PGOPT['UID'] = uid
+   PgLOG.open_output(params['OF'] if 'OF' in params else None)
 
 #
 # set global variable PGOPT['UID'] as 0 for a sudo user
 #
 def set_sudo_uid(aname, uid):
-
    set_email_logact()
- 
    if PgLOG.PGLOG['CURUID'] != uid:
       if 'DM' in params and re.match(r'^(start|begin)$', params['DM'], re.I):
-         msg = "'{}': must start Daemon '{} -{} as '{}'".format(PgLOG.PGLOG['CURUID'], aname, params['CACT'], uid)
+         msg = "'{}': must start Daemon '{} -{}' as '{}'".format(PgLOG.PGLOG['CURUID'], aname, PGOPT['CACT'], uid)
       else:
-         msg = "'{}': must run '{} -{}' as '{}'".format(PgLOG.PGLOG['CURUID'], aname, params['CACT'], uid) 
+         msg = "'{}': must run '{} -{}' as '{}'".format(PgLOG.PGLOG['CURUID'], aname, PGOPT['CACT'], uid)
       PgLOG.pglog(msg, PGOPT['extlog'])
-
    PGOPT['UID'] = 0
    params['LN'] = PgLOG.PGLOG['CURUID']
 
@@ -593,16 +587,13 @@ def set_sudo_uid(aname, uid):
 # set global variable PGOPT['UID'] as 0 for root user
 #
 def set_root_uid(aname):
-
    set_email_logact()
- 
    if PgLOG.PGLOG['CURUID'] != "root":
       if 'DM' in params and re.match(r'^(start|begin)$', params['DM'], re.I):
-         msg = "'{}': you must start Daemon '{} -{} as 'root'".format(PgLOG.PGLOG['CURUID'], aname, params['CACT'])
+         msg = "'{}': you must start Daemon '{} -{}' as 'root'".format(PgLOG.PGLOG['CURUID'], aname, PGOPT['CACT'])
       else:
-         msg = "'{}': you must run '{} -{}' as 'root'".format(PgLOG.PGLOG['CURUID'], aname, params['CACT']) 
+         msg = "'{}': you must run '{} -{}' as 'root'".format(PgLOG.PGLOG['CURUID'], aname, PGOPT['CACT'])
       PgLOG.pglog(msg, PGOPT['extlog'])
-
    PGOPT['UID'] = 0
    params['LN'] = PgLOG.PGLOG['CURUID']
 
@@ -1034,22 +1025,19 @@ def get_option_key(p, flag = 0, skip = 0, lidx = 0, line = None, infile = None, 
 # set values to given options, ignore options set in input files if the options
 # already set on command line
 #
-def set_option_value(opt, val = None, cnl = 0, lidx = 0, line = None, infile = None):
-
+def set_option_value(opt, val=None, cnl=0, lidx=0, line=None, infile=None):
    if opt in CMDOPTS and lidx:   # in input file, but given on command line already
       if opt not in params: params[opt] = CMDOPTS[opt]
       return
-
    if val is None: val = ''
    if OPTS[opt][0]&3:
       if OPTS[opt][2]&16:
          if not val:
             val = 0
-         elif re.match(r'^\d+$', val):
+         elif val.isdigit():
             val = int(val)
       elif val and (opt == 'DS' or opt == 'OD'):
          val = PgUtil.format_dataset_id(val)
-
    errmsg = None
    if not cnl and OPTS[opt][0]&3:
       if opt in params:
@@ -1064,10 +1052,10 @@ def set_option_value(opt, val = None, cnl = 0, lidx = 0, line = None, infile = N
             ms = re.match(r'^!(\w*)', dstr)
             if ms:
                dstr = ms.group(1)
-               if vlen == 1 and dstr.find(val) > -1: errmsg = "{}: character must not be one of '{}'".format(val, str)
+               # Bug fix #3: was `str` (Python built-in), should be `dstr`
+               if vlen == 1 and dstr.find(val) > -1: errmsg = "{}: character must not be one of '{}'".format(val, dstr)
             elif vlen > 1 or (vlen == 0 and not OPTS[opt][2]&128) or (vlen == 1 and dstr.find(val) < 0):
                errmsg = "{} single-letter value must be one of '{}'".format(val, dstr)
-
    if not errmsg:
       if OPTS[opt][0] == 2:    # multiple value option
          if opt not in params:
@@ -1085,7 +1073,7 @@ def set_option_value(opt, val = None, cnl = 0, lidx = 0, line = None, infile = N
                   params[opt][rowidx] = val
             else:
                params[opt].append(val)     # add next value
-      elif OPTS[opt][0] == 1:          # single value option  
+      elif OPTS[opt][0] == 1:          # single value option
          if cnl and opt in params:
             if val: errmsg = "Multi-line value not allowed"
          elif OPTS[opt][2]&2 and PgUtil.pgcmp(params[opt], val):
@@ -1105,13 +1093,11 @@ def set_option_value(opt, val = None, cnl = 0, lidx = 0, line = None, infile = N
             PGOPT['ACTS'] = OPTS[opt][0]  # add action bit
             PGOPT['CACT'] = opt  # add action name
             if opt == "SB": PGOPT['MSET'] = opt
-
    if errmsg:
       if lidx:
         input_error(lidx, line, infile, "{}({}) - {}".format(opt, OPTS[opt][1], errmsg))
       else:
         PgLOG.pglog("ERROR: {}({}) - {}".format(opt, OPTS[opt][1], errmsg), PGOPT['extlog'])
-
    if not lidx: CMDOPTS[opt] = params[opt]    # record options set on command lines
 
 #
@@ -1450,7 +1436,6 @@ def set_file_format(count):
 # get frequency information
 #
 def get_control_frequency(frequency):
-
    val = nf = 0
    unit = None
    ms = re.match(r'^(\d+)([YMWDHNS])$', frequency, re.I)
@@ -1464,20 +1449,19 @@ def get_control_frequency(frequency):
          nf = int(ms.group(2))
          unit = 'M'
          if nf < 2 or nf > 10 or (30%nf): val = 0
-
    if not val:
+      # Bug fix #5: normalise all error paths to return (None, errmsg)
       if nf:
-         unit = "fraction of month frequency '{}' MUST be (2,3,5,6,10)".format(frequency)
+         errmsg = "fraction of month frequency '{}' MUST be (2,3,5,6,10)".format(frequency)
       elif unit:
-         val = "frequency '{}' MUST be larger than 0".format(frequency)
+         errmsg = "frequency '{}' MUST be larger than 0".format(frequency)
       elif re.search(r'/(\d+)$', frequency):
-         val = "fractional frequency '{}' for month ONLY".format(frequency)
+         errmsg = "fractional frequency '{}' for month ONLY".format(frequency)
       else:
-         val = "invalid frequency '{}', unit must be (Y,M,W,D,H)".format(frequency)
-      return (None, unit)
-
-   freq = [0]*7   # initialize the frequence list
-   uidx = {'Y' : 0, 'D' : 2, 'H' : 3, 'N' : 4, 'S' : 5}
+         errmsg = "invalid frequency '{}', unit must be (Y,M,W,D,H,N,S)".format(frequency)
+      return (None, errmsg)
+   freq = [0]*7   # initialize the frequency list
+   uidx = {'Y': 0, 'D': 2, 'H': 3, 'N': 4, 'S': 5}
    if unit == 'M':
       freq[1] = val
       if nf: freq[6] = nf     # number of fractions in a month
@@ -1485,7 +1469,6 @@ def get_control_frequency(frequency):
       freq[2] = 7 * val
    elif unit in uidx:
       freq[uidx[unit]] = val
-
    return (freq, unit)
 
 #
@@ -1526,16 +1509,15 @@ def get_version_index(dsid, logact = 0):
 #
 # append given format (data or archive) sfmt to format string sformat
 #
-def append_format_string(sformat, sfmt, chkend = 0):
-
+def append_format_string(sformat, sfmt, chkend=0):
    mp = r'(^|\.){}$' if chkend else r'(^|\.){}(\.|$)'
    if sfmt:
       if not sformat:
          sformat = sfmt
       else:
          for fmt in re.split(r'\.', sfmt):
-            if not re.search(mp.format(fmt), sformat, re.I): sformat += '.' + fmt
-
+            # Bug fix #6: escape regex metacharacters in format component
+            if not re.search(mp.format(re.escape(fmt)), sformat, re.I): sformat += '.' + fmt
    return sformat
 
 #

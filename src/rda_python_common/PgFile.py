@@ -23,6 +23,7 @@ import re
 import time
 import glob
 import json
+import hashlib
 from . import PgLOG
 from . import PgUtil
 from . import PgSIG
@@ -59,9 +60,7 @@ PGTARS = {
 
 TARSTR = '|'.join(PGTARS)
 DELDIRS = {}
-TASKIDS = {}   # cache unfinished 
-MD5CMD = 'md5sum'
-SHA512CMD = 'sha512sum'
+TASKIDS = {}   # cache unfinished
 LHOST = "localhost"
 OHOST = PgLOG.PGLOG['OBJCTSTR']
 BHOST = PgLOG.PGLOG['BACKUPNM']
@@ -69,8 +68,6 @@ DHOST = PgLOG.PGLOG['DRDATANM']
 OBJCTCMD = "isd_s3_cli"
 BACKCMD = "dsglobus"
 
-HLIMIT = 0    # HTAR file count limit
-BLIMIT = 2    # minimum back tar file size in DB 
 DIRLVLS = 0
 
 # record how many errors happen for working with HPSS, local or remote machines
@@ -163,11 +160,11 @@ def errlog(msg, etype, retry = 0, logact = 0):
 #
 # Return 1 if successful 0 if failed with error message generated in PgLOG.pgsystem() cached in PgLOG.PGLOG['SYSERR'] 
 #
-def copy_gdex_file(tofile, fromfile, tohost = LHOST, fromhost = LHOST, logact = 0):
-
+def copy_gdex_file(tofile, fromfile, tohost = None, fromhost = None, logact = 0):
+   if tohost is None: tohost = LHOST
+   if fromhost is None: fromhost = LHOST
    thost = strip_host_name(tohost)
    fhost = strip_host_name(fromhost)
-
    if PgUtil.pgcmp(thost, fhost, 1) == 0:
       if PgUtil.pgcmp(thost, LHOST, 1) == 0:
          return local_copy_local(tofile, fromfile, logact)
@@ -175,9 +172,9 @@ def copy_gdex_file(tofile, fromfile, tohost = LHOST, fromhost = LHOST, logact = 
       if PgUtil.pgcmp(thost, OHOST, 1) == 0:
          return local_copy_object(tofile, fromfile, None, None, logact)
       elif PgUtil.pgcmp(thost, BHOST, 1) == 0:
-         return local_copy_backup(tofile, fromfile, QPOINTS['B'], logact)
+         return wait_copy_backup(tofile, fromfile, QPOINTS['B'], logact)
       elif PgUtil.pgcmp(thost, DHOST, 1) == 0:
-         return local_copy_backup(tofile, fromfile, QPOINTS['D'], logact)
+         return wait_copy_backup(tofile, fromfile, QPOINTS['D'], logact)
       else:
          return local_copy_remote(tofile, fromfile, tohost, logact)
    elif PgUtil.pgcmp(thost, LHOST, 1) == 0:
@@ -189,8 +186,7 @@ def copy_gdex_file(tofile, fromfile, tohost = LHOST, fromhost = LHOST, logact = 
          return backup_copy_local(tofile, fromfile, QPOINTS['D'], logact)
       else:
          return remote_copy_local(tofile, fromfile, fromhost)
-
-   return errlog("{}-{}->{}-{}: Cannot copy file".format(fhost, fromfile, thost, tofile), 'O', 1, PgLOG.LGEREX)
+   return errlog("{}-{}->{}-{}: Cannot copy file".format(fhost, fromfile, thost, tofile), 'O', 1, PgLOG.LGEREX)   
 
 copy_rda_file = copy_gdex_file
 
@@ -298,24 +294,21 @@ def local_copy_remote(tofile, fromfile, host, logact = 0):
 #     meta - reference to metadata hash
 #
 def local_copy_object(tofile, fromfile, bucket = None, meta = None, logact = 0):
-
    if not bucket: bucket = PgLOG.PGLOG['OBJCTBKT']
    if meta is None: meta = {}
    if 'user' not in meta: meta['user'] = PgLOG.PGLOG['CURUID']
    if 'group' not in meta: meta['group'] = PgLOG.PGLOG['GDEXGRP']
    uinfo = json.dumps(meta)
- 
-   finfo = check_local_file(fromfile, 0, logact)
+   finfo = check_local_file(fromfile, 0, logact|PgLOG.PFSIZE)
    if not finfo:
       if finfo != None: return PgLOG.FAILURE
       return lmsg(fromfile, "{} to copy to {}-{}".format(PgLOG.PGLOG['MISSFILE'], OHOST, tofile), logact)
-
    if not logact&PgLOG.OVRIDE:
       tinfo = check_object_file(tofile, bucket, 0, logact)
       if tinfo and tinfo['data_size'] > 0:
          return PgLOG.pglog("{}-{}-{}: file exists already".format(OHOST, bucket, tofile), logact)
-
-   cmd = "{} ul -lf {} -b {} -k {} -md '{}'".format(OBJCTCMD, fromfile, bucket, tofile, uinfo)
+   ocmd = OBJCTCMD
+   cmd = "{} ul -lf {} -b {} -k {} -md '{}'".format(ocmd, fromfile, bucket, tofile, uinfo)
    for loop in range(2):
       buf = PgLOG.pgsystem(cmd, logact, CMDBTH)
       tinfo = check_object_file(tofile, bucket, 0, logact)
@@ -324,9 +317,7 @@ def local_copy_object(tofile, fromfile, bucket = None, meta = None, logact = 0):
             return PgLOG.SUCCESS      
       elif tinfo != None:
          break
-   
       errlog("Error Execute: {}\n{}".format(cmd, buf), 'O', loop, logact)
-
    return PgLOG.FAILURE
 
 #
@@ -337,7 +328,7 @@ def local_copy_object(tofile, fromfile, bucket = None, meta = None, logact = 0):
 #   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-dgdexta' 
 # frompoint - source endpoint name, the same choices as the topoint
 #
-def quasar_multiple_trasnfer(tofiles, fromfiles, topoint, frompoint, logact = 0):
+def quasar_multiple_transfer(tofiles, fromfiles, topoint, frompoint, logact = 0):
 
    ret = PgLOG.FAILURE
 
@@ -356,7 +347,8 @@ def quasar_multiple_trasnfer(tofiles, fromfiles, topoint, frompoint, logact = 0)
    label = f"{ENDPOINTS[frompoint]} to {ENDPOINTS[topoint]} {action}"
    verify_checksum = True
 
-   cmd = f'{BACKCMD} {action} -se {source_endpoint} -de {destination_endpoint} --label "{label}"'
+   bcmd = BACKCMD
+   cmd = f'{bcmd} {action} -se {source_endpoint} -de {destination_endpoint} --label "{label}"'
    if verify_checksum:
       cmd += ' -vc'   
    cmd += ' --batch -'
@@ -370,38 +362,37 @@ def quasar_multiple_trasnfer(tofiles, fromfiles, topoint, frompoint, logact = 0)
 
    return ret
 
+# backward compatible alias for the previously misspelled function name
+quasar_multiple_trasnfer = quasar_multiple_transfer
+
 #
 # Copy a file from a Globus endpoint to another
 
-#    tofile - target file name, leading with /dsnnn.n/ on Quasar and 
+#    tofile - target file name, leading with /dsnnn.n/ on Quasar and
 #             leading with /data/ or /decsdata/ on local glade disk
 #  fromfile - source file, the same format as the tofile
 #   topoint - target endpoint name, 'gdex-glade', 'gdex-quasar' or 'gdex-quasar-dgdexta' 
 # frompoint - source endpoint name, the same choices as the topoint
 #
 def endpoint_copy_endpoint(tofile, fromfile, topoint, frompoint, logact = 0):
-
    ret = PgLOG.FAILURE
    finfo = check_globus_file(fromfile, frompoint, 0, logact)
    if not finfo:
       if finfo != None: return ret
       return lmsg(fromfile, "{} to copy {} file to {}-{}".format(PgLOG.PGLOG['MISSFILE'], frompoint, topoint, tofile), logact)
-
    if not logact&PgLOG.OVRIDE:
       tinfo = check_globus_file(tofile, topoint, 0, logact)
       if tinfo and tinfo['data_size'] > 0:
          return PgLOG.pglog("{}-{}: file exists already".format(topoint, tofile), logact)
-
    action = 'transfer'
-   cmd = f'{BACKCMD} {action} -se {frompoint} -de {topoint} -sf {fromfile} -df {tofile} -vc'
-
+   bcmd = BACKCMD
+   cmd = f'{bcmd} {action} -se {frompoint} -de {topoint} -sf {fromfile} -df {tofile} -vc'
    task = submit_globus_task(cmd, topoint, logact)
    if task['stat'] == 'S':
       ret = PgLOG.SUCCESS
    elif task['stat'] == 'A':
       TASKIDS["{}-{}".format(topoint, tofile)] = task['id']
       ret = PgLOG.FINISH
-
    return ret
 
 #
@@ -445,15 +436,13 @@ def submit_globus_task(cmd, endpoint, logact = 0, qstr = None):
 # if PgLOG.NOWAIT presents and Details is neither OK nor Queued
 #
 def check_globus_status(taskid, endpoint = None, logact = 0):
-
    ret = 'U'
    if not taskid: return ret
    if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
    mp = r'Status:\s+({})'.format('|'.join(QSTATS.values()))
-
-   cmd = f"{BACKCMD} get-task {taskid}"
+   bcmd = BACKCMD
+   cmd = f"{bcmd} get-task {taskid}"
    astats = ['OK', 'Queued']
-
    for loop in range(2):
       buf = PgLOG.pgsystem(cmd, logact, CMDRET)
       if buf:
@@ -468,20 +457,18 @@ def check_globus_status(taskid, endpoint = None, logact = 0):
                      if logact&PgLOG.NOWAIT:
                         errmsg = "{}: Cancel Task due to {}:\n{}".format(taskid, detail, buf)
                         errlog(errmsg, 'B', 1, logact)
-                        ccmd = f"{BACKCMD} cancel-task {taskid}"
+                        ccmd = f"{bcmd} cancel-task {taskid}"
                         PgLOG.pgsystem(ccmd, logact, 7)
                      else:
                         time.sleep(PgSIG.PGSIG['ETIME'])
                      continue
             break
-            
       errmsg = "Error Execute: " + cmd
       if PgLOG.PGLOG['SYSERR']:
          errmsg = "\n" + PgLOG.PGLOG['SYSERR']
          (hstat, msg) = host_down_status('', QHOSTS[endpoint], 1, logact)
          if hstat: errmsg += "\n" + msg
       errlog(errmsg, 'B', loop, logact)
-
    if ret == 'S' or ret == 'A': ECNTS['B'] = 0   # reset error count
    return ret
 
@@ -537,6 +524,17 @@ def local_copy_backup(tofile, fromfile, endpoint = None, logact = 0):
    return endpoint_copy_endpoint(tofile, fromfile, endpoint, 'gdex-glade', logact)
 
 #
+# Copy a local file to Quasar backup tape system and wait until the Globus task is done
+# for callers that cannot handle a PgLOG.FINISH return
+#
+def wait_copy_backup(tofile, fromfile, endpoint = None, logact = 0):
+
+   if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
+   ret = local_copy_backup(tofile, fromfile, endpoint, logact)
+   if ret == PgLOG.FINISH: ret = check_globus_finished(tofile, endpoint, logact)
+   return ret
+
+#
 # Copy a  Quasar backup file to local Globus endpoint
 #
 #   tofile - target file name, leading with /data/ or /decsdata/
@@ -544,9 +542,10 @@ def local_copy_backup(tofile, fromfile, endpoint = None, logact = 0):
 # endpoint - endpoint name on Quasar Backup Server
 #
 def backup_copy_local(tofile, fromfile, endpoint = None, logact = 0):
-
    if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
-   return endpoint_copy_endpoint(tofile, fromfile, 'gdex-glade', endpoint, logact)
+   ret = endpoint_copy_endpoint(tofile, fromfile, 'gdex-glade', endpoint, logact)
+   if ret == PgLOG.FINISH: ret = check_globus_finished(tofile, 'gdex-glade', logact)
+   return ret
 
 #
 # Copy a remote file to local
@@ -556,23 +555,19 @@ def backup_copy_local(tofile, fromfile, endpoint = None, logact = 0):
 #     host - remote host name
 #
 def remote_copy_local(tofile, fromfile, host, logact = 0):
-
    cmd = PgLOG.get_sync_command(host)
    finfo = check_remote_file(fromfile, host, 0, logact)
+   target = tofile
    if not finfo:
       if finfo != None: return PgLOG.FAILURE
       return errlog("{}-{}: {} to copy to {}".format(host, fromfile, PgLOG.PGLOG['MISSFILE'], tofile), 'R', 1, logact)
-
-   target = tofile
    ms = re.match(r'^(.+)/$', tofile)
    if ms:
       dir = ms.group(1)
       tofile += op.basename(fromfile)
    else:
       dir = get_local_dirname(tofile)
-
    if not make_local_directory(dir, logact): return PgLOG.FAILURE
-
    cmd += " -g {} {}".format(fromfile, target)
    loop = reset = 0
    while (loop-reset) < 2:
@@ -587,11 +582,9 @@ def remote_copy_local(tofile, fromfile, host, logact = 0):
                 return PgLOG.SUCCESS
          elif info != None:
             break
-
       errlog(PgLOG.PGLOG['SYSERR'], 'L', (loop - reset), logact)
       if loop == 0: reset = reset_local_info(tofile, info, logact)
       loop += 1
-
    return PgLOG.FAILURE
 
 #
@@ -602,15 +595,14 @@ def remote_copy_local(tofile, fromfile, host, logact = 0):
 #   bucket - bucket name on Object store
 #
 def object_copy_local(tofile, fromfile, bucket = None, logact = 0):
-   
    ret = PgLOG.FAILURE
    if not bucket: bucket = PgLOG.PGLOG['OBJCTBKT']
    finfo = check_object_file(fromfile, bucket, 0, logact)
    if not finfo:
       if finfo != None: return ret
       return lmsg(fromfile, "{}-{} to copy to {}".format(OHOST, PgLOG.PGLOG['MISSFILE'], tofile), logact)
-
-   cmd = "{} go -k {} -b {}".format(OBJCTCMD, fromfile, bucket)
+   ocmd = OBJCTCMD
+   cmd = "{} go -k {} -b {}".format(ocmd, fromfile, bucket)
    fromname = op.basename(fromfile)
    toname = op.basename(tofile)
    if toname == tofile:
@@ -621,24 +613,20 @@ def object_copy_local(tofile, fromfile, bucket = None, logact = 0):
    loop = reset = 0
    while (loop-reset) < 2:
       buf = PgLOG.pgsystem(cmd, logact, CMDBTH)
-      info = check_local_file(fromname, 143, logact)   # 1+2+4+8+128
+      info = check_local_file(fromname, 143, logact|PgLOG.PFSIZE)   # 1+2+4+8+128
       if info:
          if info['data_size'] == finfo['data_size']:
             set_local_mode(fromfile, info['isfile'], 0, info['mode'], info['logname'], logact)
             if toname == fromname or move_local_file(toname, fromname, logact):
                ret = PgLOG.SUCCESS
                break
-         
-      
       elif info != None:
          break
-   
       errlog("Error Execute: {}\n{}".format(cmd, buf), 'L', (loop - reset), logact)
       if loop == 0: reset = reset_local_info(tofile, info, logact)
       loop += 1
    if odir and odir != dir:
       change_local_directory(odir, logact)
-
    return ret
 
 #
@@ -750,41 +738,37 @@ def delete_remote_file(file, host, logact = 0):
 # Delete a file on object store  
 #
 def delete_object_file(file, bucket = None, logact = 0):
-
    if not bucket: bucket = PgLOG.PGLOG['OBJCTBKT']
+   ocmd = OBJCTCMD
    for loop in range(2):
       list = object_glob(file, bucket, 0, logact)
       if not list: return PgLOG.FAILURE
       errmsg = None
       for key in list:
-         cmd = "{} dl {} -b {}".format(OBJCTCMD, key, bucket)
+         cmd = "{} dl {} -b {}".format(ocmd, key, bucket)
          if not PgLOG.pgsystem(cmd, logact, CMDERR):
             errmsg = PgLOG.PGLOG['SYSERR']
             break
-   
       list = object_glob(file, bucket, 0, logact)
       if not list: return PgLOG.SUCCESS
       if errmsg: errlog(errmsg, 'O', loop, logact)
-
    return PgLOG.FAILURE
 
 #
 # Delete a backup file on Quasar Server  
 #
 def delete_backup_file(file, endpoint = None, logact = 0):
-
    if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
    info = check_backup_file(file, endpoint, 0, logact)
    if not info: return PgLOG.FAILURE
-
-   cmd = f"{BACKCMD} delete -ep {endpoint} -tf {file}"
+   bcmd = BACKCMD
+   cmd = f"{bcmd} delete -ep {endpoint} -tf {file}"
    task = submit_globus_task(cmd, endpoint, logact)
    if task['stat'] == 'S':
       return PgLOG.SUCCESS
    elif task['stat'] == 'A':
       TASKIDS["{}-{}".format(endpoint, file)] = task['id']
       return PgLOG.FINISH
-
    return PgLOG.FAILURE
 
 #
@@ -951,7 +935,6 @@ def move_remote_file(tofile, fromfile, host, logact = 0):
 # frombucket - original bucket name
 #
 def move_object_file(tofile, fromfile, tobucket, frombucket, logact = 0):
-
    ret = PgLOG.FAILURE
    if not tobucket: tobucket = PgLOG.PGLOG['OBJCTBKT']
    if not frombucket: frombucket = tobucket
@@ -969,12 +952,11 @@ def move_object_file(tofile, fromfile, tobucket, frombucket, logact = 0):
          return errlog("{}-{}: Object File exists, cannot move {}-{} to it".format(tobucket, tofile, frombucket, fromfile), 'R', 1, logact)
    elif tinfo != None:
       return PgLOG.FAILURE
-
-   cmd = "{} mv -b {} -db {} -k {} -dk {}".format(OBJCTCMD, frombucket, tobucket, fromfile, tofile)
-   ucmd = "{} gm -k {} -b {}".format(OBJCTCMD, fromfile, frombucket)
+   ocmd = OBJCTCMD
+   cmd = "{} mv -b {} -db {} -k {} -dk {}".format(ocmd, frombucket, tobucket, fromfile, tofile)
+   ucmd = "{} gm -k {} -b {}".format(ocmd, fromfile, frombucket)
    ubuf = PgLOG.pgsystem(ucmd, PgLOG.LOGWRN, CMDRET)
    if ubuf and re.match(r'^\{', ubuf): cmd += " -md '{}'".format(ubuf)
-
    for loop in range(2):
       buf = PgLOG.pgsystem(cmd, logact, CMDBTH)
       tinfo = check_object_file(tofile, tobucket, 0, logact)
@@ -983,9 +965,7 @@ def move_object_file(tofile, fromfile, tobucket, frombucket, logact = 0):
             return PgLOG.SUCCESS
       elif tinfo != None:
          break
-
       errlog("Error Execute: {}\n{}".format(cmd, buf), 'O', loop, logact)
-
    return PgLOG.FAILURE
 
 #
@@ -997,7 +977,6 @@ def move_object_file(tofile, fromfile, tobucket, frombucket, logact = 0):
 # frombucket - original bucket name
 #
 def move_object_path(topath, frompath, tobucket, frombucket, logact = 0):
-
    ret = PgLOG.FAILURE
    if not tobucket: tobucket = PgLOG.PGLOG['OBJCTBKT']
    if not frombucket: frombucket = tobucket
@@ -1010,15 +989,13 @@ def move_object_path(topath, frompath, tobucket, frombucket, logact = 0):
          return PgLOG.SUCCESS
       else:
          return errlog("{}-{}: {} to move".format(frombucket, frompath, PgLOG.PGLOG['MISSFILE']), 'R', 1, logact)   
-
-   cmd = "{} mv -b {} -db {} -k {} -dk {}".format(OBJCTCMD, frombucket, tobucket, frompath, topath)
-
+   ocmd = OBJCTCMD
+   cmd = "{} mv -b {} -db {} -k {} -dk {}".format(ocmd, frombucket, tobucket, frompath, topath)
    for loop in range(2):
       buf = PgLOG.pgsystem(cmd, logact, CMDBTH)
       fcnt = check_object_path(frompath, frombucket, logact)
       if not fcnt: return PgLOG.SUCCESS
       errlog("Error Execute: {}\n{}".format(cmd, buf), 'O', loop, logact)
-
    return PgLOG.FAILURE
 
 #
@@ -1029,7 +1006,6 @@ def move_object_path(topath, frompath, tobucket, frombucket, logact = 0):
 # endpoint - Globus endpoint
 #
 def move_backup_file(tofile, fromfile, endpoint = None, logact = 0):
-
    ret = PgLOG.FAILURE
    if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
    finfo = check_backup_file(fromfile, endpoint, 0, logact)
@@ -1041,14 +1017,13 @@ def move_backup_file(tofile, fromfile, endpoint = None, logact = 0):
          return PgLOG.SUCCESS
       else:
          return errlog("{}: {} to move".format(fromfile, PgLOG.PGLOG['MISSFILE']), 'B', 1, logact)
-   
    if tinfo:
       if tinfo['data_size'] > 0 and not logact&PgLOG.OVRIDE:
          return errlog("{}: File exists, cannot move {} to it".format(tofile, fromfile), 'B', 1, logact)
    elif tinfo != None:
       return ret
-
-   cmd = f"{BACKCMD} rename -ep {endpoint} --old-path {fromfile} --new-path {tofile}"
+   bcmd = BACKCMD
+   cmd = f"{bcmd} rename -ep {endpoint} --old-path {fromfile} --new-path {tofile}"
    loop = 0
    while loop < 2:
       buf = PgLOG.pgsystem(cmd, logact, CMDRET)
@@ -1065,7 +1040,6 @@ def move_backup_file(tofile, fromfile, endpoint = None, logact = 0):
          if hstat: errmsg += "\n" + msg
          errlog(errmsg, 'B', loop, logact)
       loop += 1
-
    if ret == PgLOG.SUCCESS: ECNTS['B'] = 0   # reset error count
    return ret
 
@@ -1167,7 +1141,6 @@ def make_backup_directory(dir, endpoint, logact = 0):
 # Make a quasar directory recursively
 #
 def make_one_backup_directory(dir, odir, endpoint = None, logact = 0):
-
    if not dir or dir == '/': return PgLOG.SUCCESS
    if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
    info = check_backup_file(dir, endpoint, 0, logact)
@@ -1176,11 +1149,11 @@ def make_one_backup_directory(dir, odir, endpoint = None, logact = 0):
       return PgLOG.SUCCESS
    elif info != None:
       return PgLOG.FAILURE
-
    if not odir: odir = dir
    if not make_one_backup_directory(op.dirname(dir), odir, endpoint, logact): return PgLOG.FAILURE
-
-   cmd = f"{BACKCMD} mkdir -ep {endpoint} -p {dir}"
+   bcmd = BACKCMD
+   cmd = f"{bcmd} mkdir -ep {endpoint} -p {dir}"
+   ret = PgLOG.FAILURE
    for loop in range(2):
       buf = PgLOG.pgsystem(cmd, logact, CMDRET)
       syserr = PgLOG.PGLOG['SYSERR']
@@ -1199,7 +1172,6 @@ def make_one_backup_directory(dir, odir, endpoint = None, logact = 0):
             (hstat, msg) = host_down_status('', QHOSTS[endpoint], 1, logact)
             if hstat: errmsg += "\n" + msg
             errlog(errmsg, 'B', loop, logact)
-
    if ret == PgLOG.SUCCESS: ECNTS['B'] = 0   # reset error count
    return ret
 
@@ -1207,17 +1179,8 @@ def make_one_backup_directory(dir, odir, endpoint = None, logact = 0):
 # check and return 1 if a root directory
 #
 def is_root_directory(dir, etype, host = None, action = None, logact = 0):
-
    ret = cnt = 0
-
-   if etype == 'H':
-      ms = re.match(r'^({})(.*)$'.format(PgLOG.PGLOG['ALLROOTS']), dir)
-      if ms:
-         m2 = ms.group(2) 
-         if not m2 or m2 == '/': ret = 1 
-      else:
-         cnt = 2  
-   elif re.match(r'^{}'.format(PgLOG.PGLOG['DSSDATA']), dir):
+   if re.match(r'^{}'.format(PgLOG.PGLOG['DSSDATA']), dir):
       ms = re.match(r'^({})(.*)$'.format(PgLOG.PGLOG['GPFSROOTS']), dir)
       if ms:
          m2 = ms.group(2) 
@@ -1231,17 +1194,14 @@ def is_root_directory(dir, etype, host = None, action = None, logact = 0):
          if not m2 or m2 == '/': ret = 1 
       else:
          cnt = 2
-
    if cnt and re.match(r'^(/[^/]+){0,%d}(/*)$' % cnt, dir):
       ret = 1
-
    if ret and action:
       cnt = 0
       errmsg = "{}: Cannot {} from {}".format(dir, action, PgLOG.PGLOG['HOSTNAME'])
       (hstat, msg) = host_down_status(dir, host, 0, logact)
       if hstat: errmsg += "\n" + msg
       errlog(errmsg, etype, 1, logact|PgLOG.ERRLOG)
-
    return ret
 
 #
@@ -1261,23 +1221,31 @@ set_rda_mode = set_gdex_mode
 # set mode for given local directory or file
 #
 def set_local_mode(file, isfile = 1, nmode = 0, omode = 0, logname = None, logact = 0):
-
    if not nmode: nmode = (PgLOG.PGLOG['FILEMODE'] if isfile else PgLOG.PGLOG['EXECMODE'])
    if not (omode and logname):
       info = check_local_file(file, 6)
       if not info:
-         if info != None: return PgLOG.FAILURE 
-         return lmsg(file, "{} to set mode({})".format(PgLOG.PGLOG['MISSFILE'], PgLOG.int2base(nmode, 8)), logact)   
+         if info != None: return PgLOG.FAILURE
+         return lmsg(file, "{} to set mode({})".format(PgLOG.PGLOG['MISSFILE'], PgLOG.int2base(nmode, 8)), logact)
       omode = info['mode']
       logname = info['logname']
-
    if nmode == omode: return PgLOG.SUCCESS
-
+   if logact and logact&PgLOG.EXITLG: logact &= ~PgLOG.EXITLG
+   euid = os.geteuid()
+   if euid and logname and pwd.getpwnam(logname).pw_uid != euid:
+      # only the file owner (or root) can chmod; try the pgstart_<owner> setuid wrapper
+      cmd = "chmod {} {}".format(PgLOG.int2base(nmode, 8), file)
+      wcmd = PgLOG.get_local_command(cmd, logname)
+      msg = "{}: Cannot set mode({}) for file owned by {}".format(file, PgLOG.int2base(nmode, 8), logname)
+      if wcmd != cmd:
+         if PgLOG.pgsystem(wcmd, logact, 257): return PgLOG.SUCCESS
+         if PgLOG.PGLOG['SYSERR']: msg += "\n" + PgLOG.PGLOG['SYSERR']
+      PgLOG.pglog(msg, PgLOG.LOGWRN)
+      return PgLOG.SUCCESS
    try:
       os.chmod(file, nmode)
    except Exception as e:
       return errlog(str(e), 'L', 1, logact)
-
    return PgLOG.SUCCESS
 
 #
@@ -1565,10 +1533,9 @@ def strip_host_name(host):
 #
 # Return a dict of file info, or None if file not exists
 #
-def check_gdex_file(file, host = LHOST, opt = 0, logact = 0):
-
+def check_gdex_file(file, host = None, opt = 0, logact = 0):
+   if host is None: host = LHOST
    shost = strip_host_name(host)
-
    if PgUtil.pgcmp(shost, LHOST, 1) == 0:
       return check_local_file(file, opt, logact)
    elif PgUtil.pgcmp(shost, OHOST, 1) == 0:
@@ -1776,12 +1743,14 @@ def remote_file_stat(line, opt):
 # Return a dict of file info, or None if file not exists
 #
 def check_object_file(file, bucket = None, opt = 0, logact = 0):
-
    if not bucket: bucket = PgLOG.PGLOG['OBJCTBKT']
    ret = None
    if not file: return ret
-   cmd = "{} lo {} -b {}".format(OBJCTCMD, file, bucket)
-   ucmd = "{} gm -k {} -b {}".format(OBJCTCMD, file, bucket) if opt&14 else None
+   ms = re.match(r'^(.+)/$', file)
+   if ms: file = ms.group(1)    # remove ending '/' in case
+   ocmd = OBJCTCMD
+   cmd = "{} lo {} -b {}".format(ocmd, file, bucket)
+   ucmd = "{} gm -k {} -b {}".format(ocmd, file, bucket) if opt&14 else None
    loop = 0
    while loop < 2:
       buf = PgLOG.pgsystem(cmd, PgLOG.LOGWRN, CMDRET)
@@ -1789,14 +1758,23 @@ def check_object_file(file, bucket = None, opt = 0, logact = 0):
          if re.match(r'^\[\]', buf): break
          if re.match(r'^\[\{', buf):
             ary = json.loads(buf)
-            cnt = len(ary)
-            if cnt > 1: return PgLOG.pglog("{}-{}: {} records returned\n{}".format(bucket, file, cnt, buf), logact|PgLOG.ERRLOG)
             hash = ary[0]
             uhash = None
             if ucmd:
                ubuf = PgLOG.pgsystem(ucmd, PgLOG.LOGWRN, CMDRET)
                if ubuf and re.match(r'^\{', ubuf): uhash = json.loads(ubuf)
             ret = object_file_stat(hash, uhash, opt)
+            if ret:
+               cnt = len(ary)
+               if cnt > 1 or hash['Key'] != file:
+                  ret['count'] = cnt
+                  ret['fname'] = op.basename(file)
+                  ret['isfile'] = 0
+                  size = 0
+                  for a in ary:
+                     size += int(a['Size'])
+                  ret['data_size'] = size
+            uhash = None
             break
       if opt&64: return PgLOG.FAILURE
       errmsg = "Error Execute: {}\n{}".format(cmd, PgLOG.PGLOG['SYSERR'])
@@ -1804,7 +1782,6 @@ def check_object_file(file, bucket = None, opt = 0, logact = 0):
       if hstat: errmsg += "\n" + msg
       errlog(errmsg, 'O', loop, logact)
       loop += 1
-
    if loop > 1: return PgLOG.FAILURE
    ECNTS['O'] = 0   # reset error count
    return ret
@@ -1817,11 +1794,11 @@ def check_object_file(file, bucket = None, opt = 0, logact = 0):
 # Return count of object key names, 0 if not file exists; None if error checking
 #
 def check_object_path(path, bucket = None, logact = 0):
-
    if not bucket: bucket = PgLOG.PGLOG['OBJCTBKT']
    ret = None
    if not path: return ret
-   cmd = "{} lo {} -ls -b {}".format(OBJCTCMD, path, bucket)
+   ocmd = OBJCTCMD
+   cmd = "{} lo {} -ls -b {}".format(ocmd, path, bucket)
    loop = 0
    while loop < 2:
       buf = PgLOG.pgsystem(cmd, PgLOG.LOGWRN, CMDRET)
@@ -1833,7 +1810,6 @@ def check_object_path(path, bucket = None, logact = 0):
       if hstat: errmsg += "\n" + msg
       errlog(errmsg, 'O', loop, logact)
       loop += 1
-
    ECNTS['O'] = 0   # reset error count
    return ret
 
@@ -1878,13 +1854,13 @@ def object_file_stat(hash, uhash, opt):
 # Return a dict of file info, or None if file not exists
 #
 def check_backup_file(file, endpoint = None, opt = 0, logact = 0):
-
    ret = None
    if not file: return ret
    if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
    bdir = op.dirname(file)
    bfile = op.basename(file)
-   cmd = f"{BACKCMD} ls -ep {endpoint} -p {bdir} --filter {bfile}"
+   bcmd = BACKCMD
+   cmd = f"{bcmd} ls -ep {endpoint} -p {bdir} --filter {bfile}"
    ccnt = loop = 0
    while loop < 2:
       buf = PgLOG.pgsystem(cmd, logact, CMDRET)
@@ -1915,7 +1891,6 @@ def check_backup_file(file, endpoint = None, opt = 0, logact = 0):
             if hstat: errmsg += "\n" + msg
             errlog(errmsg, 'B', loop, logact)
       loop += 1
-
    if ret: ECNTS['B'] = 0   # reset error count
    return ret
 
@@ -2061,7 +2036,6 @@ def check_ftp_file(file, opt = 0, name = None, pswd = None, logact = 0):
 # local function to get stat of a file on ftp server
 #
 def ftp_file_stat(line, opt):
-
    items = re.split(r'\s+', line)
    if len(items) < 9: return None
    ms = re.match(r'^([d\-])([\w\-]{9})$', items[0])
@@ -2074,7 +2048,7 @@ def ftp_file_stat(line, opt):
    if opt&17:
       dy = int(items[6])
       mn = PgUtil.get_month(items[5])
-      if re.match(r'^\d+$', items[7]):
+      if items[7].isdigit():
          yr = int(items[7])
          mtime = "00:00:00"
       else:
@@ -2085,16 +2059,13 @@ def ftp_file_stat(line, opt):
             yr = int(ms.group(1))
             cm = int(ms.group(2))   # current month
             if cm < mn: yr -= 1     # previous year
-   
       mdate = "{}-{:02}-{:02}".format(yr, mn, dy)
       if opt&1:
          info['date_modified'] = mdate
          info['time_modified'] = mtime
       if opt&16: info['week_day'] = PgUtil.get_weekday(mdate)
-
    if opt&2: info['logname'] = items[2]
    if opt&8: info['group'] = items[3]
-
    return info
 
 #
@@ -2201,12 +2172,12 @@ def remote_glob(dir, host, opt = 0, logact = 0):
 # Return: a dict with filenames as keys, or None if not exists
 #
 def object_glob(dir, bucket = None, opt = 0, logact = 0):
-
    flist = {}
    if not bucket: bucket = PgLOG.PGLOG['OBJCTBKT']
    ms = re.match(r'^(.+)/$', dir)
    if ms: dir = ms.group(1)
-   cmd = "{} lo {} -b {}".format(OBJCTCMD, dir, bucket)
+   ocmd = OBJCTCMD
+   cmd = "{} lo {} -b {}".format(ocmd, dir, bucket)
    ary = err = None
    buf = PgLOG.pgsystem(cmd, PgLOG.LOGWRN, CMDRET)
    if buf:
@@ -2222,16 +2193,14 @@ def object_glob(dir, bucket = None, opt = 0, logact = 0):
          return PgLOG.FAILURE
       else:
          return flist
-
    for hash in ary:
       uhash = None
       if opt&10:
-         ucmd = "{} gm -l {} -b {}".format(OBJCTCMD, hash['Key'], bucket)
+         ucmd = "{} gm -l {} -b {}".format(ocmd, hash['Key'], bucket)
          ubuf = PgLOG.pgsystem(ucmd, PgLOG.LOGWRN, CMDRET)
          if ubuf and re.match(r'^\{.+', ubuf): uhash = json.loads(ubuf)
       info = object_file_stat(hash, uhash, opt)
       if info: flist[hash['Key']] = info
-
    return flist
 
 #
@@ -2248,11 +2217,10 @@ def object_glob(dir, bucket = None, opt = 0, logact = 0):
 # Return: a dict with filenames as keys, or None if not exists
 #
 def backup_glob(dir, endpoint = None, opt = 0, logact = 0):
-
    if not dir: return None
    if not endpoint: endpoint = PgLOG.PGLOG['BACKUPEP']
-
-   cmd = f"{BACKCMD} ls -ep {endpoint} -p {dir}"
+   bcmd = BACKCMD
+   cmd = f"{bcmd} ls -ep {endpoint} -p {dir}"
    flist = {}
    for loop in range(2):
       buf = PgLOG.pgsystem(cmd, logact, CMDRET)
@@ -2278,7 +2246,6 @@ def backup_glob(dir, endpoint = None, opt = 0, logact = 0):
             (hstat, msg) = host_down_status('', QHOSTS[endpoint], 0, logact)
             if hstat: errmsg += "\n" + msg
             errlog(errmsg, 'B', loop, logact)
-
    if flist:
       ECNTS['B'] = 0   # reset error count
       return flist
@@ -2313,26 +2280,32 @@ def get_file_mode(perm):
 # Return: one or a array of 128-bits md5 'fingerprint' None if failed
 #
 def get_md5sum(file, count = 0, logact = 0):
-
-   cmd = MD5CMD + ' '
-
    if count > 0:
       checksum = [None]*count
       for i in range(count):
          if op.isfile(file[i]):
-            chksm = PgLOG.pgsystem(cmd + file[i], logact, 20)
-            if chksm:
-               ms = re.search(r'(\w{32})', chksm)
-               if ms: checksum[i] = ms.group(1)
+            checksum[i] = _file_md5(file[i], logact)
    else:
       checksum = None
       if op.isfile(file):
-         chksm = PgLOG.pgsystem(cmd + file, logact, 20)
-         if chksm:
-            ms = re.search(r'(\w{32})', chksm)
-            if ms: checksum = ms.group(1)
-
+         checksum = _file_md5(file, logact)
    return checksum
+
+#
+# Compute MD5 hex digest of a given file, reading in 1 MiB chunks
+#
+# Return the hex digest string, or None on read error
+#
+def _file_md5(path, logact = 0):
+   try:
+      h = hashlib.md5()
+      with open(path, 'rb') as fh:
+         for chunk in iter(lambda: fh.read(1048576), b''):
+            h.update(chunk)
+      return h.hexdigest()
+   except OSError as e:
+      PgLOG.pglog("Error md5sum {}: {}".format(path, str(e)), logact)
+      return None
 
 #
 # Evaluate md5 checksums and compare them for two given files
@@ -2342,7 +2315,6 @@ def get_md5sum(file, count = 0, logact = 0):
 # Return: 0 if same and 1 if not
 #
 def compare_md5sum(file1, file2, logact = 0):
-
    if op.isdir(file1) or op.isdir(file2):
       files1 = get_directory_files(file1)
       fcnt1 = len(files1) if files1 else 0
@@ -2351,12 +2323,11 @@ def compare_md5sum(file1, file2, logact = 0):
       if fcnt1 != fcnt2: return 1
       chksm1 = get_md5sum(files1, fcnt1, logact)
       chksm1 = ''.join(chksm1)
-      chksm2 = get_md5sum(files1, fcnt2, logact)
+      chksm2 = get_md5sum(files2, fcnt2, logact)
       chksm2 = ''.join(chksm2)
    else:
       chksm1 = get_md5sum(file1, 0, logact)
       chksm2 = get_md5sum(file2, 0, logact)
-
    return (0 if (chksm1 and chksm2 and chksm1 == chksm2) else 1)
 
 #
@@ -2392,13 +2363,11 @@ def change_local_directory(todir, logact = 0):
 # pass in empty dir to turn the recording delete directory on 
 #
 def record_delete_directory(dir, val):
-
    global DIRLVLS
-
    if dir is None:
       if isinstance(val, int):
          DIRLVLS = val
-      elif re.match(r'^\d+$'):
+      elif val.isdigit():
          DIRLVLS = int(val)
    elif dir and not re.match(r'^(\.|\./|/)$', dir) and dir not in DELDIRS:
       DELDIRS[dir] = val
@@ -2407,9 +2376,7 @@ def record_delete_directory(dir, val):
 # remove the recorded delete directory if it is empty
 #
 def clean_delete_directory(logact = 0):
-
-   global DIRLVLS, DELDIRS
-
+   global DELDIRS, DIRLVLS
    if not DIRLVLS: return
    if logact:
       lact = logact&~(PgLOG.EXITLG)
@@ -2417,8 +2384,8 @@ def clean_delete_directory(logact = 0):
       logact = lact = PgLOG.LOGWRN
    lvl = DIRLVLS
    DIRLVLS = 0     # set to 0 to stop recording directory
-   while lvl > 0:
-      lvl -= 1
+   while lvl != 0:
+      if lvl > 0: lvl -= 1
       dirs = {}
       for dir in DELDIRS:
          host = DELDIRS[dir]
@@ -2430,12 +2397,10 @@ def clean_delete_directory(logact = 0):
          elif dstat > 0:
             if dstat == 1 and lvl > 0: PgLOG.pglog(dinfo + ": Directory not empty yet", lact)
             continue
-      
-         if lvl: dirs[op.dirname(dir)] = host
-   
+         pdir = op.dirname(dir)
+         if lvl and pdir and not re.match(r'^(\.|\./|/)$', pdir): dirs[pdir] = host
       if not dirs: break
       DELDIRS = dirs
-
    DELDIRS = {}   # empty cache afterward
 
 #
@@ -2720,12 +2685,10 @@ def lmsg(file, msg, logact = 0):
 # return PgLOG.SUCCESS if yes PgLOG.FAILURE if not
 #
 def check_local_executable(path, actstr = '', logact = 0):
-
-   if os.access(path, os.W_OK): return PgLOG.SUCCESS
+   if os.access(path, os.X_OK): return PgLOG.SUCCESS
    if check_local_accessible(path, actstr, logact):
       if actstr: actstr += '-'
       errlog("{}{}: Accessible, but Unexecutable on'{}'".format(actstr, path, PgLOG.PGLOG['HOSTNAME']), 'L', 1, logact)
-
    return PgLOG.FAILURE
 
 
@@ -2772,13 +2735,10 @@ def check_webfile_writable(action, wfile, logact = 0):
 # convert the one file to another via uncompress, move/copy, and/or compress
 #
 def convert_files(ofile, ifile, keep = 0, logact = 0):
-
    if ofile == ifile: return PgLOG.SUCCESS
    oname = ofile
    iname = ifile
-
    if keep: kfile = ifile + ".keep"
-
    oext = iext = None
    for ext in PGCMPS:
       if oext is None:
@@ -2791,41 +2751,35 @@ def convert_files(ofile, ifile, keep = 0, logact = 0):
           if ms:
             iname = ms.group(1)
             iext = ext
-   
    if iext and oext and oext == iext:
       oext = iext = None
       iname = ifile
       oname = ofile
-
    if iext:  # uncompress
       if keep:
          if iext == 'zip':
             kfile = ifile
          else:
             local_copy_local(kfile, ifile, logact)
- 
       if PgLOG.pgsystem("{} {}".format(PGCMPS[iext][1], ifile), logact, 5):
          if iext == "zip":
             path = op.dirname(iname)
             if path and path != '.': move_local_file(iname, op.basename(iname), logact)
             if not keep: delete_local_file(ifile, logact)
-
    if oname != iname:   # move/copy
       path = op.dirname(oname)
       if path and not op.exists(path): make_local_directory(path, logact)
       if keep and not op.exists(kfile):
          local_copy_local(oname, iname, logact)
-         kfile = iname            
+         kfile = iname
       else:
          move_local_file(oname, iname, logact)
-
    if oext: # compress
       if keep and not op.exists(kfile):
          if oext == "zip":
             kfile = oname
          else:
             local_copy_local(kfile, oname, logact)
-   
       if oext == "zip":
          path = op.dirname(oname)
          if path:
@@ -2835,17 +2789,14 @@ def convert_files(ofile, ifile, keep = 0, logact = 0):
             if path != '.': change_local_directory(path, logact)
          else:
             PgLOG.pgsystem("{} {} {}".format(PGCMPS[oext][0], ofile, oname), logact, 5)
-
          if not keep and op.exists(ofile): delete_local_file(oname, logact)
       else:
          PgLOG.pgsystem("{} {}".format(PGCMPS[oext][0], oname), logact, 5)
-
    if keep and op.exists(kfile) and kfile != ifile:
-      if op.exist(ifile):
+      if op.exists(ifile):
          delete_local_file(kfile, logact)
       else:
          move_local_file(ifile, kfile, logact)
-
    if op.exists(ofile):
       return PgLOG.SUCCESS
    else:
@@ -2915,13 +2866,12 @@ def read_local_file(file, logact = 0):
 #
 # open a local file and return the file handler
 #
-def open_local_file(file, mode = 'r', logact = PgLOG.LOGERR):
- 
+def open_local_file(file, mode = 'r', logact = None):
+   if logact is None: logact = PgLOG.LOGERR
    try:
       fd = open(file, mode)
    except Exception as e:
       return errlog("{}: {}".format(file, str(e)), 'L', 1, logact)
-
    return fd
 
 #
