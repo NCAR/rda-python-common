@@ -76,7 +76,7 @@ class PgDBI(PgLOG):
    using psycopg (v3) when available, falling back to psycopg2. Supports single
    and batch INSERT, SELECT, UPDATE, and DELETE operations, transaction
    management, schema introspection, user lookups, usage tracking, and
-   credential retrieval from .pgpass or OpenBao.
+   credential retrieval from the environment, .pgpass or OpenBao.
 
    Inherits all logging and utility helpers from PgLOG.
 
@@ -96,7 +96,10 @@ class PgDBI(PgLOG):
                     set from psycopg/psycopg2 depending on which driver is in use.
       DBPORTS (dict): Mapping of database names to non-default TCP port numbers.
       DBPASS (dict): Credentials loaded from .pgpass, keyed by (host, port, db, user).
-      DBBAOS (dict): Credentials loaded from OpenBao, keyed by database name.
+      DBBAOS (dict): Credentials loaded from OpenBao, keyed by db server node.
+      DBNODES (dict): Mapping of database names to their db server nodes, used when the
+                      node cannot be taken from the host being connected to.
+      DBSKEYS (dict): Mapping of login names to secret key names ('<lnname>pass' by default).
       DBNAMES (dict): Mapping of schema names to their parent database names.
       DBSOCKS (dict): Mapping of database names to Unix socket paths.
       VIEWHOMES (dict): Mapping of hostnames to home directories for the view host.
@@ -139,6 +142,19 @@ class PgDBI(PgLOG):
       self.DBPORTS = {'default': 0}
       self.DBPASS = {}
       self.DBBAOS = {}
+      # hard coded db server nodes for dbnames, for hosts not named for their nodes; a node
+      # names the OpenBao path (kv/gdex/<node>) and the password environment variable
+      # (<NODE>_<KEY>) the same secrets are passed in through
+      self.DBNODES = {
+         'ivaddb': 'pgdb03',
+         'ispddb': 'pgdb03',
+         'default': 'pgdb01',
+      }
+      # hard coded secret key names for db login names, defaulting to <lnname>pass
+      self.DBSKEYS = {
+         'postgres': 'password',
+         'metadata': 'metapass',
+      }
       # hard coded db names for given schema names
       self.DBNAMES = {
          'ivaddb': 'ivaddb',
@@ -2617,18 +2633,90 @@ class PgDBI(PgLOG):
    def get_pgpass_password(self):
       """Return the database password for the current connection settings.
 
-      Checks PGDBI['PWNAME'] first, then tries the .pgpass file (get_pgpassword()),
-      and finally falls back to OpenBao (get_baopassword()).
+      Checks PGDBI['PWNAME'] first, then the environment (get_envpassword(), as set
+      for containers on CIRRUS), then the .pgpass file (get_pgpassword()), and
+      finally falls back to OpenBao (get_baopassword()). A password found on local
+      or batch hosts is cached in the environment (set_envpassword()) so that the
+      child processes inherit it instead of looking it up again.
 
       Returns:
          str | None: Password string, or None when no credential is found.
       """
       if self.PGDBI['PWNAME']: return self.PGDBI['PWNAME']
+      pwname = self.get_envpassword()
+      if pwname: return pwname
       pwname = self.get_pgpassword()
       if not pwname: pwname = self.get_baopassword()
-      if not pwname:
-         self.pglog("Unable to find password for {} in .pgpass or OpenBao".format(self.PGDBI['DBNAME']), self.PGDBI['ERRLOG'])
+      if pwname:
+         self.set_envpassword(pwname)
+      else:
+         self.pglog("Unable to find password for {} in environment, .pgpass or OpenBao".format(self.PGDBI['DBNAME']), self.PGDBI['ERRLOG'])
       return pwname
+
+   def get_dbnodes(self):
+      """Return the db server nodes holding the secrets of the current connection.
+
+      The node named by DBSHOST comes first, such as pgdb02 for the view-only host,
+      so that a node with its own passwords is served its own secrets. The DBNODES
+      node of the current DBNAME follows it as a fallback, such as pgdb01 for pgdb02,
+      for a node that shares the passwords of the default one without holding secrets
+      of its own.
+
+      Returns:
+         list: Node names, such as ['pgdb02', 'pgdb01'], the first one preferred.
+      """
+      dbnodes = []
+      ms = re.match(r'^(pgdb\d+)$', self.PGDBI['DBSHOST']) if self.PGDBI['DBSHOST'] else None
+      if ms: dbnodes.append(ms.group(1))
+      dbnode = self.DBNODES.get(self.PGDBI['DBNAME'], self.DBNODES['default'])
+      if dbnode not in dbnodes: dbnodes.append(dbnode)
+
+      return dbnodes
+
+   def get_secret_name(self, dbnode):
+      """Build the name of the secret holding the password of the current connection.
+
+      The key comes from DBSKEYS for the current LNNAME, defaulting to '<lnname>pass'.
+      The pair names the secret in OpenBao (kv/gdex/<node> key <key>) and the
+      environment variable (<NODE>_<KEY>) the same secret is passed in through
+      on CIRRUS.
+
+      Args:
+         dbnode (str): Db server node holding the secret, such as 'pgdb01'.
+
+      Returns:
+         tuple: (node, key) naming the db server node and the secret key.
+      """
+      lnname = self.PGDBI['LNNAME']
+
+      return (dbnode, self.DBSKEYS.get(lnname, lnname + 'pass'))
+
+   def get_envpassword(self):
+      """Look up the password in the environment, as set for containers on CIRRUS.
+
+      The variable name is the uppercased '<node>_<key>' secret name, for example
+      PGDB01_DSSDBPASS for login name dssdb and PGDB03_IVADDBPASS for ivaddb. The
+      fallback nodes of get_dbnodes() are tried in turn.
+
+      Returns:
+         str | None: Password string, or None when no variable is set.
+      """
+      for dbnode in self.get_dbnodes():
+         pwname = os.environ.get("{}_{}".format(*self.get_secret_name(dbnode)).upper())
+         if pwname: return pwname
+
+      return None
+
+   def set_envpassword(self, pwname):
+      """Cache a password in the environment under the name get_envpassword() reads.
+
+      Called for a password found in .pgpass or OpenBao, on local and PBS batch hosts,
+      so that the child processes of the current one inherit it and skip the lookup.
+
+      Args:
+         pwname (str): Password to pass on to the child processes.
+      """
+      os.environ["{}_{}".format(*self.get_secret_name(self.get_dbnodes()[0])).upper()] = pwname
 
    def get_pgpassword(self):
       """Look up the password in the cached .pgpass credentials.
@@ -2646,16 +2734,20 @@ class PgDBI(PgLOG):
       return pwname
 
    def get_baopassword(self):
-      """Look up the password from OpenBao for the current database and login name.
+      """Look up the password from OpenBao for the current db server node and login name.
 
-      Loads OpenBao secrets for PGDBI['DBNAME'] on first call (or when not cached).
+      Loads the OpenBao secrets of a node on first call (or when not cached), trying
+      the fallback nodes of get_dbnodes() in turn.
 
       Returns:
          str | None: Password string, or None when not found in OpenBao.
       """
-      dbname = self.PGDBI['DBNAME']
-      if dbname not in self.DBBAOS: self.read_openbao()
-      return self.DBBAOS[dbname].get(self.PGDBI['LNNAME'])
+      for dbnode in self.get_dbnodes():
+         if dbnode not in self.DBBAOS: self.read_openbao(dbnode)
+         pwname = self.DBBAOS[dbnode].get(self.PGDBI['LNNAME'])
+         if pwname: return pwname
+
+      return None
 
    def read_pgpass(self):
       """Read the .pgpass file and populate DBPASS with credentials.
@@ -2675,21 +2767,17 @@ class PgDBI(PgLOG):
       except Exception:
           pass
 
-   def read_openbao(self):
-      """Read OpenBao secrets and populate DBBAOS with credentials for DBNAME.
+   def read_openbao(self, dbnode):
+      """Read OpenBao secrets and populate DBBAOS with the credentials of a db server node.
 
       Uses the hvac client to fetch key-value secrets from the configured BAOURL.
       Parses keys matching 'pass' patterns to extract database usernames and passwords.
+
+      Args:
+         dbnode (str): Db server node naming the secret path, such as 'pgdb01'.
       """
-      dbname = self.PGDBI['DBNAME']
-      self.DBBAOS[dbname] = {}
-      url = 'https://bao.k8s.ucar.edu/'
-      baopath = {
-         'ivaddb': 'gdex/pgdb03',
-         'ispddb': 'gdex/pgdb03',
-         'default': 'gdex/pgdb01'
-      }
-      dbpath = baopath[dbname] if dbname in baopath else baopath['default']
+      self.DBBAOS[dbnode] = {}
+      dbpath = 'gdex/' + dbnode
       client = hvac.Client(url=self.PGDBI.get('BAOURL'))
       client.token = self.PGLOG.get('BAOTOKEN')
       try:
@@ -2711,4 +2799,4 @@ class PgDBI(PgLOG):
             baoname =  'metadata' if pre == 'meta' else pre
          elif suf == 'word':
             baoname = 'postgres'
-         if baoname: self.DBBAOS[dbname][baoname] = baos[key] 
+         if baoname: self.DBBAOS[dbnode][baoname] = baos[key]
