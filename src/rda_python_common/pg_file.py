@@ -766,7 +766,9 @@ class PgFile(PgUtil, PgSIG):
       """Download a file from the object store to the local filesystem.
 
       Changes to the target directory, downloads using isd_s3_cli, verifies size,
-      sets permissions, and renames if needed. Retries once on failure.
+      sets permissions, and renames if needed. Retries once on failure. A key that
+      is a prefix of multiple objects, such as a zarr store, is downloaded as a
+      directory by object_copy_local_directory().
 
       Args:
          tofile (str): Destination local file path.
@@ -783,6 +785,28 @@ class PgFile(PgUtil, PgSIG):
       if not finfo:
          if finfo != None: return ret
          return self.lmsg(fromfile, "{}-{} to copy to {}".format(self.OHOST, self.PGLOG['MISSFILE'], tofile), logact)
+      if not finfo['isfile']: return self.object_copy_local_directory(tofile, fromfile, bucket, logact)
+      return self.object_get_local(tofile, fromfile, finfo['data_size'], bucket, logact)
+
+   # Download a single object of a known size to a local file
+   #   tofile - target file name
+   # fromfile - source object key name
+   #    fsize - size of the object, to verify the download against
+   #   bucket - bucket name on Object store
+   def object_get_local(self, tofile, fromfile, fsize, bucket, logact = 0):
+      """Download one object key to a local file and verify its size.
+
+      Args:
+         tofile (str): Destination local file path.
+         fromfile (str): Object key (source path in the bucket).
+         fsize (int): Expected size of the object.
+         bucket (str): Source bucket.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
+      ret = self.FAILURE
       ocmd = self.OBJCTCMD
       cmd = "{} go -k {} -b {}".format(ocmd, fromfile, bucket)
       fromname = op.basename(fromfile)
@@ -797,7 +821,7 @@ class PgFile(PgUtil, PgSIG):
          buf = self.pgsystem(cmd, logact, self.CMDBTH)
          info = self.check_local_file(fromname, 143, logact|self.PFSIZE)   # 1+2+4+8+128
          if info:
-            if info['data_size'] == finfo['data_size']:
+            if info['data_size'] == fsize:
                self.set_local_mode(fromfile, info['isfile'], 0, info['mode'], info['logname'], logact)
                if toname == fromname or self.move_local_file(toname, fromname, logact):
                   ret = self.SUCCESS
@@ -810,6 +834,41 @@ class PgFile(PgUtil, PgSIG):
       if odir and odir != dir:
          self.change_local_directory(odir, logact)
       return ret
+
+   # Copy an object directory, a key prefix holding multiple objects, to local
+   #    todir - target local directory name
+   #  fromdir - source object key prefix
+   #   bucket - bucket name on Object store
+   def object_copy_local_directory(self, todir, fromdir, bucket = None, logact = 0):
+      """Download every object under a key prefix into a local directory.
+
+      The object store has no directories; a zarr store and the like is a set of
+      objects sharing a key prefix. Each object is downloaded individually and
+      keeps its position relative to the prefix under todir.
+
+      Args:
+         todir (str): Destination local directory path.
+         fromdir (str): Object key prefix (source path in the bucket).
+         bucket (str | None): Source bucket; defaults to PGLOG['OBJCTBKT'].
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
+      if not bucket: bucket = self.PGLOG['OBJCTBKT']
+      ms = re.match(r'^(.+)/$', fromdir)
+      if ms: fromdir = ms.group(1)
+      flist = self.object_glob(fromdir, bucket, 0, logact)
+      if flist == self.FAILURE: return self.FAILURE
+      prefix = fromdir + '/'
+      keys = [key for key in flist if key.startswith(prefix)]
+      if not keys:
+         return self.lmsg(fromdir, "{}-{} to copy to {}".format(self.OHOST, self.PGLOG['MISSFILE'], todir), logact)
+      plen = len(prefix)
+      for key in keys:
+         tofile = "{}/{}".format(todir, key[plen:])
+         if not self.object_get_local(tofile, key, flist[key]['data_size'], bucket, logact): return self.FAILURE
+      return self.SUCCESS
 
    # Copy a remote file to object
    #   tofile - target object file name
