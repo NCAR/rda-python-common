@@ -2357,22 +2357,23 @@ class PgFile(PgUtil, PgSIG):
             if re.match(r'^\[\]', buf): break
             if re.match(r'^\[\{', buf):
                ary = json.loads(buf)
-               hash = ary[0]
+               cnt = len(ary)
+               isdir = (cnt > 1 or ary[0]['Key'] != file)
+               # a key prefix has no timestamp of its own; report the newest member's
+               hash = max(ary, key = lambda a: a['LastModified']) if isdir else ary[0]
                uhash = None
                if ucmd:
                   ubuf = self.pgsystem(ucmd, self.LOGWRN, self.CMDRET)
                   if ubuf and re.match(r'^\{', ubuf): uhash = json.loads(ubuf)
                ret = self.object_file_stat(hash, uhash, opt)
-               if ret:
-                  cnt = len(ary)
-                  if cnt > 1 or hash['Key'] != file:
-                     ret['count'] = cnt
-                     ret['fname'] = op.basename(file)
-                     ret['isfile'] = 0
-                     size = 0
-                     for a in ary:
-                        size += int(a['Size'])
-                     ret['data_size'] = size
+               if ret and isdir:
+                  ret['count'] = cnt
+                  ret['fname'] = op.basename(file)
+                  ret['isfile'] = 0
+                  size = 0
+                  for a in ary:
+                     size += int(a['Size'])
+                  ret['data_size'] = size
                uhash = None
                break
          if opt&64: return self.FAILURE
