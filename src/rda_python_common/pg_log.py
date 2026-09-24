@@ -320,13 +320,18 @@ class PgLOG:
       msg = emlmsg
       for ekey in entries:
          entry = entries[ekey][0]
-         ms = re.search(r'(^|\n)({}: *(.*)\n)'.format(entry), emlmsg, re.I)
+         ms = re.search(r'(^|\n)({}: *(.*)\n)'.format(entry), msg, re.I)
          if ms:
-            vals = ms.groups()
-            msg = msg.replace(vals[1], '')
-            if vals[2]: entries[ekey][2] = vals[2]
+            # cut out this header line only; a replace() of the matched text would also
+            # strip an identical line from anywhere in the message body
+            msg = msg[:ms.start(2)] + msg[ms.end(2):]
+            if ms.group(3): entries[ekey][2] = ms.group(3)
          elif entries[ekey][1]:
             return self.pglog("{}Missing Entry '{}' for sending email".format(logmsg, entry), logact|self.ERRLOG)
+      if not msg.strip():
+         # send_python_email() mails the buffered EMLMSG when it is given no body, which
+         # would send an unrelated message to this recipient and empty the buffer
+         return self.pglog("{}Empty message body for sending email".format(logmsg), logact|self.ERRLOG)
       ret = self.send_python_email(entries['sb'][2], entries['to'][2], msg, entries['fr'][2], entries['cc'][2], logact)
       if ret == self.SUCCESS or not self.PGLOG['EMLSEND']: return ret   
       # try commandline sendmail
@@ -386,7 +391,10 @@ class PgLOG:
             self.PGLOG['EMLMSG'] = ''
          else:
             return ''
-      docc = False if cc else True
+      # only an omitted cc means 'use CCDADDR and carbon copy the sender'; an explicitly
+      # empty cc suppresses the Cc entirely, and used to leak the sender into the global
+      # CCDADDR anyway, carbon copying it on every later email of the same process
+      docc = True if cc is None else False
       if not sender:
          sender = self.PGLOG['CURUID']
          if sender != self.PGLOG['COMMONUSER']: docc = False
