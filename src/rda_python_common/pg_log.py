@@ -249,9 +249,13 @@ class PgLOG:
             if self.PGLOG['PRGMSG']:
                msg = self.PGLOG['PRGMSG'] + "\n" + msg
                self.PGLOG['PRGMSG'] = ""
+            # callers usually end the message with their own '!', so do not add a second
+            # one, and drop it before continuing the sentence with the error count
             if self.PGLOG['ERRCNT'] == 0:
-               if not msg.endswith('\n'): msg += "!\n"
+               if not msg.endswith('\n'):
+                  msg += "\n" if msg.endswith('!') else "!\n"
             else:
+               if msg.endswith('!'): msg = msg[:-1]
                if self.PGLOG['ERRCNT'] == 1:
                   msg += " with 1 Error:\n"
                else:

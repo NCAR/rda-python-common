@@ -118,7 +118,9 @@ class PgFile(PgUtil, PgSIG):
       # record how many errors happen for working with HPSS, local or remote machines
       self.ECNTS = {'D': 0, 'H': 0, 'L': 0, 'R': 0, 'O': 0, 'B': 0}
       # up limits for how many continuing errors allowed
-      self.ELMTS = {'D': 20, 'H': 20, 'L': 20, 'R': 20, 'O': 10, 'B': 10}
+      # 'B' is 5 because a failed Globus transfer counts once; it used to be logged
+      # twice per failure, so the old limit of 10 also gave up after 5 failures
+      self.ELMTS = {'D': 20, 'H': 20, 'L': 20, 'R': 20, 'O': 10, 'B': 5}
       # down storage hostnames & paths
       self.DHOSTS = {
          'G': self.PGLOG['GPFSNAME'],
