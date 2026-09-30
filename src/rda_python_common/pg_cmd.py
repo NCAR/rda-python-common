@@ -207,6 +207,14 @@ class PgCMD(PgLock):
             self.pglog(cmsg + "is Running, No restart", self.LOGWRN)
             sys.exit(0)
          if cidx > 0:
+            # a report parked in einfo by the previous run is only mailed by the dscheck
+            # daemon, which skips any record that is already running. restarting the record
+            # here would strand that report until the next run overwrites it, so leave the
+            # record alone and let the daemon mail it first - it clears einfo when it does
+            if pgrec['einfo']:
+               self.pglog(cmsg + "has a report to email, No restart", self.LOGWRN)
+               self.lock_dscheck(cidx, 0, logact)
+               sys.exit(0)
             if not hosts and pgrec['hostname']:
                hosts = pgrec['hostname']
                self.set_one_boption('hostname', hosts, 0)
