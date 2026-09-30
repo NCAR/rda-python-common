@@ -105,7 +105,8 @@ class PgFile(PgUtil, PgSIG):
       }
       self.TARSTR = '|'.join(self.PGTARS)
       self.DELDIRS = {}
-      self.TASKIDS = {}   # cache unfinished 
+      self.TASKIDS = {}   # cache unfinished
+      self.QCANCEL = {}   # taskid -> why a task got cancelled, reported by the waiting caller
       self.LHOST = "localhost"
       self.OHOST = self.PGLOG['OBJCTSTR']
       self.BHOST = self.PGLOG['BACKUPNM']
@@ -532,7 +533,11 @@ class PgFile(PgUtil, PgSIG):
                   time.sleep(self.PGSIG['ETIME'])
                   lp += 1
                if task['stat'] == 'S' or task['stat'] == 'A': break
-               if task['stat'] == 'F' and not syserr: break
+               if task['stat'] == 'F' and not syserr:
+                  # nothing waits on this task, so report the cancellation here instead
+                  if task['id'] in self.QCANCEL:
+                     self.errlog("{}: Cancel Task due to {}".format(task['id'], self.QCANCEL.pop(task['id'])), 'B', 1, logact)
+                  break
          errmsg = "Error Execute: " + cmd
          if qstr: errmsg += " with stdin:\n" + qstr
          if syserr:
@@ -581,8 +586,16 @@ class PgFile(PgUtil, PgSIG):
                      detail = ms.group(1)
                      if detail not in astats:
                         if logact&self.NOWAIT:
-                           errmsg = "{}: Cancel Task due to {}:\n{}".format(taskid, detail, buf)
-                           self.errlog(errmsg, 'B', 1, logact)
+                           # record why, and let the caller waiting on this task report it as a
+                           # single error naming the file; dumping the whole get-task output here
+                           # doubled every failure into two error entries, the first 17 lines long
+                           reason = detail
+                           ms = re.search(r'Bytes Transferred:\s+(\d+)', buf)
+                           if ms: reason += " after " + self.format_float_value(ms.group(1))
+                           ms = re.search(r'Files:\s+(\d+)', buf)
+                           if ms: reason += " of {} file(s)".format(ms.group(1))
+                           self.QCANCEL[taskid] = reason
+                           self.pglog("{}: Cancel Task due to {}".format(taskid, reason), self.LOGWRN)
                            ccmd = f"{bcmd} cancel-task {taskid}"
                            self.pgsystem(ccmd, logact, 7)
                         else:
@@ -640,7 +653,10 @@ class PgFile(PgUtil, PgSIG):
                del self.TASKIDS[ckey]
             else:
                status = self.QSTATS[stat] if stat in self.QSTATS else 'UNKNOWN'
-               self.errlog("{}: Status '{}' for Task {}".format(ckey, status, taskid), 'B', 1, logact)
+               errmsg = "{}: Status '{}' for Task {}".format(ckey, status, taskid)
+               if taskid in self.QCANCEL:
+                  errmsg += " - " + self.QCANCEL.pop(taskid)
+               self.errlog(errmsg, 'B', 1, logact)
                ret = self.FAILURE
             break
       return ret
