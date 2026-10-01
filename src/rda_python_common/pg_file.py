@@ -107,6 +107,8 @@ class PgFile(PgUtil, PgSIG):
       self.DELDIRS = {}
       self.TASKIDS = {}   # cache unfinished
       self.QCANCEL = {}   # taskid -> why a task got cancelled, reported by the waiting caller
+      self.QFAULTS = {}   # taskid -> polls in a row reporting a transient Globus fault
+      self.QFLIMIT = 30   # give a task that long (polls of ETIME) to recover before cancelling
       self.LHOST = "localhost"
       self.OHOST = self.PGLOG['OBJCTSTR']
       self.BHOST = self.PGLOG['BACKUPNM']
@@ -587,15 +589,18 @@ class PgFile(PgUtil, PgSIG):
                   if ms:
                      detail = ms.group(1)
                      if detail not in astats:
-                        if logact&self.NOWAIT:
+                        # Globus still calls the task ACTIVE, so this is a transient fault it
+                        # keeps retrying on its own. Give it QFLIMIT polls in a row to recover
+                        # before cancelling, counted per task so that a long transfer does not
+                        # run out of patience simply for having been running a while
+                        qcnt = self.QFAULTS[taskid] = self.QFAULTS.get(taskid, 0) + 1
+                        if logact&self.NOWAIT and qcnt > self.QFLIMIT:
                            # record why, and let the caller waiting on this task report it as a
                            # single error naming the file; dumping the whole get-task output here
                            # doubled every failure into two error entries, the first 17 lines long
                            reason = detail
                            ms = re.search(r'Bytes Transferred:\s+(\d+)', buf)
-                           if ms: reason += " after " + self.format_float_value(ms.group(1))
-                           ms = re.search(r'Files:\s+(\d+)', buf)
-                           if ms: reason += " of {} file(s)".format(ms.group(1))
+                           if ms: reason += " after " + self.format_float_value(ms.group(1)) + " transferred"
                            self.QCANCEL[taskid] = reason
                            self.pglog("{}: Cancel Task due to {}".format(taskid, reason), self.LOGWRN)
                            ccmd = f"{bcmd} cancel-task {taskid}"
@@ -603,6 +608,7 @@ class PgFile(PgUtil, PgSIG):
                         else:
                            time.sleep(self.PGSIG['ETIME'])
                         continue
+                     self.QFAULTS.pop(taskid, None)   # recovered, start the count over
                break
          errmsg = "Error Execute: " + cmd
          if self.PGLOG['SYSERR']:
@@ -610,11 +616,14 @@ class PgFile(PgUtil, PgSIG):
             (hstat, msg) = self.host_down_status('', self.QHOSTS[endpoint], 1, logact)
             if hstat: errmsg += "\n" + msg
          self.errlog(errmsg, 'B', loop, logact)
-      if ret == 'S' or ret == 'A': self.ECNTS['B'] = 0   # reset error count
+      if ret == 'S' or ret == 'A':
+         self.ECNTS['B'] = 0   # reset error count
+      else:
+         self.QFAULTS.pop(taskid, None)   # task is over, stop tracking its faults
       return ret
 
    # return SUCCESS if Globus transfer is done; FAILURE otherwise
-   def check_globus_finished(self, tofile, topoint, logact = 0):
+   def check_globus_finished(self, tofile, topoint, logact = 0, fcnt = 0):
       """Block until a previously submitted Globus task completes.
 
       Looks up the task ID in self.TASKIDS using 'endpoint-file' as the key.
@@ -625,6 +634,8 @@ class PgFile(PgUtil, PgSIG):
          tofile (str): Destination file path used to look up the task key.
          topoint (str): Destination Globus endpoint name.
          logact (int): Logging action flags; default 0.
+         fcnt (int): File count of a batch task, to name the files the key cannot;
+                     default 0 for a single-file task.
 
       Returns:
          int: self.SUCCESS on completion, self.FAILURE on error or non-success status.
@@ -655,7 +666,10 @@ class PgFile(PgUtil, PgSIG):
                del self.TASKIDS[ckey]
             else:
                status = self.QSTATS[stat] if stat in self.QSTATS else 'UNKNOWN'
-               errmsg = "{}: Status '{}' for Task {}".format(ckey, status, taskid)
+               # a batch task is keyed by its first file only, so name the whole batch
+               # instead of blaming the one file the key happens to carry
+               bmsg = " and {} more file(s)".format(fcnt - 1) if fcnt > 1 else ''
+               errmsg = "{}{}: Status '{}' for Task {}".format(ckey, bmsg, status, taskid)
                if taskid in self.QCANCEL:
                   errmsg += " - " + self.QCANCEL.pop(taskid)
                self.errlog(errmsg, 'B', 1, logact)
