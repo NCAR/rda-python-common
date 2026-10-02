@@ -3982,7 +3982,10 @@ class PgFile(PgUtil, PgSIG):
             if ms:
                fsize = int(ms.group(1))
                cksum = ms.group(2)
-               if cksum and cksum == frec['checksum'] or not cksum and fsize == frec['data_size']:
+               # a size difference means the file changed since the backup, no matter what
+               # the checksum says; a stale checksum left behind by an earlier re-archive
+               # used to match and hide the change, leaving the backup stale forever
+               if fsize == frec['data_size'] and cksum == frec['checksum']:
                   ret = 1
       if logact:
          if ret == 1:
