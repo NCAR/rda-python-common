@@ -63,6 +63,7 @@ class PgSIG(PgDBI):
          'MTIME': 0,    # maximum daemon running time in seconds, 0 for unlimited
          'STIME': 0,    # time the daemon is started
          'STRTM': '',   # string format of 'STIME'
+         'TERMCB': None, # callback to report before a caught termination signal kills the run
       }
 
    # add users for starting this daemon
@@ -480,6 +481,45 @@ class PgSIG(PgDBI):
       if self.PGSIG['PPID'] <= 1 and len(self.CPIDS) > 0:  # passing signal to child processes
          for pid in self.CPIDS: self.kill_process(pid, signum)
 
+   # catch the termination signal so a batch run gets a chance to report before it dies
+   # PBS kills a job that runs out of walltime with SIGTERM first and SIGKILL a few seconds
+   # later (the MoM's kill_delay, 10 seconds by default), and the same pair is what qdel
+   # sends. SIGTERM is the only warning there is, so trapping it turns the last seconds
+   # into a report instead of losing the run silently. only a batch run arms this: on the
+   # command line SIGTERM must keep killing the process the way the user expects.
+   # callback - function called as callback(signum, frame) to build and send the report
+   def catch_term_signal(self, callback):
+      """Trap SIGTERM in a batch run so a report can be sent before the job is killed.
+
+      Does nothing outside a batch run (``PGLOG['CURBID']`` < 1).
+
+      Args:
+         callback: Function called as ``callback(signum, frame)`` from the
+            signal handler to build and send the report.
+      """
+      if self.PGLOG['CURBID'] < 1: return   # only a batch run gets killed off a walltime
+      self.PGSIG['TERMCB'] = callback
+      signal.signal(signal.SIGTERM, self.term_signal_catch)
+
+   # run the registered callback and then die of the signal that was sent
+   def term_signal_catch(self, signum, frame):
+      """Report through the registered callback, then re-raise the signal.
+
+      The default handler is restored before the callback runs so that a
+      second signal, or the SIGKILL that follows, ends the run outright
+      instead of re-entering here should the callback hang.  Re-raising the
+      signal keeps the exit status the one the sender asked for.
+
+      Args:
+         signum (int): The signal number received.
+         frame: The current stack frame, passed on to the callback.
+      """
+      signal.signal(signum, signal.SIG_DFL)
+      callback = self.PGSIG['TERMCB']
+      self.PGSIG['TERMCB'] = None   # report only once
+      if callback: callback(signum, frame)
+      os.kill(os.getpid(), signum)
+
    # wrapper function to call os.kill() logging caught error based on logact
    # return self.SUCCESS is success; PgLog.FAILURE if not
    def kill_process(self, pid, signum, logact=0):
@@ -602,6 +642,9 @@ class PgSIG(PgDBI):
       pid = self.process_fork(msg)
       if pid == 0:  # in child
          signal.signal(signal.SIGQUIT, self.signal_catch)   # catch quit signal only
+         if self.PGSIG['TERMCB']:   # a child shares the parent's check; it must not report
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            self.PGSIG['TERMCB'] = None
          self.PGSIG['PPID'] = self.PGSIG['PID']
          self.PGSIG['PID'] = pid = os.getpid()
          self.cmdlog("Timeout child to " + msg, time.time(), 0)
@@ -693,6 +736,9 @@ class PgSIG(PgDBI):
          self.pglog("{}: starts CPID {} for {}".format(self.PGSIG['DSTR'], pid, pname))
       else:
          signal.signal(signal.SIGQUIT, signal.SIG_DFL)   # turn off catch QUIT signal in child
+         if self.PGSIG['TERMCB']:   # a child shares the parent's check; it must not report
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            self.PGSIG['TERMCB'] = None
          self.PGLOG['LOGMASK'] &= ~self.WARNLG   # turn off warn in child
          self.PGSIG['PPID'] = self.PGSIG['PID']
          self.PGSIG['PID'] = pid = os.getpid()
