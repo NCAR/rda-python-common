@@ -878,6 +878,11 @@ class PgFile(PgUtil, PgSIG):
       objects sharing a key prefix. Each object is downloaded individually and
       keeps its position relative to the prefix under todir.
 
+      A member already staged under todir at the object's size and no older than
+      the object itself is left alone, so a store whose download was cut short
+      (by a batch walltime, say) resumes where it stopped instead of starting
+      over, and a second copy into the same directory costs nothing.
+
       Args:
          todir (str): Destination local directory path.
          fromdir (str): Object key prefix (source path in the bucket).
@@ -890,7 +895,9 @@ class PgFile(PgUtil, PgSIG):
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       ms = re.match(r'^(.+)/$', fromdir)
       if ms: fromdir = ms.group(1)
-      flist = self.object_glob(fromdir, bucket, 0, logact)
+      # opt 1 adds the LastModified the 'lo' listing already carries; it is only
+      # bits 2 and 8 that would cost a metadata call per key
+      flist = self.object_glob(fromdir, bucket, 1, logact)
       if flist == self.FAILURE: return self.FAILURE
       prefix = fromdir + '/'
       keys = [key for key in flist if key.startswith(prefix)]
@@ -898,8 +905,14 @@ class PgFile(PgUtil, PgSIG):
          return self.lmsg(fromdir, "{}-{} to copy to {}".format(self.OHOST, self.PGLOG['MISSFILE'], todir), logact)
       plen = len(prefix)
       for key in keys:
+         oinfo = flist[key]
          tofile = "{}/{}".format(todir, key[plen:])
-         if not self.object_get_local(tofile, key, flist[key]['data_size'], bucket, logact): return self.FAILURE
+         linfo = self.check_local_file(tofile, 1, logact)
+         # an unparsable LastModified leaves date_modified unset; download again then
+         if linfo and 'date_modified' in oinfo and linfo['data_size'] == oinfo['data_size'] and \
+            self.cmptime(linfo['date_modified'], linfo['time_modified'],
+                         oinfo['date_modified'], oinfo['time_modified']) >= 0: continue
+         if not self.object_get_local(tofile, key, oinfo['data_size'], bucket, logact): return self.FAILURE
       return self.SUCCESS
 
    # Copy a remote file to object
