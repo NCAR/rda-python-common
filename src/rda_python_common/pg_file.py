@@ -875,13 +875,14 @@ class PgFile(PgUtil, PgSIG):
       """Download every object under a key prefix into a local directory.
 
       The object store has no directories; a zarr store and the like is a set of
-      objects sharing a key prefix. Each object is downloaded individually and
-      keeps its position relative to the prefix under todir.
+      objects sharing a key prefix. The whole prefix comes down in one recursive
+      call, which is what makes this usable at all: such a store routinely holds
+      thousands of tiny members, and one process per member costs hours where
+      the recursive call costs seconds.
 
-      A member already staged under todir at the object's size and no older than
-      the object itself is left alone, so a store whose download was cut short
-      (by a batch walltime, say) resumes where it stopped instead of starting
-      over, and a second copy into the same directory costs nothing.
+      Nothing is fetched when every member is already staged under todir at the
+      object's size and no older than the object itself, so the second copy into
+      the same directory (dsarch makes one when it tars) is free.
 
       Args:
          todir (str): Destination local directory path.
@@ -903,17 +904,92 @@ class PgFile(PgUtil, PgSIG):
       keys = [key for key in flist if key.startswith(prefix)]
       if not keys:
          return self.lmsg(fromdir, "{}-{} to copy to {}".format(self.OHOST, self.PGLOG['MISSFILE'], todir), logact)
+      # a partly staged directory is downloaded again in full rather than member by
+      # member: one member costs about as much as the whole recursive call, so
+      # fetching even a handful individually is the slower way round
+      if not self.object_local_missing(todir, prefix, keys, flist, 1, logact):
+         # every member is current, but the key list is the authoritative one: a local
+         # file no longer under the prefix means the store was rewritten in place, and
+         # archiving it would keep members the store has dropped. start over instead
+         extra = self.local_extra_files(todir, prefix, keys)
+         if not extra: return self.SUCCESS
+         self.pglog("{}: restage over {} file(s) no longer in {}-{}".format(
+                    todir, len(extra), self.OHOST, fromdir), logact|self.LOGWRN)
+         if not self.delete_local_file(todir, logact): return self.FAILURE
+      self.make_local_directory(todir, logact)
+      cmd = "{} go -k {} -b {} -ld {} -r".format(self.OBJCTCMD, fromdir, bucket, todir)
+      buf = self.pgsystem(cmd, logact, self.CMDBTH)
+      # verify on size alone; a member just downloaded is newer than the object by
+      # definition, and comparing timestamps here would only expose a clock skew
+      miss = self.object_local_missing(todir, prefix, keys, flist, 0, logact)
+      if miss:
+         return self.errlog("{}-{}: Error download {} of {} member(s) to {}\n{}".format(
+                            self.OHOST, fromdir, len(miss), len(keys), todir, buf), 'O', 1, logact)
+      return self.SUCCESS
+
+   # List the members of an object key prefix that are not staged under todir yet
+   #    todir - target local directory name
+   #   prefix - source object key prefix, including the trailing '/'
+   #     keys - the member keys to check
+   #    flist - object_glob() info, keyed by member key
+   #  chktime - also require the local copy to be no older than the object
+   def object_local_missing(self, todir, prefix, keys, flist, chktime = 0, logact = 0):
+      """Return the member keys that still need downloading under a key prefix.
+
+      A local copy counts as present when it matches the object size, and with
+      chktime also when it is no older than the object's LastModified.
+
+      Args:
+         todir (str): Destination local directory path.
+         prefix (str): Object key prefix including the trailing '/'.
+         keys (list): Member keys to check.
+         flist (dict): Mapping of key → object info from object_glob().
+         chktime (int): Also compare modification times; default 0.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         list: The member keys not staged under todir.
+      """
+      miss = []
       plen = len(prefix)
       for key in keys:
          oinfo = flist[key]
          tofile = "{}/{}".format(todir, key[plen:])
          linfo = self.check_local_file(tofile, 1, logact)
-         # an unparsable LastModified leaves date_modified unset; download again then
-         if linfo and 'date_modified' in oinfo and linfo['data_size'] == oinfo['data_size'] and \
-            self.cmptime(linfo['date_modified'], linfo['time_modified'],
-                         oinfo['date_modified'], oinfo['time_modified']) >= 0: continue
-         if not self.object_get_local(tofile, key, oinfo['data_size'], bucket, logact): return self.FAILURE
-      return self.SUCCESS
+         if linfo and linfo['data_size'] == oinfo['data_size']:
+            if not chktime: continue
+            # an unparsable LastModified leaves date_modified unset; fetch again then
+            if 'date_modified' in oinfo and \
+               self.cmptime(linfo['date_modified'], linfo['time_modified'],
+                            oinfo['date_modified'], oinfo['time_modified']) >= 0: continue
+         miss.append(key)
+      return miss
+
+   # List the files staged under todir that the object key prefix no longer holds
+   #    todir - target local directory name
+   #   prefix - source object key prefix, including the trailing '/'
+   #     keys - the member keys the object store currently holds
+   def local_extra_files(self, todir, prefix, keys):
+      """Return the paths under todir that are not members of an object key prefix.
+
+      Paths are relative to todir, matching the layout a recursive download creates.
+
+      Args:
+         todir (str): Local directory holding the staged copy.
+         prefix (str): Object key prefix including the trailing '/'.
+         keys (list): The member keys currently under the prefix.
+
+      Returns:
+         list: Relative paths under todir with no matching member key.
+      """
+      plen = len(prefix)
+      members = set(key[plen:] for key in keys)
+      extra = []
+      for path, dirs, files in os.walk(todir):
+         for fname in files:
+            name = op.relpath(op.join(path, fname), todir)
+            if name not in members: extra.append(name)
+      return extra
 
    # Copy a remote file to object
    #   tofile - target object file name
