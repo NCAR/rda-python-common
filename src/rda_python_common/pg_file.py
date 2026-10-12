@@ -794,7 +794,7 @@ class PgFile(PgUtil, PgSIG):
    #   tofile - target file name
    # fromfile - source file name
    #   bucket - bucket name on Object store
-   def object_copy_local(self, tofile, fromfile, bucket = None, logact = 0):
+   def object_copy_local(self, tofile, fromfile, bucket = None, logact = 0, finfo = None):
       """Download a file from the object store to the local filesystem.
 
       Changes to the target directory, downloads using isd_s3_cli, verifies size,
@@ -807,31 +807,42 @@ class PgFile(PgUtil, PgSIG):
          fromfile (str): Object key (source path in the bucket).
          bucket (str | None): Source bucket; defaults to PGLOG['OBJCTBKT'].
          logact (int): Logging action flags; default 0.
+         finfo (dict | None): check_object_file() info for fromfile, from a call
+                              with opt bit 1, when the caller already has it;
+                              saves listing the object a second time.
 
       Returns:
          int: self.SUCCESS on success, self.FAILURE on error.
       """
       ret = self.FAILURE
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
-      finfo = self.check_object_file(fromfile, bucket, 0, logact)
+      # opt 1 adds the LastModified the 'lo' listing already carries, which
+      # object_get_local needs to tell whether tofile is staged already
+      if not finfo: finfo = self.check_object_file(fromfile, bucket, 1, logact)
       if not finfo:
          if finfo != None: return ret
          return self.lmsg(fromfile, "{}-{} to copy to {}".format(self.OHOST, self.PGLOG['MISSFILE'], tofile), logact)
-      if not finfo['isfile']: return self.object_copy_local_directory(tofile, fromfile, bucket, logact)
-      return self.object_get_local(tofile, fromfile, finfo['data_size'], bucket, logact)
+      if not finfo['isfile']:
+         return self.object_copy_local_directory(tofile, fromfile, bucket, logact, finfo.get('flist'))
+      return self.object_get_local(tofile, fromfile, finfo, bucket, logact)
 
    # Download a single object of a known size to a local file
    #   tofile - target file name
    # fromfile - source object key name
-   #    fsize - size of the object, to verify the download against
+   #    finfo - check_object_file() info of the object, to verify the download against
    #   bucket - bucket name on Object store
-   def object_get_local(self, tofile, fromfile, fsize, bucket, logact = 0):
+   def object_get_local(self, tofile, fromfile, finfo, bucket, logact = 0):
       """Download one object key to a local file and verify its size.
+
+      Nothing is fetched when tofile is already staged at the object's size and
+      no older than the object itself, unless logact carries OVRIDE, so the
+      second copy into the same file (dsarch makes one when it tars) is free.
 
       Args:
          tofile (str): Destination local file path.
          fromfile (str): Object key (source path in the bucket).
-         fsize (int): Expected size of the object.
+         finfo (dict): check_object_file() info of the object; 'data_size' is
+                       required, 'date_modified'/'time_modified' enable the skip.
          bucket (str): Source bucket.
          logact (int): Logging action flags; default 0.
 
@@ -839,6 +850,13 @@ class PgFile(PgUtil, PgSIG):
          int: self.SUCCESS on success, self.FAILURE on error.
       """
       ret = self.FAILURE
+      fsize = finfo['data_size']
+      if not logact&self.OVRIDE and 'date_modified' in finfo:
+         linfo = self.check_local_file(tofile, 1, logact)
+         if linfo and linfo['isfile'] and linfo['data_size'] == fsize and \
+            self.cmptime(linfo['date_modified'], linfo['time_modified'],
+                         finfo['date_modified'], finfo['time_modified']) >= 0:
+            return self.SUCCESS
       ocmd = self.OBJCTCMD
       cmd = "{} go -k {} -b {}".format(ocmd, fromfile, bucket)
       fromname = op.basename(fromfile)
@@ -871,7 +889,8 @@ class PgFile(PgUtil, PgSIG):
    #    todir - target local directory name
    #  fromdir - source object key prefix
    #   bucket - bucket name on Object store
-   def object_copy_local_directory(self, todir, fromdir, bucket = None, logact = 0):
+   #    flist - member listing from check_object_file(), if the caller has it
+   def object_copy_local_directory(self, todir, fromdir, bucket = None, logact = 0, flist = None):
       """Download every object under a key prefix into a local directory.
 
       The object store has no directories; a zarr store and the like is a set of
@@ -889,6 +908,9 @@ class PgFile(PgUtil, PgSIG):
          fromdir (str): Object key prefix (source path in the bucket).
          bucket (str | None): Source bucket; defaults to PGLOG['OBJCTBKT'].
          logact (int): Logging action flags; default 0.
+         flist (dict | None): Mapping of key → object info with LastModified, as
+                              check_object_file() keeps it for a key prefix;
+                              listed here when not given.
 
       Returns:
          int: self.SUCCESS on success, self.FAILURE on error.
@@ -896,10 +918,11 @@ class PgFile(PgUtil, PgSIG):
       if not bucket: bucket = self.PGLOG['OBJCTBKT']
       ms = re.match(r'^(.+)/$', fromdir)
       if ms: fromdir = ms.group(1)
-      # opt 1 adds the LastModified the 'lo' listing already carries; it is only
-      # bits 2 and 8 that would cost a metadata call per key
-      flist = self.object_glob(fromdir, bucket, 1, logact)
-      if flist == self.FAILURE: return self.FAILURE
+      if flist is None:
+         # opt 1 adds the LastModified the 'lo' listing already carries; it is only
+         # bits 2 and 8 that would cost a metadata call per key
+         flist = self.object_glob(fromdir, bucket, 1, logact)
+         if flist == self.FAILURE: return self.FAILURE
       prefix = fromdir + '/'
       keys = [key for key in flist if key.startswith(prefix)]
       if not keys:
@@ -2452,6 +2475,8 @@ class PgFile(PgUtil, PgSIG):
 
       Strips trailing '/'. Uses opt bit 64 to skip the retry. Fetches metadata
       (uhash) when opt includes bits 2, 4, or 8. Resets ECNTS['O'] on success.
+      Only the key itself, or the keys under it as a directory, count as a
+      match; other keys that merely start with the same characters are ignored.
 
       Args:
          file (str): Object key to check.
@@ -2477,7 +2502,11 @@ class PgFile(PgUtil, PgSIG):
          if buf:
             if re.match(r'^\[\]', buf): break
             if re.match(r'^\[\{', buf):
-               ary = json.loads(buf)
+               # 'lo' matches by key prefix, so x.zarr also lists a sibling x.zarr2/...
+               # and a.nc lists a.nc.bak; keep only the key itself and keys under it
+               prefix = file + '/'
+               ary = [a for a in json.loads(buf) if a['Key'] == file or a['Key'].startswith(prefix)]
+               if not ary: break
                cnt = len(ary)
                isdir = (cnt > 1 or ary[0]['Key'] != file)
                # a key prefix has no timestamp of its own; report the newest member's
@@ -2495,6 +2524,9 @@ class PgFile(PgUtil, PgSIG):
                   for a in ary:
                      size += int(a['Size'])
                   ret['data_size'] = size
+                  # keep the member listing, as object_glob(file, bucket, 1) builds it,
+                  # so a download of the prefix does not list it a second time
+                  ret['flist'] = {a['Key']: self.object_file_stat(a, None, 1) for a in ary}
                uhash = None
                break
          if opt&64: return self.FAILURE
