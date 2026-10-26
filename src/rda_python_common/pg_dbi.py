@@ -2176,6 +2176,7 @@ class PgDBI(PgLOG):
    
       pgrec = self.pgget("dsowner, dssgrp", "specialist, lstname, fstname",
                     "specialist = logname AND dsid = '{}' AND priority = 1".format(dsid), logact)
+      if pgrec == self.FAILURE: return None   # query error; do not cache the fallback
       if pgrec:
          if pgrec['specialist'] == "datahelp" or pgrec['specialist'] == "dss":
             pgrec['lstname'] = "Help"
