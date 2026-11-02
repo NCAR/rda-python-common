@@ -410,6 +410,92 @@ class PgFile(PgUtil, PgSIG):
          self.errlog("Error Execute: {}\n{}".format(cmd, buf), 'O', loop, logact)
       return self.FAILURE
 
+   # Upload a local directory to object under a key prefix
+   #    todir - target object key prefix, without the trailing '/'
+   #  fromdir - source local directory name
+   def local_copy_object_directory(self, todir, fromdir, bucket = None, meta = None, logact = 0):
+      """Upload every file under a local directory to an object key prefix.
+
+      The whole directory goes up in one recursive call, the upload twin of
+      object_copy_local_directory(): one process per file costs several seconds
+      of start-up each, which dominates for a directory of many files.  Each file
+      lands at '{todir}/{path relative to fromdir}'.
+
+      Nothing is uploaded when every file is already under the prefix at its local
+      size (unless OVRIDE is set); otherwise the whole directory is uploaded again,
+      since the recursive call cannot be limited to the missing files.
+
+      Args:
+         todir (str): Object key prefix (destination path in the bucket); not empty.
+         fromdir (str): Source local directory path.
+         bucket (str | None): Target bucket; defaults to PGLOG['OBJCTBKT'].
+         meta (dict | None): Extra metadata key/value pairs to attach to each object.
+         logact (int): Logging action flags; default 0.
+
+      Returns:
+         int: self.SUCCESS on success, self.FAILURE on error.
+      """
+      if not bucket: bucket = self.PGLOG['OBJCTBKT']
+      if meta is None: meta = {}
+      if 'user' not in meta: meta['user'] = self.PGLOG['CURUID']
+      if 'group' not in meta: meta['group'] = self.PGLOG['GDEXGRP']
+      uinfo = json.dumps(meta)
+      ms = re.match(r'^(.+)/$', fromdir)
+      if ms: fromdir = ms.group(1)
+      ms = re.match(r'^(.+)/$', todir)
+      if ms: todir = ms.group(1)
+      # the same walk isd_s3_cli makes to pick the files: no symlinked directories
+      lfiles = {}
+      for path, dirs, files in os.walk(fromdir):
+         for fname in files:
+            lfile = op.join(path, fname)
+            lfiles[op.relpath(lfile, fromdir)] = op.getsize(lfile)
+      if not lfiles:
+         return self.lmsg(fromdir, "{} to copy to {}-{}".format(self.PGLOG['MISSFILE'], self.OHOST, todir), logact)
+      prefix = todir + '/'
+      if not logact&self.OVRIDE:
+         flist = self.object_glob(todir, bucket, 0, logact)
+         if flist == self.FAILURE: return self.FAILURE
+         miss = self.object_upload_missing(prefix, lfiles, flist)
+         if not miss:
+            self.pglog("{}-{}-{}: all {} file(s) exist already, skip uploading".format(
+                       self.OHOST, bucket, todir, len(lfiles)), logact&~self.EXITLG)
+            return self.SUCCESS
+      # -db too: an upload goes to the default bucket whatever -b says
+      cmd = "{} -db {} um -ld {} -b {} -kp {} -r -md '{}'".format(
+            self.OBJCTCMD, bucket, fromdir, bucket, todir, uinfo)
+      buf = self.pgsystem(cmd, logact, self.CMDBTH)
+      flist = self.object_glob(todir, bucket, 0, logact)
+      if flist == self.FAILURE: return self.FAILURE
+      miss = self.object_upload_missing(prefix, lfiles, flist)
+      if miss:
+         return self.errlog("{}-{}: Error upload {} of {} file(s) to {}-{}\n{}".format(
+                            fromdir, miss[0], len(miss), len(lfiles), self.OHOST, todir, buf), 'O', 1, logact)
+      self.pglog("{}: {} file(s) uploaded to {}-{}-{}".format(
+                 fromdir, len(lfiles), self.OHOST, bucket, todir), logact&~self.EXITLG)
+      return self.SUCCESS
+
+   # List the local files not uploaded under an object key prefix yet
+   #   prefix - target object key prefix, including the trailing '/'
+   #   lfiles - local file sizes, keyed by path relative to the source directory
+   #    flist - object_glob() info, keyed by object key
+   def object_upload_missing(self, prefix, lfiles, flist):
+      """Return the local files that have no object of the same size under a key prefix.
+
+      Args:
+         prefix (str): Object key prefix including the trailing '/'.
+         lfiles (dict): Mapping of relative path → local file size.
+         flist (dict): Mapping of key → object info from object_glob().
+
+      Returns:
+         list: The relative paths still to upload.
+      """
+      miss = []
+      for name in lfiles:
+         oinfo = flist.get(prefix + name)
+         if not (oinfo and oinfo['data_size'] == lfiles[name]): miss.append(name)
+      return miss
+
    # Copy multiple files from a Globus endpoint to another
    #   tofiles - target file name list, echo name leading with /dsnnn.n/ on Quasar and
    #             leading with /data/ or /decsdata/ on local glade disk
