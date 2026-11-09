@@ -42,6 +42,7 @@ class PgSIG(PgDBI):
       super().__init__()  # initialize parent class
       self.VUSERS = []  # allow users to start this daemon
       self.CPIDS = {}    # allow upto 'mproc' processes at one time for daemon
+      self.CEXITS = {}   # pname -> exit code of a child process in CPIDS reaped by SIGCHLD
       self.CBIDS = {}    # allow upto 'bproc' background processes at one time for each child
       self.SDUMP = {
         'DEF': '/dev/null',
@@ -559,6 +560,10 @@ class PgSIG(PgDBI):
    def clean_dead_child(self, signum, frame):
       """Reap zombie child processes in response to SIGCHLD.
 
+      The exit code of a reaped child in ``CPIDS`` is kept in ``CEXITS`` under
+      its process name (negative signal number if killed by a signal), so a
+      parent can tell whether the work it gave the child succeeded.
+
       Args:
          signum (int): The signal number received (expected to be SIGCHLD).
          frame: The current stack frame (unused).
@@ -578,7 +583,14 @@ class PgSIG(PgDBI):
               live += 1
             elif self.PGSIG['PPID'] < 2:
                if dpid in self.CPIDS:
+                  if os.WIFEXITED(status):
+                     self.CEXITS[self.CPIDS[dpid]] = os.WEXITSTATUS(status)
+                  elif os.WIFSIGNALED(status):
+                     self.CEXITS[self.CPIDS[dpid]] = -os.WTERMSIG(status)
                   del self.CPIDS[dpid]
+                  wake = 1
+               elif dpid in self.CBIDS:
+                  del self.CBIDS[dpid]
                   wake = 1
       if wake: self.wake_waiter()   # a managed child is done; end any wait for it now
 
@@ -587,7 +599,7 @@ class PgSIG(PgDBI):
       """Open the non-blocking self-pipe that wakes ``show_wait_message()`` on SIGCHLD.
 
       ``clean_dead_child()`` writes one byte to it when a child process in ``CPIDS``
-      is done, and ``show_wait_message()`` waits on it with the adaptive wait time as
+      or a background process in ``CBIDS`` is done, and ``show_wait_message()`` waits on it with the adaptive wait time as
       the timeout, so a free process slot is used at once instead of after a sleep.
       """
       if self.PGSIG['WPIPE']: return
@@ -1176,8 +1188,8 @@ class PgSIG(PgDBI):
             open before starting. Defaults to 0.
 
       Returns:
-         int or str: Result from ``pgsystem`` (synchronous mode) or
-            ``record_background``.
+         int or str: Result from ``pgsystem`` (synchronous mode), or 1 when the
+            background process started and its shell pid is recorded in ``CBIDS``.
       """
       if logact is None: logact = self.LOGWRN
       if self.PGSIG['BPROC'] < 2: return self.pgsystem(cmd, logact, cmdopt)  # no background
@@ -1205,12 +1217,19 @@ class PgSIG(PgDBI):
          if not self.PGLOG['ERRFILE']:
             self.PGLOG['ERRFILE'] = re.sub(r'\.log$', '.err', self.PGLOG['LOGFILE'], 1)
          bckcmd += " 2>> {}/{}".format(self.PGLOG['LOGPATH'], self.PGLOG['ERRFILE'])
-      bckcmd += " &"
-      # shell=True is required for the redirections (>> / 2>>) and trailing '&';
-      # the '&' makes the shell fork the command and exit, so the command gets
-      # reparented to init (ppid=1), matching the lookup logic in record_background().
-      subprocess.Popen(bckcmd, shell=True)
-      return self.record_background(cmd, logact)
+      # shell=True is required for the redirections (>> / 2>>). The shell runs the
+      # command and lives as long as it does, so its pid, a direct child, is the one
+      # to track: check_process() sees it running until it is done, and SIGCHLD reaps
+      # it. A new session keeps it running if this process is interrupted, as the old
+      # '&' did. (The old way searched for the orphaned '&' command with ppid 1 in
+      # record_background(), whose match test was inverted, so it never recorded the
+      # command it had just started: nothing was throttled or waited for.)
+      try:
+         proc = subprocess.Popen(bckcmd, shell=True, start_new_session=True)
+      except Exception as e:
+         return self.pglog("{}: cannot start background process: {}".format(cmd, str(e)), act)
+      self.CBIDS[proc.pid] = cmd
+      return 1
 
    # get background process id for given bcmd
    def bcmd2cbid(self, bcmd):
@@ -1261,13 +1280,13 @@ class PgSIG(PgDBI):
             # Bug fix: cannot delete from a dict while iterating over it;
             # iterate over a copy of the keys instead.
             cbids = list(self.CBIDS)
-            for bid in cbids:
-               if self.check_process(bid):  # process is not done yet
+            for cbid in cbids:   # not bid: it would turn the next loop into a one-pid check
+               if self.check_process(cbid):  # process is not done yet
                   bcnt += 1
                else:
-                  del self.CBIDS[bid]
+                  if cbid in self.CBIDS: del self.CBIDS[cbid]   # SIGCHLD may have removed it
          if not (bcnt and dowait): break
-         self.show_wait_message(i, "{}: wait {}/{} background processes".format(self.PGSIG['DSTR'], bcnt, self.PGSIG['MPROC']), logact, dowait)
+         self.show_wait_message(i, "{}: wait {}/{} background processes".format(self.PGSIG['DSTR'], bcnt, self.PGSIG['BPROC']), logact, dowait)
          i += 1
          bcnt = 0
       return bcnt
@@ -1307,7 +1326,7 @@ class PgSIG(PgDBI):
                acmd = line[idx+len(aname):]
                if uid == commonuser:
                   acmd = re.sub(r'^\.(pl|py)\s+', '', acmd, 1)
-               if re.match(r'^{}{}'.format(aname, acmd), bcmd): continue
+               if not bcmd.startswith(aname + acmd): continue   # not the command started
                self.CBIDS[bid] = bcmd
                return 1
             except (psutil.NoSuchProcess, psutil.AccessDenied):
