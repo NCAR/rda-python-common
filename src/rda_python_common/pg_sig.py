@@ -13,6 +13,7 @@ import re
 import sys
 import errno
 import signal
+import select
 import time
 import subprocess
 import psutil
@@ -57,6 +58,7 @@ class PgSIG(PgDBI):
          'WTINC': 5,    # seconds added to the adaptive wait after each loop still waiting
          'CWTIME': 0,   # current adaptive wait (in seconds), 0 before the first wait
          'WLOOP': -1,   # loop count of the last adaptive wait sleep
+         'WPIPE': None, # (read fd, write fd) of the pipe SIGCHLD writes to wake up a wait
          'DTIME': 600,  # the daemon record refresh time (in seconds)
          'RTIME': 2400, # the web rda config unlocking and unconfigured system down waiting time (in seconds)
          'CTIME': 4800, # the lock cleaning & configued system down waiting time (in seconds)
@@ -158,6 +160,7 @@ class PgSIG(PgDBI):
       os.umask(0)
       # setup to catch signals in daemon only
       signal.signal(signal.SIGCHLD, self.clean_dead_child)
+      self.open_wake_pipe()
       signal.signal(signal.SIGQUIT, self.signal_catch)
       signal.signal(signal.SIGUSR1, self.signal_catch)
       signal.signal(signal.SIGUSR2, self.signal_catch)
@@ -560,7 +563,7 @@ class PgSIG(PgDBI):
          signum (int): The signal number received (expected to be SIGCHLD).
          frame: The current stack frame (unused).
       """
-      live = 0
+      live = wake = 0
       while True:
          try:
             dpid, status = os.waitpid(-1, os.WNOHANG)
@@ -574,7 +577,57 @@ class PgSIG(PgDBI):
               if live > 0: break   # wait twice if a process is still a live
               live += 1
             elif self.PGSIG['PPID'] < 2:
-               if dpid in self.CPIDS: del self.CPIDS[dpid]
+               if dpid in self.CPIDS:
+                  del self.CPIDS[dpid]
+                  wake = 1
+      if wake: self.wake_waiter()   # a managed child is done; end any wait for it now
+
+   # open the pipe a SIGCHLD handler writes to, so a wait for processes wakes up at once
+   def open_wake_pipe(self):
+      """Open the non-blocking self-pipe that wakes ``show_wait_message()`` on SIGCHLD.
+
+      ``clean_dead_child()`` writes one byte to it when a child process in ``CPIDS``
+      is done, and ``show_wait_message()`` waits on it with the adaptive wait time as
+      the timeout, so a free process slot is used at once instead of after a sleep.
+      """
+      if self.PGSIG['WPIPE']: return
+      try:
+         rfd, wfd = os.pipe()
+         os.set_blocking(rfd, False)
+         os.set_blocking(wfd, False)
+      except OSError as e:
+         self.pglog("Cannot open wake pipe, wait by sleeping: {}".format(str(e)), self.LOGWRN)
+         return
+      self.PGSIG['WPIPE'] = (rfd, wfd)
+
+   # close the wake pipe, such as in a child process that inherited it
+   def close_wake_pipe(self):
+      """Close the SIGCHLD wake pipe and forget it."""
+      if not self.PGSIG['WPIPE']: return
+      for fd in self.PGSIG['WPIPE']:
+         try:
+            os.close(fd)
+         except OSError:
+            pass
+      self.PGSIG['WPIPE'] = None
+
+   # write one byte to the wake pipe to end a wait in show_wait_message()
+   def wake_waiter(self):
+      """Wake a wait in ``show_wait_message()``; a full pipe already wakes it."""
+      if not self.PGSIG['WPIPE']: return
+      try:
+         os.write(self.PGSIG['WPIPE'][1], b'x')
+      except OSError:
+         pass   # pipe full (a wake is pending already) or closed
+
+   # read out all pending wake bytes, so a past wake does not end the next wait
+   def drain_wake_pipe(self):
+      """Read out any pending bytes of the SIGCHLD wake pipe."""
+      if not self.PGSIG['WPIPE']: return
+      try:
+         while os.read(self.PGSIG['WPIPE'][0], 512): pass
+      except OSError:
+         pass   # BlockingIOError when empty
 
    # send signal to daemon and exit
    def signal_daemon(self, sname, aname, uname):
@@ -748,6 +801,7 @@ class PgSIG(PgDBI):
          self.PGSIG['PID'] = pid = os.getpid()
          self.PGSIG['MPROC'] = 1   # 1 in child process
          self.CBIDS = {}         # empty backgroud proces info in case not
+         self.close_wake_pipe()  # the wake pipe is the parent's
          self.PGSIG['DSTR'] += ": CPID {} for {}".format(pid, pname)
          self.cmdlog("CPID {} for {}".format(pid, pname))
          self.pgdisconnect(0)  # disconnect database in child
@@ -793,6 +847,7 @@ class PgSIG(PgDBI):
       if logact&self.EXITLG: logact &= ~self.EXITLG
       ccnt = i = 0
       if dowait < 0: ccnt = 1 if (pid or pname) else self.PGSIG['MPROC']
+      self.drain_wake_pipe()   # the check below covers any child done before now
       while True:
          pcnt = 0
          if not pid and pname: pid = self.pname2cpid(pname)
@@ -845,6 +900,7 @@ class PgSIG(PgDBI):
          self.check_vuser(uname, aname)
       signal.signal(signal.SIGQUIT, self.signal_catch)   # catch quit signal only
       signal.signal(signal.SIGCHLD, self.clean_dead_child)
+      self.open_wake_pipe()
       self.PGSIG['DSTR'] = dstr
       self.PGSIG['DNAME'] = aname
       self.PGSIG['PPID'] = 0
@@ -1293,14 +1349,26 @@ class PgSIG(PgDBI):
          loop (int): Current loop iteration count, 0 for the first sleep of a wait.
          msg (str): Message to log.
          logact (int, optional): Log action flags. Defaults to ``LOGWRN``.
-         dowait (int, optional): If non-zero, sleep for the adaptive wait time
-            from ``adaptive_wait_time()``, at most ``PGSIG['WTIME']`` seconds.
-            Defaults to 0.
+         dowait (int, optional): If non-zero, wait for the adaptive wait time
+            from ``adaptive_wait_time()``, at most ``PGSIG['WTIME']`` seconds,
+            or until a child process in ``CPIDS`` is done, whichever is first
+            (see ``open_wake_pipe()``).  Defaults to 0.
       """
       if logact is None: logact = self.LOGWRN
       if loop > 0 and (loop%30) == 0:
          self.pglog("{} at {}".format(msg, self.current_datetime()), logact)
-      if dowait: time.sleep(self.adaptive_wait_time(loop))
+      if not dowait: return
+      wtime = self.adaptive_wait_time(loop)
+      if self.PGSIG['WPIPE'] and self.PGSIG['PPID'] < 2:
+         # wake as soon as a child is done; the adaptive time is only the longest wait
+         rfd = self.PGSIG['WPIPE'][0]
+         try:
+            select.select([rfd], [], [], wtime)
+         except (OSError, ValueError):
+            time.sleep(wtime)
+         self.drain_wake_pipe()
+      else:
+         time.sleep(wtime)
 
    # get the adaptive time to sleep for one loop of a wait for processes
    def adaptive_wait_time(self, loop):
