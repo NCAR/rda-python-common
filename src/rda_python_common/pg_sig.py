@@ -52,7 +52,11 @@ class PgSIG(PgDBI):
          'MPROC': 1,    # default number of multiple processes
          'BPROC': 1,    # default number of multiple background processes
          'ETIME': 20,   # default error waiting time (in seconds)
-         'WTIME': 120,  # default waiting time (in seconds)
+         'WTIME': 120,  # default waiting time (in seconds), the cap of an adaptive wait
+         'WTMIN': 5,    # shortest adaptive wait (in seconds) for child/background processes
+         'WTINC': 5,    # seconds added to the adaptive wait after each loop still waiting
+         'CWTIME': 0,   # current adaptive wait (in seconds), 0 before the first wait
+         'WLOOP': -1,   # loop count of the last adaptive wait sleep
          'DTIME': 600,  # the daemon record refresh time (in seconds)
          'RTIME': 2400, # the web rda config unlocking and unconfigured system down waiting time (in seconds)
          'CTIME': 4800, # the lock cleaning & configued system down waiting time (in seconds)
@@ -1281,21 +1285,52 @@ class PgSIG(PgDBI):
       if wtime: time.sleep(wtime)
       return wtime
 
-   # show wait message every dintv and then sleep for PGSIG['WTIME']
+   # show wait message every 30 loops and then sleep for an adaptive wait time
    def show_wait_message(self, loop, msg, logact=None, dowait=0):
       """Log a wait message every 30 loops and optionally sleep.
 
       Args:
-         loop (int): Current loop iteration count.
+         loop (int): Current loop iteration count, 0 for the first sleep of a wait.
          msg (str): Message to log.
          logact (int, optional): Log action flags. Defaults to ``LOGWRN``.
-         dowait (int, optional): If non-zero, sleep for ``PGSIG['WTIME']``
-            seconds. Defaults to 0.
+         dowait (int, optional): If non-zero, sleep for the adaptive wait time
+            from ``adaptive_wait_time()``, at most ``PGSIG['WTIME']`` seconds.
+            Defaults to 0.
       """
       if logact is None: logact = self.LOGWRN
       if loop > 0 and (loop%30) == 0:
          self.pglog("{} at {}".format(msg, self.current_datetime()), logact)
-      if dowait: time.sleep(self.PGSIG['WTIME'])
+      if dowait: time.sleep(self.adaptive_wait_time(loop))
+
+   # get the adaptive time to sleep for one loop of a wait for processes
+   def adaptive_wait_time(self, loop):
+      """Return how long to sleep for one loop of a wait for child/background processes.
+
+      The wait starts at ``PGSIG['WTMIN']`` seconds and grows by ``PGSIG['WTINC']``
+      after each loop that still finds no process done, capped at the polling time
+      ``PGSIG['WTIME']``, so long-running processes are not checked too often while
+      short ones are not waited on for the full polling time.  The current wait
+      carries over to the next wait; it goes back to ``WTMIN`` when the previous
+      wait was over after its first sleep, since the processes are short.  Set
+      ``PGSIG['WTMIN']`` to ``WTIME`` or larger for the old fixed wait.
+
+      Args:
+         loop (int): Loop count of the current wait, 0 for its first sleep.
+
+      Returns:
+         int: Seconds to sleep.
+      """
+      wmax = self.PGSIG['WTIME']
+      wmin = min(self.PGSIG['WTMIN'], wmax)
+      wtime = self.PGSIG['CWTIME']
+      if loop == 0:
+         if not wtime or self.PGSIG['WLOOP'] == 0: wtime = wmin
+      else:
+         wtime += self.PGSIG['WTINC']
+      wtime = max(wmin, min(wtime, wmax))
+      self.PGSIG['CWTIME'] = wtime
+      self.PGSIG['WLOOP'] = loop
+      return wtime
 
    # register a time out function to raise a time out error
    @contextmanager
