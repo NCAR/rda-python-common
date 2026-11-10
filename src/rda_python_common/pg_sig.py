@@ -487,7 +487,7 @@ class PgSIG(PgDBI):
         if not dumpon: self.set_dump(self.SDUMP['DEF'])
         if signum == signal.SIGQUIT: self.PGSIG['QUIT'] = 1
       if self.PGSIG['PPID'] <= 1 and len(self.CPIDS) > 0:  # passing signal to child processes
-         for pid in self.CPIDS: self.kill_process(pid, signum)
+         for pid in list(self.CPIDS): self.kill_process(pid, signum)   # SIGCHLD may change CPIDS
 
    # catch the termination signal so a batch run gets a chance to report before it dies
    # PBS kills a job that runs out of walltime with SIGTERM first and SIGKILL a few seconds
@@ -829,8 +829,8 @@ class PgSIG(PgDBI):
       Returns:
          int: The child PID, or 0 if not found.
       """
-      for cpid in self.CPIDS:
-         if self.CPIDS[cpid] == pname: return cpid
+      for cpid, cname in list(self.CPIDS.items()):   # a copy: SIGCHLD may remove entries meanwhile
+         if cname == pname: return cpid
       return 0
 
    # check one or all child processes if they are still running
@@ -870,15 +870,15 @@ class PgSIG(PgDBI):
                else:
                   self.pglog("{}: Child still running".format(pid), logact)
                pcnt = 1
-            elif pid in self.CPIDS:
-               del self.CPIDS[pid]   # clean the saved info for the process
+            else:
+               self.CPIDS.pop(pid, None)   # clean the saved info; SIGCHLD may have removed it
          elif not pname:
             cpids = list(self.CPIDS)
             for cpid in cpids:
                if self.check_process(cpid):  # process is not done yet
                   pcnt += 1
-               elif cpid in self.CPIDS:
-                  del self.CPIDS[cpid]
+               else:
+                  self.CPIDS.pop(cpid, None)
          if pcnt == 0 or dowait == 0 or pcnt < ccnt: break
          self.show_wait_message(i, "{}: wait {}/{} child processes".format(self.PGSIG['DSTR'], pcnt, self.PGSIG['MPROC']), logact, dowait)
          i += 1
@@ -1241,8 +1241,8 @@ class PgSIG(PgDBI):
       Returns:
          int: The background process ID, or 0 if not found.
       """
-      for cbid in self.CBIDS:
-         if self.CBIDS[cbid] == bcmd: return cbid
+      for cbid, ccmd in list(self.CBIDS.items()):   # a copy: SIGCHLD may remove entries meanwhile
+         if ccmd == bcmd: return cbid
       return 0
 
    # check one or all child processes if they are still running
@@ -1274,8 +1274,8 @@ class PgSIG(PgDBI):
                else:
                   self.pglog("{}: Background process still running".format(bid), logact)
                bcnt = 1
-            elif bid in self.CBIDS:
-               del self.CBIDS[bid]   # clean the saved info for the process
+            else:
+               self.CBIDS.pop(bid, None)   # clean the saved info; SIGCHLD may have removed it
          elif not bcmd:
             # Bug fix: cannot delete from a dict while iterating over it;
             # iterate over a copy of the keys instead.
@@ -1284,7 +1284,7 @@ class PgSIG(PgDBI):
                if self.check_process(cbid):  # process is not done yet
                   bcnt += 1
                else:
-                  if cbid in self.CBIDS: del self.CBIDS[cbid]   # SIGCHLD may have removed it
+                  self.CBIDS.pop(cbid, None)   # SIGCHLD may have removed it
          if not (bcnt and dowait): break
          self.show_wait_message(i, "{}: wait {}/{} background processes".format(self.PGSIG['DSTR'], bcnt, self.PGSIG['BPROC']), logact, dowait)
          i += 1
