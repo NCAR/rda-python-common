@@ -373,10 +373,12 @@ class PgFile(PgUtil, PgSIG):
 
       Skips upload when the target already exists (unless OVRIDE is set).
       Attaches user and group metadata. Retries once on failure.
+      A local directory (e.g. a zarr store) is handed to
+      local_copy_object_directory() and lands under the key prefix tofile.
 
       Args:
          tofile (str): Object key (destination path in the bucket).
-         fromfile (str): Source local file path.
+         fromfile (str): Source local file or directory path.
          bucket (str | None): Target bucket; defaults to PGLOG['OBJCTBKT'].
          meta (dict | None): Extra metadata key/value pairs to attach to the object.
          logact (int): Logging action flags; default 0.
@@ -393,6 +395,8 @@ class PgFile(PgUtil, PgSIG):
       if not finfo:
          if finfo != None: return self.FAILURE
          return self.lmsg(fromfile, "{} to copy to {}-{}".format(self.PGLOG['MISSFILE'], self.OHOST, tofile), logact)
+      if not finfo['isfile']:   # a directory, such as a zarr store, goes up under the key prefix
+         return self.local_copy_object_directory(tofile, fromfile, bucket, meta, logact)
       if not logact&self.OVRIDE:
          tinfo = self.check_object_file(tofile, bucket, 0, logact)
          if tinfo and tinfo['data_size'] > 0:
