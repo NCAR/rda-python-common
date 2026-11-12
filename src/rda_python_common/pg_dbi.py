@@ -1106,7 +1106,7 @@ class PgDBI(PgLOG):
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, sqlstr)   
       return sqlstr
 
-   def pgget(self, tablenames, fields, condition = None, logact = 0):
+   def pgget(self, tablenames, fields, condition = None, logact = 0, cndvals = None):
       """Fetch a single row from one or more tables.
 
       Appends LIMIT 1 automatically. Returns a count integer when fields is None,
@@ -1118,6 +1118,9 @@ class PgDBI(PgLOG):
          fields (str | None): Comma-separated column expressions; None → row count.
          condition (str | None): WHERE / ORDER / LIMIT clause.
          logact (int): Logging action flags; default PGDBI['ERRLOG'].
+         cndvals (tuple | list | None): Values bound to %s placeholders in condition;
+            None (default) runs condition as-is. When given, a literal % in condition
+            must be written %%.
 
       Returns:
          dict | int | int: Row dict, count integer, or self.FAILURE on error.
@@ -1133,7 +1136,7 @@ class PgDBI(PgLOG):
          pgcur = self.pgcursor()
          if not pgcur: return self.FAILURE
          try:
-            pgcur.execute(sqlstr)
+            pgcur.execute(sqlstr, cndvals)
             vals = pgcur.fetchone()
             if vals:
                colcnt = len(pgcur.description)
@@ -1145,7 +1148,7 @@ class PgDBI(PgLOG):
                   record[colname] = val
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return self.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, cndvals, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
@@ -1158,7 +1161,7 @@ class PgDBI(PgLOG):
          self.pgdbg(1000, "pgget: {} record retrieved from {}".format(cnt, tablenames))   
       return record
 
-   def pgmget(self, tablenames, fields, condition = None, logact = None):
+   def pgmget(self, tablenames, fields, condition = None, logact = None, cndvals = None):
       """Fetch multiple rows from one or more tables.
 
       Returns results as a column-oriented dict: each key is a column name and its
@@ -1170,6 +1173,9 @@ class PgDBI(PgLOG):
          fields (str | None): Comma-separated column expressions.
          condition (str | None): WHERE / ORDER / LIMIT clause.
          logact (int | None): Logging action flags; defaults to PGDBI['ERRLOG'].
+         cndvals (tuple | list | None): Values bound to %s placeholders in condition;
+            None (default) runs condition as-is. When given, a literal % in condition
+            must be written %%.
 
       Returns:
          dict | int: Column-oriented result dict (may be empty), or self.FAILURE.
@@ -1183,7 +1189,7 @@ class PgDBI(PgLOG):
          pgcur = self.pgcursor()
          if not pgcur: return self.FAILURE
          try:
-            pgcur.execute(sqlstr)
+            pgcur.execute(sqlstr, cndvals)
             rowvals = pgcur.fetchall()
             if rowvals:
                colcnt = len(pgcur.description)
@@ -1199,7 +1205,7 @@ class PgDBI(PgLOG):
                   records[colname] = vals
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return self.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, cndvals, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
@@ -1361,7 +1367,7 @@ class PgDBI(PgLOG):
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, sqlstr)   
       return sqlstr
 
-   def pgupdt(self, tablename, record, condition, logact = None):
+   def pgupdt(self, tablename, record, condition, logact = None, cndvals = None):
       """Update rows in a table using a raw WHERE condition string.
 
       Args:
@@ -1369,6 +1375,9 @@ class PgDBI(PgLOG):
          record (dict): Mapping of column_name → new value.
          condition (str): WHERE clause string (must not be empty or numeric).
          logact (int | None): Logging action flags; defaults to PGDBI['ERRLOG'].
+         cndvals (tuple | list | None): Values bound to %s placeholders in condition;
+            None (default) runs condition as-is. When given, a literal % in condition
+            must be written %%.
 
       Returns:
          int: Number of rows updated, or self.FAILURE on error.
@@ -1379,6 +1388,7 @@ class PgDBI(PgLOG):
       sqlstr = self.prepare_update(tablename, list(record), condition)
       if logact&self.DODFLT: self.prepare_default(tablename, record, logact)
       values = tuple(record.values())
+      if cndvals: values += tuple(cndvals)
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, "Update {} for {}".format(tablename, values))
       ucnt = pgcnt = 0
       while True:
@@ -1514,13 +1524,16 @@ class PgDBI(PgLOG):
       if self.PGLOG['DBGLEVEL']: self.pgdbg(1000, sqlstr)
       return sqlstr
 
-   def pgdel(self, tablename, condition, logact = None):
+   def pgdel(self, tablename, condition, logact = None, cndvals = None):
       """Delete rows from a table using a raw WHERE condition string.
 
       Args:
          tablename (str): Target table name.
          condition (str): WHERE clause (must not be empty or numeric).
          logact (int | None): Logging action flags; defaults to PGDBI['ERRLOG'].
+         cndvals (tuple | list | None): Values bound to %s placeholders in condition;
+            None (default) runs condition as-is. When given, a literal % in condition
+            must be written %%.
 
       Returns:
          int: Number of rows deleted, or self.FAILURE on error.
@@ -1533,11 +1546,11 @@ class PgDBI(PgLOG):
          pgcur = self.pgcursor()
          if not pgcur: return self.FAILURE
          try:
-            pgcur.execute(sqlstr)
+            pgcur.execute(sqlstr, cndvals)
             dcnt = pgcur.rowcount
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return self.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, cndvals, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
@@ -1629,7 +1642,7 @@ class PgDBI(PgLOG):
          if self.curtran > self.PGDBI['MTRANS']: self.starttran()
       return dcnt
 
-   def pgexec(self, sqlstr, logact = None):
+   def pgexec(self, sqlstr, logact = None, cndvals = None):
       """Execute a raw SQL statement and return the affected row count.
 
       Use for DDL or DML that does not fit the structured helpers (e.g. TRUNCATE,
@@ -1638,6 +1651,9 @@ class PgDBI(PgLOG):
       Args:
          sqlstr (str): Complete SQL statement to execute.
          logact (int | None): Logging action flags; defaults to PGDBI['ERRLOG'].
+         cndvals (tuple | list | None): Values bound to %s placeholders in sqlstr;
+            None (default) runs condition as-is. When given, a literal % in sqlstr
+            must be written %%.
 
       Returns:
          int: rowcount from the cursor, or self.FAILURE on error.
@@ -1649,11 +1665,11 @@ class PgDBI(PgLOG):
          pgcur = self.pgcursor()
          if not pgcur: return self.FAILURE
          try:
-            pgcur.execute(sqlstr)
+            pgcur.execute(sqlstr, cndvals)
             ret = pgcur.rowcount
             pgcur.close()
          except PgSQL.Error as pgerr:
-            if not self.check_dberror(pgerr, pgcnt, sqlstr, None, logact): return self.FAILURE
+            if not self.check_dberror(pgerr, pgcnt, sqlstr, cndvals, logact): return self.FAILURE
          else:
             break
          pgcnt += 1
