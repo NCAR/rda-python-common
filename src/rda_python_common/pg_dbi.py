@@ -2769,11 +2769,14 @@ class PgDBI(PgLOG):
    def read_pgpass(self):
       """Read the .pgpass file and populate DBPASS with credentials.
 
-      Searches for .pgpass in DSSHOME first, then GDEXHOME. Each entry is parsed
-      into a (host, port, dbname, username) tuple key mapping to a password value.
+      Searches for .pgpass in DSSHOME first, then GDEXHOME, then the home directory
+      of the user running the program (~/.pgpass), so a workstation or laptop without
+      the gdexdata account can still connect. Each entry is parsed into a
+      (host, port, dbname, username) tuple key mapping to a password value.
       """
       pgpass = self.PGLOG['DSSHOME'] + '/.pgpass'
       if not op.isfile(pgpass): pgpass = self.PGLOG['GDEXHOME'] + '/.pgpass'
+      if not op.isfile(pgpass): pgpass = op.expanduser('~/.pgpass')
       try:
          with open(pgpass, "r") as f:
             for line in f:
